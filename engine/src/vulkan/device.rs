@@ -1,16 +1,20 @@
+use std::collections::HashSet;
+
 use anyhow::{anyhow, Ok, Result};
 use log::*;
 use thiserror::Error;
 use vulkanalia::{
-    vk::{self, DeviceV1_0, HasBuilder, InstanceV1_0},
-    Device, Entry, Instance,
+    vk::{self, DeviceV1_0, HasBuilder, InstanceV1_0, KhrSurfaceExtension, KhrSwapchainExtension},
+    Device, Entry,
 };
 
-use super::{constants, context::VulkanContext, instance::VulkanInstance};
+use super::{
+    constants, context::VulkanContext, instance::VulkanInstance, swapchain::VulkanSwapchain,
+};
 
 #[derive(Debug)]
 pub struct VulkanDevice {
-    vk_device: Device,
+    pub vk_device: Device,
 }
 
 #[derive(Debug, Error)]
@@ -49,7 +53,37 @@ impl VulkanDevice {
         physical_device: vk::PhysicalDevice,
     ) -> Result<()> {
         QueueFamilyIndices::get(instance, context, physical_device)?;
+        VulkanDevice::check_physical_device_extensions(instance, physical_device)?;
+
+        let support = VulkanSwapchain::get(instance, context, physical_device)?;
+        if support.formats.is_empty() || support.present_modes.is_empty() {
+            return Err(anyhow!(SuitabilityError("Insufficient swapchain support.")));
+        }
+
         Ok(())
+    }
+
+    unsafe fn check_physical_device_extensions(
+        instance: &VulkanInstance,
+        physical_device: vk::PhysicalDevice,
+    ) -> Result<()> {
+        let extensions = instance
+            .vk_instance
+            .enumerate_device_extension_properties(physical_device, None)?
+            .iter()
+            .map(|e| e.extension_name)
+            .collect::<HashSet<_>>();
+
+        if constants::DEVICE_EXTENSIONS
+            .iter()
+            .all(|e| extensions.contains(e))
+        {
+            Ok(())
+        } else {
+            Err(anyhow!(SuitabilityError(
+                "Missing required device extensions."
+            )))
+        }
     }
 
     pub unsafe fn new(
@@ -72,7 +106,10 @@ impl VulkanDevice {
             vec![]
         };
 
-        let mut extensions = vec![];
+        let mut extensions = constants::DEVICE_EXTENSIONS
+            .iter()
+            .map(|n| n.as_ptr())
+            .collect::<Vec<_>>();
 
         // Required by Vulkan SDK on macOS since 1.3.216.
         if cfg!(target_os = "macos") && entry.version()? >= constants::PORTABILITY_MACOS_VERSION {
@@ -81,9 +118,24 @@ impl VulkanDevice {
 
         let features = vk::PhysicalDeviceFeatures::builder();
 
-        let queue_infos = &[queue_info];
+        let indices = QueueFamilyIndices::get(instance, context, context.physical_device)?;
+
+        let mut unique_indices = HashSet::new();
+        unique_indices.insert(indices.graphics);
+        unique_indices.insert(indices.present);
+
+        let queue_priorities = &[1.0];
+        let queue_infos = unique_indices
+            .iter()
+            .map(|i| {
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(*i)
+                    .queue_priorities(queue_priorities)
+            })
+            .collect::<Vec<_>>();
+
         let info = vk::DeviceCreateInfo::builder()
-            .queue_create_infos(queue_infos)
+            .queue_create_infos(&queue_infos)
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
             .enabled_features(&features);
@@ -93,22 +145,30 @@ impl VulkanDevice {
             .create_device(context.physical_device, &info, None)?;
 
         context.graphics_queue = device.get_device_queue(indices.graphics, 0);
+        context.present_queue = device.get_device_queue(indices.present, 0);
 
         Ok(VulkanDevice { vk_device: device })
     }
 
-    pub unsafe fn destroy(&mut self) {
+    pub unsafe fn destroy(&mut self, context: &mut VulkanContext) {
+        context
+            .swapchain_image_views
+            .iter()
+            .for_each(|v| self.vk_device.destroy_image_view(*v, None));
+        self.vk_device
+            .destroy_swapchain_khr(context.swapchain, None);
         self.vk_device.destroy_device(None);
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-struct QueueFamilyIndices {
-    graphics: u32,
+pub struct QueueFamilyIndices {
+    pub graphics: u32,
+    pub present: u32,
 }
 
 impl QueueFamilyIndices {
-    unsafe fn get(
+    pub unsafe fn get(
         instance: &VulkanInstance,
         context: &VulkanContext,
         physical_device: vk::PhysicalDevice,
@@ -122,8 +182,23 @@ impl QueueFamilyIndices {
             .position(|p| p.queue_flags.contains(vk::QueueFlags::GRAPHICS))
             .map(|i| i as u32);
 
-        if let Some(graphics) = graphics {
-            Ok(Self { graphics })
+        let mut present = None;
+        for (index, properties) in properties.iter().enumerate() {
+            if instance
+                .vk_instance
+                .get_physical_device_surface_support_khr(
+                    physical_device,
+                    index as u32,
+                    context.surface,
+                )?
+            {
+                present = Some(index as u32);
+                break;
+            }
+        }
+
+        if let (Some(graphics), Some(present)) = (graphics, present) {
+            Ok(Self { graphics, present })
         } else {
             Err(anyhow!(SuitabilityError(
                 "Missing required queue families."

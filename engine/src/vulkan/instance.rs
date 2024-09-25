@@ -6,6 +6,7 @@ use std::os::raw::c_void;
 use vulkanalia::prelude::v1_0::*;
 use vulkanalia::vk;
 use vulkanalia::vk::ExtDebugUtilsExtension;
+use vulkanalia::vk::KhrSurfaceExtension;
 use vulkanalia::window as vk_window;
 use vulkanalia::Entry;
 use vulkanalia::Instance;
@@ -109,11 +110,12 @@ impl VulkanInstance {
         })
     }
 
-    pub unsafe fn destroy_instance(&mut self, context: &mut VulkanContext) {
+    pub unsafe fn destroy(&mut self, context: &mut VulkanContext) {
         if constants::VALIDATION_ENABLED {
             self.vk_instance
                 .destroy_debug_utils_messenger_ext(context.messenger, None);
         }
+        self.vk_instance.destroy_surface_khr(context.surface, None);
         self.vk_instance.destroy_instance(None);
     }
 }
