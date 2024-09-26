@@ -12,5 +12,3 @@ target/
 *.pdb
 
 # Added by cargo
-
-/target

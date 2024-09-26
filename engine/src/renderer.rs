@@ -20,6 +20,7 @@ impl Renderer {
 
     /// Renders a frame for our Vulkan app.
     pub unsafe fn render(&mut self, window: &Window) -> Result<()> {
+        self.vk_renderer.render()?;
         Ok(())
     }
 

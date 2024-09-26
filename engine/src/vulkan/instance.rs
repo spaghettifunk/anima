@@ -111,11 +111,11 @@ impl VulkanInstance {
     }
 
     pub unsafe fn destroy(&mut self, context: &mut VulkanContext) {
+        self.vk_instance.destroy_surface_khr(context.surface, None);
         if constants::VALIDATION_ENABLED {
             self.vk_instance
                 .destroy_debug_utils_messenger_ext(context.messenger, None);
         }
-        self.vk_instance.destroy_surface_khr(context.surface, None);
         self.vk_instance.destroy_instance(None);
     }
 }

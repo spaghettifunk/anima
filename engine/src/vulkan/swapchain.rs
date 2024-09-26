@@ -47,7 +47,7 @@ impl VulkanSwapchain {
         })
     }
 
-    pub unsafe fn create_swapchain(
+    pub unsafe fn create(
         window: &Window,
         instance: &VulkanInstance,
         device: &VulkanDevice,
@@ -102,7 +102,7 @@ impl VulkanSwapchain {
         Ok(())
     }
 
-    pub unsafe fn create_swapchain_image_views(
+    pub unsafe fn create_image_views(
         device: &VulkanDevice,
         context: &mut VulkanContext,
     ) -> Result<()> {
