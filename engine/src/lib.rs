@@ -31,39 +31,40 @@ impl Engine {
             .with_inner_size(LogicalSize::new(1024, 768))
             .build(&event_loop)?;
 
-        let renderer = unsafe { 
-            Renderer::create(&window)? 
-        };
+        let renderer = unsafe { Renderer::create(&window)? };
 
-        return Ok(Engine{
+        return Ok(Engine {
             window,
             renderer,
             event_loop,
-        })
-    } 
+        });
+    }
 
-    pub fn run(mut self) -> Result<()> {                
+    pub fn run(mut self) -> Result<()> {
         self.event_loop.run(move |event, elwt| {
             match event {
                 // Request a redraw when all events were processed.
                 Event::AboutToWait => self.window.request_redraw(),
                 Event::WindowEvent { event, .. } => match event {
                     // Render a frame if our Vulkan app is not being destroyed.
-                    WindowEvent::RedrawRequested if !elwt.exiting() => unsafe { 
-                        self.renderer.render(&self.window) 
-                    }.unwrap(),
+                    WindowEvent::RedrawRequested if !elwt.exiting() => {
+                        unsafe { self.renderer.render(&self.window) }.unwrap()
+                    }
                     // Destroy our Vulkan app.
                     WindowEvent::CloseRequested => {
                         elwt.exit();
-                        unsafe { 
-                            self.renderer.destroy(); 
+                        unsafe {
+                            self.renderer.vk_renderer.device_wait_idle();
+                        }
+                        unsafe {
+                            self.renderer.destroy();
                         }
                     }
                     _ => {}
-                }
+                },
                 _ => {}
             }
-        })?;    
+        })?;
 
         Ok(())
     }

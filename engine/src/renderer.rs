@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use winit::window::Window;
 
 use crate::vulkan::VulkanRenderer;
@@ -7,7 +7,7 @@ const VALIDATION_ENABLED: bool = cfg!(debug_assertions);
 
 #[derive(Debug)]
 pub struct Renderer {
-    vk_renderer: VulkanRenderer,
+    pub vk_renderer: VulkanRenderer,
 }
 
 impl Renderer {
