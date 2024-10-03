@@ -23,21 +23,21 @@ func NewTestGame() *engine.Game {
 }
 
 func Initialize() error {
-	core.LogInfo("TestGame Initialize fn....")
+	core.LogDebug("TestGame Initialize fn....")
 	return nil
 }
 
-func Update(deltaTime float32) error {
-	core.LogInfo("TestGame Update fn....")
+func Update(deltaTime float64) error {
+	core.LogDebug("TestGame Update fn....")
 	return nil
 }
 
-func Render(deltaTime float32) error {
-	core.LogInfo("TestGame Render fn....")
+func Render(deltaTime float64) error {
+	core.LogDebug("TestGame Render fn....")
 	return nil
 }
 
 func OnResize(width uint32, height uint32) error {
-	core.LogInfo("TestGame OnResize fn....")
+	core.LogDebug("TestGame OnResize fn....")
 	return nil
 }

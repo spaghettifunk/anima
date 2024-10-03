@@ -2,7 +2,7 @@ package core
 
 import "sync"
 
-type Button int
+type Button uint16
 
 const (
 	BUTTON_LEFT Button = iota
@@ -12,7 +12,7 @@ const (
 )
 
 // Key code definitions
-type KeyCode int
+type KeyCode uint16
 
 const (
 	KEY_BACKSPACE    KeyCode = 0x08
@@ -133,8 +133,8 @@ const (
 
 // Mouse state structure
 type MouseState struct {
-	X       int16
-	Y       int16
+	X       uint16
+	Y       uint16
 	Buttons [BUTTON_MAX_BUTTONS]bool // button states (pressed/released)
 }
 
@@ -184,28 +184,28 @@ func InputUpdate(deltaTime float64) error {
 
 // keyboard input
 func InputIsKeyDown(key KeyCode) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return inputState.KeyboardCurrent.Keys[key]
 }
 
 func InputIsKeyUp(key KeyCode) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return !inputState.KeyboardCurrent.Keys[key]
 }
 
 func InputWasKeyDown(key KeyCode) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return inputState.KeyboardPrevious.Keys[key]
 }
 
 func InputWasKeyUp(key KeyCode) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return !inputState.KeyboardPrevious.Keys[key]
@@ -217,59 +217,62 @@ func InputProcessKey(key KeyCode, pressed bool) error {
 		// Update internal state.
 		inputState.KeyboardCurrent.Keys[key] = pressed
 
-		// Fire off an event for immediate processing.
-		var context EventContext = EventContext{}
-		context.Data.U16[0] = uint16(key)
-
-		var code SystemEventCode = 0
+		var code EventCode = 0
 		if pressed {
 			code = EVENT_CODE_KEY_PRESSED
 		} else {
 			code = EVENT_CODE_KEY_RELEASED
 		}
-		EventFire(code, 0, context)
+
+		// Fire off an event for immediate processing.
+		EventFire(EventContext{
+			Type: code,
+			Data: &KeyEvent{
+				KeyCode: key,
+			},
+		})
 	}
 	return nil
 }
 
 // mouse input
 func InputIsButtonDown(button Button) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return inputState.MouseCurrent.Buttons[button]
 }
 
 func InputIsButtonUp(button Button) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return !inputState.MouseCurrent.Buttons[button]
 }
 
 func InputWasButtonDown(button Button) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return inputState.MousePrevious.Buttons[button]
 }
 
 func InputWasButtonUp(button Button) bool {
-	if !isInitialized {
+	if !inputInitialized {
 		return false
 	}
 	return !inputState.MousePrevious.Buttons[button]
 }
 
 func InputGetMousePosition(x int32, y int32) (int32, int32) {
-	if !isInitialized {
+	if !inputInitialized {
 		return 0, 0
 	}
 	return int32(inputState.MouseCurrent.X), int32(inputState.MouseCurrent.Y)
 }
 
 func InputGetPreviousMousePosition(x int32, y int32) (int32, int32) {
-	if !isInitialized {
+	if !inputInitialized {
 		return 0, 0
 	}
 	return int32(inputState.MousePrevious.X), int32(inputState.MousePrevious.Y)
@@ -281,46 +284,51 @@ func InputProcessButton(button Button, pressed bool) error {
 		inputState.MouseCurrent.Buttons[button] = pressed
 
 		// Fire the event.
-		var context EventContext = EventContext{}
-		context.Data.U16[0] = uint16(button)
-
-		var code SystemEventCode = 0
+		var code EventCode = 0
 		if pressed {
 			code = EVENT_CODE_BUTTON_PRESSED
 		} else {
 			code = EVENT_CODE_BUTTON_RELEASED
 		}
-		EventFire(code, 0, context)
+		EventFire(EventContext{
+			Type: code,
+			Data: &MouseEvent{
+				Button: button,
+			},
+		})
 	}
 	return nil
 }
 
-func InputProcessMouseMove(x int16, y int16) error {
+func InputProcessMouseMove(x uint16, y uint16) error {
 	// Only process if actually different
 	if inputState.MouseCurrent.X != x || inputState.MouseCurrent.Y != y {
 		// NOTE: Enable this if debugging.
-		// KDEBUG("Mouse pos: %i, %i!", x, y);
+		LogDebug("Mouse pos: %d, %d!", x, y)
 
 		// Update internal state.
 		inputState.MouseCurrent.X = x
 		inputState.MouseCurrent.Y = y
 
 		// Fire the event.
-		var context EventContext = EventContext{}
-		context.Data.U16[0] = uint16(x)
-		context.Data.U16[1] = uint16(y)
-		EventFire(EVENT_CODE_MOUSE_MOVED, 0, context)
+		EventFire(EventContext{
+			Type: EVENT_CODE_MOUSE_MOVED,
+			Data: &MouseEvent{
+				PosX: x,
+				PosY: y,
+			},
+		})
 	}
 	return nil
 }
 
 func InputProcessMouseWheel(zDelta int8) error {
-	// NOTE: no internal state to update.
-
 	// Fire the event.
-	var context EventContext = EventContext{}
-	context.Data.U8[0] = uint8(zDelta)
-	EventFire(EVENT_CODE_MOUSE_WHEEL, 0, context)
-
+	EventFire(EventContext{
+		Type: EVENT_CODE_MOUSE_WHEEL,
+		Data: &MouseEvent{
+			Scroll: zDelta,
+		},
+	})
 	return nil
 }

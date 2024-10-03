@@ -11,6 +11,6 @@ type Game struct {
 }
 
 type Initialize func() error
-type Update func(deltaTime float32) error
-type Render func(deltaTime float32) error
+type Update func(deltaTime float64) error
+type Render func(deltaTime float64) error
 type OnResize func(width uint32, height uint32) error

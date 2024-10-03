@@ -6,6 +6,7 @@ import (
 
 	"github.com/spaghettifunk/alaska-engine/engine/core"
 	"github.com/spaghettifunk/alaska-engine/engine/platform"
+	"github.com/spaghettifunk/alaska-engine/engine/renderer"
 )
 
 type ApplicationConfig struct {
@@ -22,14 +23,14 @@ type ApplicationConfig struct {
 }
 
 type applicationState struct {
-	GameInstance  *Game
-	IsRunning     bool
-	IsSuspended   bool
-	PlatformState *platform.Platform
-	Width         uint32
-	Height        uint32
-	Clock         *core.Clock
-	LastTime      float64
+	GameInstance *Game
+	IsRunning    bool
+	IsSuspended  bool
+	Platform     *platform.Platform
+	Width        uint32
+	Height       uint32
+	Clock        *core.Clock
+	LastTime     float64
 }
 
 var newApplication sync.Once
@@ -48,6 +49,7 @@ func ApplicationCreate(gameInstance *Game) error {
 		appState = &applicationState{
 			GameInstance: gameInstance,
 			Clock:        core.NewClock(),
+			Platform:     platform.New(),
 			IsRunning:    true,
 			IsSuspended:  false,
 			Width:        0,
@@ -62,22 +64,17 @@ func ApplicationCreate(gameInstance *Game) error {
 	}
 
 	// initialize events
-	if !core.EventInitialize() {
+	if !core.EventSystemInitialize() {
 		return fmt.Errorf("failed to initialize the event system")
 	}
 
 	// register some events
-	core.EventRegister(core.EVENT_CODE_APPLICATION_QUIT, 0, applicationOnEvent)
-	core.EventRegister(core.EVENT_CODE_KEY_PRESSED, 0, applicationOnKey)
-	core.EventRegister(core.EVENT_CODE_KEY_RELEASED, 0, applicationOnKey)
-	core.EventRegister(core.EVENT_CODE_RESIZED, 0, applicationOnResized)
+	core.EventRegister(core.EVENT_CODE_APPLICATION_QUIT, applicationOnEvent)
+	core.EventRegister(core.EVENT_CODE_KEY_PRESSED, applicationOnKey)
+	core.EventRegister(core.EVENT_CODE_KEY_RELEASED, applicationOnKey)
+	core.EventRegister(core.EVENT_CODE_RESIZED, applicationOnResized)
 
-	p, err := platform.New()
-	if err != nil {
-		return err
-	}
-
-	if err := p.Startup(appState.GameInstance.ApplicationConfig.Name,
+	if err := appState.Platform.Startup(appState.GameInstance.ApplicationConfig.Name,
 		appState.GameInstance.ApplicationConfig.StartPosX,
 		appState.GameInstance.ApplicationConfig.StartPosY,
 		appState.GameInstance.ApplicationConfig.StartWidth,
@@ -86,7 +83,9 @@ func ApplicationCreate(gameInstance *Game) error {
 	}
 
 	// initialize renderer
-	// ..
+	if err := renderer.Initialize(appState.GameInstance.ApplicationConfig.Name, appState.Platform); err != nil {
+		return err
+	}
 
 	if err := appState.GameInstance.FnInitialize(); err != nil {
 		return err
@@ -107,13 +106,79 @@ func ApplicationRun() error {
 
 	appState.LastTime = appState.Clock.Elapsed()
 
-	// var runningTime float64 = 0.0
-	// var frameCount uint8 = 0
-	// var targetFrameSeconds float64 = 1.0 / 60.0
+	// start goroutine to process all the events around the engine
+	go core.ProcessEvents()
 
-	// for appState.IsRunning {
+	var runningTime float64 = 0.0
+	var frameCount uint8 = 0
+	var targetFrameSeconds float64 = 1.0 / 60.0
 
-	// }
+	for appState.IsRunning {
+		if !appState.Platform.PumpMessages() {
+			appState.IsRunning = false
+		}
+
+		if !appState.IsSuspended {
+			// Update clock and get delta time.
+			appState.Clock.Update()
+
+			var current_time float64 = appState.Clock.Elapsed()
+			var delta float64 = (current_time - appState.LastTime)
+			var frame_start_time float64 = appState.Platform.GetAbsoluteTime()
+
+			if err := appState.GameInstance.FnUpdate(delta); err != nil {
+				core.LogFatal("Game update failed, shutting down.")
+				appState.IsRunning = false
+				break
+			}
+
+			// Call the game's render routine.
+			if err := appState.GameInstance.FnRender(delta); err != nil {
+				core.LogFatal("Game render failed, shutting down.")
+				appState.IsRunning = false
+				break
+			}
+
+			// TODO: refactor packet creation
+			packet := &renderer.RenderPacket{
+				DeltaTime: delta,
+			}
+			renderer.DrawFrame(packet)
+
+			// Figure out how long the frame took and, if below
+			var frame_end_time float64 = appState.Platform.GetAbsoluteTime()
+			var frame_elapsed_time float64 = frame_end_time - frame_start_time
+			runningTime += frame_elapsed_time
+			var remaining_seconds float64 = targetFrameSeconds - frame_elapsed_time
+
+			if remaining_seconds > 0 {
+				remaining_ms := (remaining_seconds * 1000)
+				// If there is time left, give it back to the OS.
+				limit_frames := false
+				if remaining_ms > 0 && limit_frames {
+					//    platform_sleep(remaining_ms - 1);
+				}
+				frameCount++
+			}
+
+			// NOTE: Input update/state copying should always be handled
+			// after any input should be recorded; I.E. before this line.
+			// As a safety, input is the last thing to be updated before
+			// this frame ends.
+			core.InputUpdate(delta)
+
+			// Update last time
+			appState.LastTime = current_time
+		}
+	}
+
+	appState.IsRunning = false
+
+	core.EventSystemShutdown()
+	core.InputShutdown()
+	renderer.Shutdown()
+
+	appState.Platform.Shutdown()
 
 	return nil
 }
@@ -124,54 +189,65 @@ func ApplicationGetFramebufferSize() (uint32, uint32) {
 	return 0, 0
 }
 
-func applicationOnEvent(code core.SystemEventCode, sender interface{}, listener_inst interface{}, context core.EventContext) bool {
-	switch code {
+func applicationOnEvent(context core.EventContext) {
+	switch context.Type {
 	case core.EVENT_CODE_APPLICATION_QUIT:
 		{
 			core.LogInfo("EVENT_CODE_APPLICATION_QUIT recieved, shutting down.\n")
 			appState.IsRunning = false
-			return true
 		}
 	}
-	return false
 }
 
-func applicationOnKey(code core.SystemEventCode, sender interface{}, listener_inst interface{}, context core.EventContext) bool {
-	if code == core.EVENT_CODE_KEY_PRESSED {
-		key_code := context.Data.U16[0]
-		if key_code == uint16(core.KEY_ESCAPE) {
+func applicationOnKey(context core.EventContext) {
+	ke, ok := context.Data.(*core.KeyEvent)
+	if !ok {
+		core.LogError("wrong event associated with the event type `%d`", context.Type)
+		return
+	}
+
+	key_code := ke.KeyCode
+
+	if context.Type == core.EVENT_CODE_KEY_PRESSED {
+		if key_code == core.KEY_ESCAPE {
 			// NOTE: Technically firing an event to itself, but there may be other listeners.
-			data := core.EventContext{}
-			core.EventFire(core.EVENT_CODE_APPLICATION_QUIT, 0, data)
+			data := core.EventContext{
+				Type: core.EVENT_CODE_APPLICATION_QUIT,
+			}
+			core.EventFire(data)
 			// Block anything else from processing this.
-			return true
-		} else if key_code == uint16(core.KEY_A) {
+			return
+		} else if key_code == core.KEY_A {
 			// Example on checking for a key
 			core.LogDebug("Explicit - A key pressed!")
 		} else {
 			core.LogDebug("'%c' key pressed in window.", key_code)
 		}
-	} else if code == core.EVENT_CODE_KEY_RELEASED {
-		key_code := context.Data.U16[0]
-		if key_code == uint16(core.KEY_B) {
+	} else if context.Type == core.EVENT_CODE_KEY_RELEASED {
+		if key_code == core.KEY_B {
 			// Example on checking for a key
 			core.LogDebug("Explicit - B key released!")
 		} else {
 			core.LogDebug("'%c' key released in window.", key_code)
 		}
 	}
-	return false
 }
 
-func applicationOnResized(code core.SystemEventCode, sender interface{}, listener_inst interface{}, context core.EventContext) bool {
-	if code == core.EVENT_CODE_RESIZED {
-		width := context.Data.U16[0]
-		height := context.Data.U16[1]
+func applicationOnResized(context core.EventContext) {
+	if context.Type == core.EVENT_CODE_RESIZED {
+		se, ok := context.Data.(*core.SystemEvent)
+		if !ok {
+			core.LogError("wrong event associated with the event type `%d`", context.Type)
+			return
+		}
+
+		width := se.WindowWidth
+		height := se.WindowHeight
 
 		// Check if different. If so, trigger a resize event.
-		if width != uint16(appState.Width) || height != uint16(appState.Height) {
-			appState.Width = uint32(width)
-			appState.Height = uint32(height)
+		if width != appState.Width || height != appState.Height {
+			appState.Width = width
+			appState.Height = height
 
 			core.LogDebug("Window resize: %d, %d", width, height)
 
@@ -179,18 +255,15 @@ func applicationOnResized(code core.SystemEventCode, sender interface{}, listene
 			if width == 0 || height == 0 {
 				core.LogInfo("Window minimized, suspending application.")
 				appState.IsSuspended = true
-				return true
+				return
 			} else {
 				if appState.IsSuspended {
 					core.LogInfo("Window restored, resuming application.")
 					appState.IsSuspended = false
 				}
 				appState.GameInstance.FnOnResize(uint32(width), uint32(height))
-
-				// renderer_on_resized(width, height)
+				renderer.OnResize(uint16(width), uint16(height))
 			}
 		}
 	}
-	// Event purposely not handled to allow other listeners to get this.
-	return false
 }
