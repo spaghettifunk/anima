@@ -71,6 +71,19 @@ func (p *Platform) PumpMessages() bool {
 	return !p.Window.ShouldClose()
 }
 
+func (p *Platform) GetRequiredExtensionNames() []string {
+	result := make([]string, 1)
+	extensions := p.Window.GetRequiredInstanceExtensions()
+	for i := 0; i < len(extensions); i++ {
+		if extensions[i] == "VK_KHR_surface" {
+			// We already include "VK_KHR_surface", so skip this.
+			continue
+		}
+		result = append(result, extensions[i])
+	}
+	return result
+}
+
 func keyCallback(w *glfw.Window, key glfw.Key, scancode int, action glfw.Action, mods glfw.ModifierKey) {
 	ourKey := translateKey(key)
 	if ourKey != core.KEYS_MAX_KEYS {

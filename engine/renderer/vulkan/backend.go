@@ -44,3 +44,12 @@ func (vr VulkanRenderer) Resized(width, height uint16) error { return nil }
 func (vr VulkanRenderer) BeginFrame(deltaTime float64) error { return nil }
 
 func (vr VulkanRenderer) EndFrame(deltaTime float64) error { return nil }
+
+func (vr VulkanRenderer) findMemoryIndex(typeFilter, propertyFlags uint32) int32 { return 1 }
+
+func (vr VulkanRenderer) createCommandBuffers() {}
+
+func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, renderpass *VulkanRenderpass) {
+}
+
+func (vr VulkanRenderer) recreateSwapchain() bool { return true }
