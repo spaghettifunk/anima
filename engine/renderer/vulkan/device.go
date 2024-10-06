@@ -291,7 +291,7 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 	return nil
 }
 
-func DetectDepthFormat(device *VulkanDevice) bool {
+func DeviceDetectDepthFormat(device *VulkanDevice) bool {
 	// Format candidates
 	candidateCount := 3
 	candidates := []vk.Format{
@@ -436,14 +436,7 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 	return true
 }
 
-func PhysicalDeviceMeetsRequirements(
-	device vk.PhysicalDevice,
-	surface vk.Surface,
-	properties *vk.PhysicalDeviceProperties,
-	features *vk.PhysicalDeviceFeatures,
-	requirements *VulkanPhysicalDeviceRequirements,
-	outQueueInfo *VulkanPhysicalDeviceQueueFamilyInfo,
-	outSwapchainSupport *VulkanSwapchainSupportInfo) bool {
+func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surface, properties *vk.PhysicalDeviceProperties, features *vk.PhysicalDeviceFeatures, requirements *VulkanPhysicalDeviceRequirements, outQueueInfo *VulkanPhysicalDeviceQueueFamilyInfo, outSwapchainSupport *VulkanSwapchainSupportInfo) bool {
 	// Evaluate device properties to determine if it meets the needs of our applcation.
 	outQueueInfo.GraphicsFamilyIndex = 0
 	outQueueInfo.PresentFamilyIndex = 0

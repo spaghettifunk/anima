@@ -48,3 +48,5 @@ type VulkanContext struct {
 
 	RecreatingSwapchain bool
 }
+
+func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 { return 1 }
