@@ -225,7 +225,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	}
 
 	// Depth resources
-	if !DeviceDetectDepthFormat(&context.Device) {
+	if !DeviceDetectDepthFormat(context.Device) {
 		context.Device.DepthFormat = vk.FormatUndefined
 		core.LogFatal("Failed to find a supported format!")
 	}

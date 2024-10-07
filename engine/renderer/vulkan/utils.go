@@ -129,3 +129,34 @@ func MathClamp(f, low, high uint32) uint32 {
 	}
 	return f
 }
+
+var end = "\x00"
+var endChar byte = '\x00'
+
+func VulkanSafeString(s string) string {
+	if len(s) == 0 {
+		return end
+	}
+	if s[len(s)-1] != endChar {
+		return s + end
+	}
+	return s
+}
+
+func VulkanSafeStrings(list []string) []string {
+	for i := range list {
+		list[i] = VulkanSafeString(list[i])
+	}
+	return list
+}
+
+func FindFirstZeroInByteArray(arr []byte) int {
+	end := 0
+	for i, b := range arr {
+		if b == 0 {
+			end = i
+			break
+		}
+	}
+	return end
+}

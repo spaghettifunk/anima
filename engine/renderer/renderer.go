@@ -9,7 +9,7 @@ import (
 )
 
 type RendererBackend interface {
-	Initialize(appName string) error
+	Initialize(appName string, appWidth, appHeight uint32) error
 	Shutdow() error
 	Resized(width, height uint16) error
 	BeginFrame(deltaTime float64) error
@@ -36,13 +36,13 @@ type RenderPacket struct {
 var initRenderer sync.Once
 var renderer *Renderer
 
-func Initialize(appName string, platform *platform.Platform) error {
+func Initialize(appName string, appWidth, appHeight uint32, platform *platform.Platform) error {
 	initRenderer.Do(func() {
 		renderer = &Renderer{
 			backend: vulkan.New(platform),
 		}
 	})
-	return renderer.backend.Initialize(appName)
+	return renderer.backend.Initialize(appName, appWidth, appHeight)
 }
 
 func Shutdown() error {

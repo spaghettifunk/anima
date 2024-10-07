@@ -72,7 +72,7 @@ func (p *Platform) PumpMessages() bool {
 }
 
 func (p *Platform) GetRequiredExtensionNames() []string {
-	result := make([]string, 1)
+	result := []string{}
 	extensions := p.Window.GetRequiredInstanceExtensions()
 	for i := 0; i < len(extensions); i++ {
 		if extensions[i] == "VK_KHR_surface" {

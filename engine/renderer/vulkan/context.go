@@ -21,15 +21,15 @@ type VulkanContext struct {
 	Surface   vk.Surface
 
 	// TODO: only in DEBUG mode
-	// debug_messenger vk.DebugUtilsMessenger
+	debug_messenger vk.DebugReportCallback
 
-	Device VulkanDevice
+	Device *VulkanDevice
 
-	Swapchain      VulkanSwapchain
-	MainRenderpass VulkanRenderpass
+	Swapchain      *VulkanSwapchain
+	MainRenderpass *VulkanRenderpass
 
 	// darray
-	GraphicsCommandBuffers []VulkanCommandBuffer
+	GraphicsCommandBuffers []*VulkanCommandBuffer
 
 	// darray
 	ImageAvailableSemaphores []vk.Semaphore
@@ -38,10 +38,10 @@ type VulkanContext struct {
 	QueueCompleteSemaphores []vk.Semaphore
 
 	InFlightFenceCount uint32
-	InFlightFences     *VulkanFence
+	InFlightFences     []*VulkanFence
 
 	// Holds pointers to fences which exist and are owned elsewhere.
-	ImagesInFlight *VulkanFence
+	ImagesInFlight []*VulkanFence
 
 	ImageIndex   uint32
 	CurrentFrame uint32

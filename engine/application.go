@@ -83,7 +83,7 @@ func ApplicationCreate(gameInstance *Game) error {
 	}
 
 	// initialize renderer
-	if err := renderer.Initialize(appState.GameInstance.ApplicationConfig.Name, appState.Platform); err != nil {
+	if err := renderer.Initialize(appState.GameInstance.ApplicationConfig.Name, appState.Width, appState.Height, appState.Platform); err != nil {
 		return err
 	}
 

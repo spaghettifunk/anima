@@ -358,72 +358,68 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 			requirements.DiscreteGPU = false
 		}
 
-		queueInfo := VulkanPhysicalDeviceQueueFamilyInfo{}
-		result := PhysicalDeviceMeetsRequirements(
-			physicalDevices[i],
-			context.Surface,
-			&properties,
-			&features,
-			&requirements,
-			&queueInfo,
-			&context.Device.SwapchainSupport)
-
-		if result {
-			core.LogInfo("Selected device: '%s'.", properties.DeviceName)
-			// GPU type, etc.
-			switch properties.DeviceType {
-			default:
-				fallthrough
-			case vk.PhysicalDeviceTypeOther:
-				core.LogInfo("GPU type is Unknown.")
-			case vk.PhysicalDeviceTypeIntegratedGpu:
-				core.LogInfo("GPU type is Integrated.")
-			case vk.PhysicalDeviceTypeDiscreteGpu:
-				core.LogInfo("GPU type is Descrete.")
-			case vk.PhysicalDeviceTypeVirtualGpu:
-				core.LogInfo("GPU type is Virtual.")
-			case vk.PhysicalDeviceTypeCpu:
-				core.LogInfo("GPU type is CPU.")
-			}
-
-			core.LogInfo(
-				"GPU Driver version: %d.%d.%d",
-				vk.Version.Major(vk.Version(properties.DriverVersion)),
-				vk.Version.Minor(vk.Version(properties.DriverVersion)),
-				vk.Version.Patch(vk.Version(properties.DriverVersion)),
-			)
-
-			// Vulkan API version.
-			core.LogInfo(
-				"Vulkan API version: %d.%d.%d",
-				vk.Version.Major(vk.Version(properties.ApiVersion)),
-				vk.Version.Minor(vk.Version(properties.ApiVersion)),
-				vk.Version.Patch(vk.Version(properties.ApiVersion)),
-			)
-
-			// Memory information
-			for j := 0; j < int(memory.MemoryHeapCount); j++ {
-				memorySizeGib := ((memory.MemoryHeaps[j].Size) / 1024.0 / 1024.0 / 1024.0)
-				// TODO: check the condition
-				if vk.MemoryHeapFlagBits(memory.MemoryHeaps[j].Flags)&vk.MemoryHeapDeviceLocalBit > 0 {
-					core.LogInfo("Local GPU memory: %d GiB", memorySizeGib)
-				} else {
-					core.LogInfo("Shared System memory: %d GiB", memorySizeGib)
-				}
-			}
-
-			context.Device.PhysicalDevice = physicalDevices[i]
-			context.Device.GraphicsQueueIndex = int32(queueInfo.GraphicsFamilyIndex)
-			context.Device.PresentQueueIndex = int32(queueInfo.PresentFamilyIndex)
-			context.Device.TransferQueueIndex = int32(queueInfo.TransferFamilyIndex)
-			// NOTE: set compute index here if needed.
-
-			// Keep a copy of properties, features and memory info for later use.
-			context.Device.Properties = properties
-			context.Device.Features = features
-			context.Device.Memory = memory
-			break
+		queueInfo, swapchainSupport, err := PhysicalDeviceMeetsRequirements(physicalDevices[i], context.Surface, &properties, &features, &requirements)
+		if err != nil {
+			core.LogError(err.Error())
+			return false
 		}
+		context.Device.SwapchainSupport = *swapchainSupport
+
+		core.LogInfo("Selected device: '%s'.", properties.DeviceName)
+
+		// GPU type, etc.
+		switch properties.DeviceType {
+		default:
+			fallthrough
+		case vk.PhysicalDeviceTypeOther:
+			core.LogInfo("GPU type is Unknown.")
+		case vk.PhysicalDeviceTypeIntegratedGpu:
+			core.LogInfo("GPU type is Integrated.")
+		case vk.PhysicalDeviceTypeDiscreteGpu:
+			core.LogInfo("GPU type is Descrete.")
+		case vk.PhysicalDeviceTypeVirtualGpu:
+			core.LogInfo("GPU type is Virtual.")
+		case vk.PhysicalDeviceTypeCpu:
+			core.LogInfo("GPU type is CPU.")
+		}
+
+		core.LogInfo(
+			"GPU Driver version: %d.%d.%d",
+			vk.Version.Major(vk.Version(properties.DriverVersion)),
+			vk.Version.Minor(vk.Version(properties.DriverVersion)),
+			vk.Version.Patch(vk.Version(properties.DriverVersion)),
+		)
+
+		// Vulkan API version.
+		core.LogInfo(
+			"Vulkan API version: %d.%d.%d",
+			vk.Version.Major(vk.Version(properties.ApiVersion)),
+			vk.Version.Minor(vk.Version(properties.ApiVersion)),
+			vk.Version.Patch(vk.Version(properties.ApiVersion)),
+		)
+
+		// Memory information
+		for j := 0; j < int(memory.MemoryHeapCount); j++ {
+			memorySizeGib := ((memory.MemoryHeaps[j].Size) / 1024.0 / 1024.0 / 1024.0)
+			// TODO: check the condition
+			if vk.MemoryHeapFlagBits(memory.MemoryHeaps[j].Flags)&vk.MemoryHeapDeviceLocalBit > 0 {
+				core.LogInfo("Local GPU memory: %d GiB", memorySizeGib)
+			} else {
+				core.LogInfo("Shared System memory: %d GiB", memorySizeGib)
+			}
+		}
+
+		context.Device.PhysicalDevice = physicalDevices[i]
+		context.Device.GraphicsQueueIndex = int32(queueInfo.GraphicsFamilyIndex)
+		context.Device.PresentQueueIndex = int32(queueInfo.PresentFamilyIndex)
+		context.Device.TransferQueueIndex = int32(queueInfo.TransferFamilyIndex)
+		// NOTE: set compute index here if needed.
+
+		// Keep a copy of properties, features and memory info for later use.
+		context.Device.Properties = properties
+		context.Device.Features = features
+		context.Device.Memory = memory
+		break
 	}
 
 	// Ensure a device was selected
@@ -436,18 +432,22 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 	return true
 }
 
-func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surface, properties *vk.PhysicalDeviceProperties, features *vk.PhysicalDeviceFeatures, requirements *VulkanPhysicalDeviceRequirements, outQueueInfo *VulkanPhysicalDeviceQueueFamilyInfo, outSwapchainSupport *VulkanSwapchainSupportInfo) bool {
+func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surface, properties *vk.PhysicalDeviceProperties,
+	features *vk.PhysicalDeviceFeatures, requirements *VulkanPhysicalDeviceRequirements) (*VulkanPhysicalDeviceQueueFamilyInfo, *VulkanSwapchainSupportInfo, error) {
 	// Evaluate device properties to determine if it meets the needs of our applcation.
-	outQueueInfo.GraphicsFamilyIndex = 0
-	outQueueInfo.PresentFamilyIndex = 0
-	outQueueInfo.ComputeFamilyIndex = 0
-	outQueueInfo.TransferFamilyIndex = 0
+	outQueueInfo := &VulkanPhysicalDeviceQueueFamilyInfo{
+		GraphicsFamilyIndex: 0,
+		PresentFamilyIndex:  0,
+		ComputeFamilyIndex:  0,
+		TransferFamilyIndex: 0,
+	}
 
 	// Discrete GPU?
 	if requirements.DiscreteGPU {
 		if properties.DeviceType != vk.PhysicalDeviceTypeDiscreteGpu {
-			core.LogInfo("Device is not a discrete GPU, and one is required. Skipping.")
-			return false
+			err := fmt.Errorf("device is not a discrete GPU, and one is required. Skipping.")
+			core.LogInfo(err.Error())
+			return nil, nil, err
 		}
 	}
 
@@ -487,7 +487,9 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 		// Present queue?
 		var supportsPresent vk.Bool32 = vk.False
 		if res := vk.GetPhysicalDeviceSurfaceSupport(device, uint32(i), surface, &supportsPresent); res != vk.Success {
-			return false
+			err := fmt.Errorf("failed to get physical device surface support")
+			core.LogDebug(err.Error())
+			return nil, nil, err
 		}
 		if supportsPresent == vk.True {
 			outQueueInfo.PresentFamilyIndex = uint32(i)
@@ -512,6 +514,8 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 		core.LogDebug("Transfer Family Index: %d", outQueueInfo.TransferFamilyIndex)
 		core.LogDebug("Compute Family Index:  %d", outQueueInfo.ComputeFamilyIndex)
 
+		outSwapchainSupport := &VulkanSwapchainSupportInfo{}
+
 		// Query swapchain support.
 		DeviceQuerySwapchainSupport(device, surface, outSwapchainSupport)
 
@@ -522,8 +526,9 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 			if len(outSwapchainSupport.PresentModes) > 0 {
 				// kfree(out_swapchain_support.present_modes, sizeof(VkPresentModeKHR) * out_swapchain_support.PresentModeCount, MEMORY_TAG_RENDERER);
 			}
-			core.LogInfo("Required swapchain support not present, skipping device.")
-			return false
+			err := fmt.Errorf("Required swapchain support not present, skipping device.")
+			core.LogInfo(err.Error())
+			return nil, nil, err
 		}
 
 		// Device extensions.
@@ -532,13 +537,17 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 			var availableExtensions []vk.ExtensionProperties
 
 			if res := vk.EnumerateDeviceExtensionProperties(device, "", &availableExtensionCount, nil); res != vk.Success {
-				return false
+				err := fmt.Errorf("failed to enumerate device extension properties")
+				core.LogInfo(err.Error())
+				return nil, nil, err
 			}
 
 			if availableExtensionCount != 0 {
 				availableExtensions = make([]vk.ExtensionProperties, availableExtensionCount)
 				if res := vk.EnumerateDeviceExtensionProperties(device, "", &availableExtensionCount, availableExtensions); res != vk.Success {
-					return false
+					err := fmt.Errorf("failed to enumerate device extension properties")
+					core.LogInfo(err.Error())
+					return nil, nil, err
 				}
 				requiredExtensionCount := len(requirements.DeviceExtensionNames)
 				for i := 0; i < requiredExtensionCount; i++ {
@@ -550,9 +559,10 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 						}
 					}
 					if !found {
+						err := fmt.Errorf("Required extension not found: '%s', skipping device.", requirements.DeviceExtensionNames[i])
 						core.LogInfo("Required extension not found: '%s', skipping device.", requirements.DeviceExtensionNames[i])
 						availableExtensions = nil
-						return false
+						return nil, nil, err
 					}
 				}
 			}
@@ -560,11 +570,12 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 		}
 		// Sampler anisotropy
 		if requirements.SamplerAnisotropy && features.SamplerAnisotropy == vk.False {
-			core.LogInfo("Device does not support samplerAnisotropy, skipping.")
-			return false
+			err := fmt.Errorf("Device does not support samplerAnisotropy, skipping.")
+			core.LogInfo(err.Error())
+			return nil, nil, err
 		}
 		// Device meets all requirements.
-		return true
+		return outQueueInfo, outSwapchainSupport, nil
 	}
-	return false
+	return nil, nil, fmt.Errorf("failed to get a device that meets the requirements")
 }
