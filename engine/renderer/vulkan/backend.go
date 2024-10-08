@@ -30,6 +30,17 @@ func New(p *platform.Platform) *VulkanRenderer {
 			FramebufferWidth:  800,
 			FramebufferHeight: 900,
 			Allocator:         nil,
+			// FramebufferSizeGeneration:     0,
+			// FramebufferSizeLastGeneration: 0,
+			// Device: &VulkanDevice{},
+			// Swapchain:                     &VulkanSwapchain{},
+			// MainRenderpass:                &VulkanRenderpass{},
+			// GraphicsCommandBuffers:        make([]*VulkanCommandBuffer, 0),
+			// InFlightFenceCount:            0,
+			// InFlightFences:                make([]*VulkanFence, 0),
+			// ImagesInFlight:                make([]*VulkanFence, 0),
+			// ImageIndex:                    0,
+			// CurrentFrame:                  0,
 		},
 		cachedFramebufferWidth:  0,
 		cachedFramebufferHeight: 0,
@@ -89,6 +100,7 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 	if runtime.GOOS == "darwin" {
 		required_extensions = append(required_extensions,
 			"VK_KHR_portability_enumeration",
+			"VK_KHR_get_physical_device_properties2",
 		)
 	}
 
@@ -189,7 +201,7 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 			core.LogError("vk.CreateDebugReportCallback failed with %s", err)
 			return err
 		}
-		vr.context.debug_messenger = dbg
+		vr.context.debugMessenger = dbg
 
 		core.LogDebug("Vulkan debugger created.")
 	}
@@ -201,6 +213,7 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 		core.LogError("Failed to create platform surface!")
 		return nil
 	}
+	vr.context.Surface = vk.SurfaceFromPointer(surface)
 	core.LogDebug("Vulkan surface created.")
 
 	// Device creation
@@ -330,8 +343,8 @@ func (vr VulkanRenderer) Shutdow() error {
 
 	if vr.debug {
 		core.LogDebug("Destroying Vulkan debugger...")
-		if vr.context.debug_messenger != vk.NullDebugReportCallback {
-			vk.DestroyDebugReportCallback(vr.context.Instance, vr.context.debug_messenger, vr.context.Allocator)
+		if vr.context.debugMessenger != vk.NullDebugReportCallback {
+			vk.DestroyDebugReportCallback(vr.context.Instance, vr.context.debugMessenger, vr.context.Allocator)
 		}
 	}
 
@@ -396,7 +409,7 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
 	// This same semaphore will later be waited on by the queue submission to ensure this image is available.
-	imageIndex, ok := vr.context.Swapchain.Swapchain_AcquireNextImageIndex(vr.context, math.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
+	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, math.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok {
 		err := fmt.Errorf("failed to swapchain aquire next image index")
 		core.LogError(err.Error())
@@ -571,10 +584,7 @@ func (vr VulkanRenderer) recreateSwapchain() bool {
 	}
 
 	// Requery support
-	DeviceQuerySwapchainSupport(
-		vr.context.Device.PhysicalDevice,
-		vr.context.Surface,
-		&vr.context.Device.SwapchainSupport)
+	DeviceQuerySwapchainSupport(vr.context.Device.PhysicalDevice, vr.context.Surface, vr.context.Device.SwapchainSupport)
 	DeviceDetectDepthFormat(vr.context.Device)
 
 	sc, err := vr.context.Swapchain.SwapchainRecreate(vr.context, vr.cachedFramebufferWidth, vr.cachedFramebufferHeight)
@@ -630,12 +640,18 @@ func (vr VulkanRenderer) createVulkanSurface() uintptr {
 
 func dbgCallbackFunc(flags vk.DebugReportFlags, objectType vk.DebugReportObjectType, object uint64, location uint64, messageCode int32, pLayerPrefix string, pMessage string, pUserData unsafe.Pointer) vk.Bool32 {
 	switch {
-	case flags&vk.DebugReportFlags(vk.DebugReportErrorBit) != 0:
-		core.LogError("[ERROR %d] %s on layer %s", messageCode, pMessage, pLayerPrefix)
+	case flags&vk.DebugReportFlags(vk.DebugReportInformationBit) != 0:
+		core.LogInfo("INFORMATION: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
 	case flags&vk.DebugReportFlags(vk.DebugReportWarningBit) != 0:
-		core.LogWarn("[WARN %d] %s on layer %s", messageCode, pMessage, pLayerPrefix)
+		core.LogWarn("WARNING: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
+	case flags&vk.DebugReportFlags(vk.DebugReportPerformanceWarningBit) != 0:
+		core.LogWarn("PERFORMANCE WARNING: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
+	case flags&vk.DebugReportFlags(vk.DebugReportErrorBit) != 0:
+		core.LogError("ERROR: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
+	case flags&vk.DebugReportFlags(vk.DebugReportDebugBit) != 0:
+		core.LogInfo("DEBUG: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
 	default:
-		core.LogWarn("[WARN] unknown debug message %d (layer %s)", messageCode, pLayerPrefix)
+		core.LogInfo("INFORMATION: [%s] Code %d : %s", pLayerPrefix, messageCode, pMessage)
 	}
 	return vk.Bool32(vk.False)
 }

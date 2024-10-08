@@ -45,7 +45,7 @@ func (vs *VulkanSwapchain) SwapchainDestroy(context *VulkanContext) {
 	vs.destroySwapchain(context)
 }
 
-func (vs *VulkanSwapchain) Swapchain_AcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool) {
+func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool) {
 	var outImageIndex *uint32
 	result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, outImageIndex)
 
@@ -119,9 +119,6 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		}
 	}
 
-	// Requery swapchain support.
-	DeviceQuerySwapchainSupport(context.Device.PhysicalDevice, context.Surface, &context.Device.SwapchainSupport)
-
 	// Swapchain extent
 	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != math.MaxUint32 {
 		swapchainExtent = context.Device.SwapchainSupport.Capabilities.CurrentExtent
@@ -171,11 +168,13 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	swapchainCreateInfo.Clipped = vk.True
 	swapchainCreateInfo.OldSwapchain = nil
 
-	if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchain.Handle); res != vk.Success {
+	var swapchainHandle vk.Swapchain
+	if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchainHandle); res != vk.Success {
 		err := fmt.Errorf("failed to create swapchain")
 		core.LogError(err.Error())
 		return nil, err
 	}
+	swapchain.Handle = swapchainHandle
 
 	// Start with a zero frame index.
 	context.CurrentFrame = 0

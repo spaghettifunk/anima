@@ -21,7 +21,7 @@ type VulkanContext struct {
 	Surface   vk.Surface
 
 	// TODO: only in DEBUG mode
-	debug_messenger vk.DebugReportCallback
+	debugMessenger vk.DebugReportCallback
 
 	Device *VulkanDevice
 

@@ -12,7 +12,7 @@ import (
 type VulkanDevice struct {
 	PhysicalDevice     vk.PhysicalDevice
 	LogicalDevice      vk.Device
-	SwapchainSupport   VulkanSwapchainSupportInfo
+	SwapchainSupport   *VulkanSwapchainSupportInfo
 	GraphicsQueueIndex int32
 	PresentQueueIndex  int32
 	TransferQueueIndex int32
@@ -27,7 +27,8 @@ type VulkanDevice struct {
 	Features   vk.PhysicalDeviceFeatures
 	Memory     vk.PhysicalDeviceMemoryProperties
 
-	DepthFormat vk.Format
+	DepthFormat       vk.Format
+	DepthChannelCount uint8
 }
 
 func CreateVulkanSurface(platform *platform.Platform, context *VulkanContext) bool {
@@ -50,10 +51,10 @@ type VulkanPhysicalDeviceRequirements struct {
 }
 
 type VulkanPhysicalDeviceQueueFamilyInfo struct {
-	GraphicsFamilyIndex uint32
-	PresentFamilyIndex  uint32
-	ComputeFamilyIndex  uint32
-	TransferFamilyIndex uint32
+	GraphicsFamilyIndex int32
+	PresentFamilyIndex  int32
+	ComputeFamilyIndex  int32
+	TransferFamilyIndex int32
 }
 
 func DeviceCreate(context *VulkanContext) error {
@@ -106,8 +107,9 @@ func DeviceCreate(context *VulkanContext) error {
 
 	// Request device features.
 	// TODO: should be config driven
-	deviceFeatures := vk.PhysicalDeviceFeatures{}
-	deviceFeatures.SamplerAnisotropy = vk.True // Request anistrophy
+	deviceFeatures := vk.PhysicalDeviceFeatures{
+		SamplerAnisotropy: vk.True, // Request anistrophy
+	}
 
 	portabilityRequired := false
 	var availableExtensionCount uint32 = 0
@@ -121,8 +123,6 @@ func DeviceCreate(context *VulkanContext) error {
 
 	if availableExtensionCount != 0 {
 		availableExtensions = make([]vk.ExtensionProperties, availableExtensionCount)
-		// availableExtensions = kallocate(sizeof(VkExtensionProperties)*availableExtensionCount, MEMORYTAGRENDERER)
-
 		if res := vk.EnumerateDeviceExtensionProperties(context.Device.PhysicalDevice, "", &availableExtensionCount, availableExtensions); res != vk.Success {
 			err := fmt.Errorf("error in EnumerateDeviceExtensionProperties")
 			core.LogError(err.Error())
@@ -130,15 +130,18 @@ func DeviceCreate(context *VulkanContext) error {
 		}
 
 		for i := 0; i < int(availableExtensionCount); i++ {
-			if string(availableExtensions[i].ExtensionName[:]) == "VK_KHR_portability_subset" {
+			availableExtensions[i].Deref()
+			core.LogInfo("Available Extension: `%s`", string(availableExtensions[i].ExtensionName[:]))
+			end := FindFirstZeroInByteArray(availableExtensions[i].ExtensionName[:])
+			if vk.ToString(availableExtensions[i].ExtensionName[:end+1]) == "VK_KHR_portability_subset" {
 				core.LogInfo("Adding required extension 'VK_KHR_portability_subset'.")
 				portabilityRequired = true
 				break
 			}
 		}
 	}
-	// kfree(available_extensions, sizeof(VkExtensionProperties)*available_extension_count, MEMORY_TAG_RENDERER)
-	availableExtensions = nil
+
+	// availableExtensions = nil
 
 	extensionCount := 2
 	if !portabilityRequired {
@@ -158,41 +161,31 @@ func DeviceCreate(context *VulkanContext) error {
 		PQueueCreateInfos:       queueCreateInfos,
 		PEnabledFeatures:        []vk.PhysicalDeviceFeatures{deviceFeatures},
 		EnabledExtensionCount:   uint32(extensionCount),
-		PpEnabledExtensionNames: extensionNames,
-		// Deprecated and ignored, so pass nothing.
-		EnabledLayerCount:   0,
-		PpEnabledLayerNames: nil,
+		PpEnabledExtensionNames: VulkanSafeStrings(extensionNames),
 	}
 
 	// Create the device.
-	if res := vk.CreateDevice(
-		context.Device.PhysicalDevice,
-		&deviceCreateInfo,
-		context.Allocator,
-		&context.Device.LogicalDevice); res != vk.Success {
+	var device vk.Device
+	if res := vk.CreateDevice(context.Device.PhysicalDevice, &deviceCreateInfo, context.Allocator, &device); res != vk.Success {
 		return nil
 	}
+	context.Device.LogicalDevice = device
 
 	core.LogInfo("Logical device created.")
 
 	// Get queues.
-	vk.GetDeviceQueue(
-		context.Device.LogicalDevice,
-		uint32(context.Device.GraphicsQueueIndex),
-		0,
-		&context.Device.GraphicsQueue)
+	var gQueue vk.Queue
+	vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.GraphicsQueueIndex), 0, &gQueue)
+	context.Device.GraphicsQueue = gQueue
 
-	vk.GetDeviceQueue(
-		context.Device.LogicalDevice,
-		uint32(context.Device.PresentQueueIndex),
-		0,
-		&context.Device.PresentQueue)
+	var pQueue vk.Queue
+	vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.PresentQueueIndex), 0, &pQueue)
+	context.Device.PresentQueue = pQueue
 
-	vk.GetDeviceQueue(
-		context.Device.LogicalDevice,
-		uint32(context.Device.TransferQueueIndex),
-		0,
-		&context.Device.TransferQueue)
+	var tQueue vk.Queue
+	vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.TransferQueueIndex), 0, &tQueue)
+	context.Device.TransferQueue = tQueue
+
 	core.LogInfo("Queues obtained.")
 
 	// Create command pool for graphics queue.
@@ -201,13 +194,12 @@ func DeviceCreate(context *VulkanContext) error {
 		QueueFamilyIndex: uint32(context.Device.GraphicsQueueIndex),
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 	}
-	if res := vk.CreateCommandPool(
-		context.Device.LogicalDevice,
-		&poolCreateInfo,
-		context.Allocator,
-		&context.Device.GraphicsCommandPool); res != vk.Success {
+
+	var gcPool vk.CommandPool
+	if res := vk.CreateCommandPool(context.Device.LogicalDevice, &poolCreateInfo, context.Allocator, &gcPool); res != vk.Success {
 		return nil
 	}
+	context.Device.GraphicsCommandPool = gcPool
 	core.LogInfo("Graphics command pool created.")
 
 	return nil
@@ -255,9 +247,13 @@ func DeviceDestroy(context *VulkanContext) {
 
 func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Surface, supportInfo *VulkanSwapchainSupportInfo) error {
 	// Surface capabilities
-	if res := vk.GetPhysicalDeviceSurfaceCapabilities(physicalDevice, surface, &supportInfo.Capabilities); res != vk.Success {
+	var capabilities vk.SurfaceCapabilities
+	if res := vk.GetPhysicalDeviceSurfaceCapabilities(physicalDevice, surface, &capabilities); res != vk.Success {
 		return nil
 	}
+	capabilities.Deref()
+	supportInfo.Capabilities = capabilities
+
 	// Surface formats
 	if res := vk.GetPhysicalDeviceSurfaceFormats(physicalDevice, surface, &supportInfo.FormatCount, nil); res != vk.Success {
 		return nil
@@ -267,8 +263,14 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 			supportInfo.Formats = make([]vk.SurfaceFormat, supportInfo.FormatCount)
 			core.LogDebug("allocated memory for VkSurfaceFormatKHR")
 		}
+		supportInfo.Formats = make([]vk.SurfaceFormat, supportInfo.FormatCount)
 		if res := vk.GetPhysicalDeviceSurfaceFormats(physicalDevice, surface, &supportInfo.FormatCount, supportInfo.Formats); res != vk.Success {
-			return nil
+			err := fmt.Errorf("failed to get physical device surface formats")
+			core.LogError(err.Error())
+			return err
+		}
+		for i := range supportInfo.Formats {
+			supportInfo.Formats[i].Deref()
 		}
 	}
 	// Present modes
@@ -282,6 +284,7 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 			supportInfo.PresentModes = make([]vk.PresentMode, supportInfo.PresentModeCount)
 			core.LogDebug("allocated memory for VkPresentModeKHR")
 		}
+		supportInfo.PresentModes = make([]vk.PresentMode, supportInfo.PresentModeCount)
 		if res := vk.GetPhysicalDeviceSurfacePresentModes(physicalDevice, surface, &supportInfo.PresentModeCount, supportInfo.PresentModes); res != vk.Success {
 			err := fmt.Errorf("failed to get physical device surface present modes")
 			core.LogError(err.Error())
@@ -294,20 +297,28 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 func DeviceDetectDepthFormat(device *VulkanDevice) bool {
 	// Format candidates
 	candidateCount := 3
+
 	candidates := []vk.Format{
 		vk.FormatD32Sfloat,
 		vk.FormatD32SfloatS8Uint,
 		vk.FormatD24UnormS8Uint,
 	}
+
+	sizes := []uint8{4, 4, 3}
+
 	flags := vk.FormatFeatureDepthStencilAttachmentBit
+
 	for i := 0; i < candidateCount; i++ {
-		var properties vk.FormatProperties = vk.FormatProperties{}
+		var properties vk.FormatProperties
 		vk.GetPhysicalDeviceFormatProperties(device.PhysicalDevice, candidates[i], &properties)
-		if (vk.FormatFeatureFlagBits(properties.LinearTilingFeatures) & flags) == flags {
+		properties.Deref()
+		if (uint32(properties.LinearTilingFeatures) & uint32(flags)) == uint32(flags) {
 			device.DepthFormat = candidates[i]
+			device.DepthChannelCount = sizes[i]
 			return true
-		} else if (vk.FormatFeatureFlagBits(properties.OptimalTilingFeatures) & flags) == flags {
+		} else if (uint32(properties.OptimalTilingFeatures) & uint32(flags)) == uint32(flags) {
 			device.DepthFormat = candidates[i]
+			device.DepthChannelCount = sizes[i]
 			return true
 		}
 	}
@@ -326,20 +337,22 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 	}
 
 	physicalDevices := make([]vk.PhysicalDevice, physicalDeviceCount)
-
 	if res := vk.EnumeratePhysicalDevices(context.Instance, &physicalDeviceCount, physicalDevices); res != vk.Success {
 		return false
 	}
 
 	for i := 0; i < int(physicalDeviceCount); i++ {
-		properties := vk.PhysicalDeviceProperties{}
+		var properties vk.PhysicalDeviceProperties
 		vk.GetPhysicalDeviceProperties(physicalDevices[i], &properties)
+		properties.Deref()
 
-		features := vk.PhysicalDeviceFeatures{}
+		var features vk.PhysicalDeviceFeatures
 		vk.GetPhysicalDeviceFeatures(physicalDevices[i], &features)
+		features.Deref()
 
-		memory := vk.PhysicalDeviceMemoryProperties{}
+		var memory vk.PhysicalDeviceMemoryProperties
 		vk.GetPhysicalDeviceMemoryProperties(physicalDevices[i], &memory)
+		memory.Deref()
 
 		// TODO: These requirements should probably be driven by engine
 		// configuration.
@@ -349,9 +362,7 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 			Transfer:             true,
 			SamplerAnisotropy:    true,
 			DiscreteGPU:          true,
-			DeviceExtensionNames: []string{vk.KhrSwapchainExtensionName},
-			// NOTE: Enable this if compute will be required.
-			// Compute: true,
+			DeviceExtensionNames: []string{VulkanSafeString(vk.KhrSwapchainExtensionName)},
 		}
 
 		if runtime.GOOS == "darwin" {
@@ -363,9 +374,12 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 			core.LogError(err.Error())
 			return false
 		}
-		context.Device.SwapchainSupport = *swapchainSupport
 
-		core.LogInfo("Selected device: '%s'.", properties.DeviceName)
+		context.Device = &VulkanDevice{
+			SwapchainSupport: swapchainSupport,
+		}
+
+		core.LogInfo("Selected device: '%s'.", vk.ToString(properties.DeviceName[:]))
 
 		// GPU type, etc.
 		switch properties.DeviceType {
@@ -402,7 +416,7 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 		for j := 0; j < int(memory.MemoryHeapCount); j++ {
 			memorySizeGib := ((memory.MemoryHeaps[j].Size) / 1024.0 / 1024.0 / 1024.0)
 			// TODO: check the condition
-			if vk.MemoryHeapFlagBits(memory.MemoryHeaps[j].Flags)&vk.MemoryHeapDeviceLocalBit > 0 {
+			if uint32(memory.MemoryHeaps[j].Flags)&uint32(vk.MemoryHeapDeviceLocalBit) != 0 {
 				core.LogInfo("Local GPU memory: %d GiB", memorySizeGib)
 			} else {
 				core.LogInfo("Shared System memory: %d GiB", memorySizeGib)
@@ -410,24 +424,22 @@ func SelectPhysicalDevice(context *VulkanContext) bool {
 		}
 
 		context.Device.PhysicalDevice = physicalDevices[i]
-		context.Device.GraphicsQueueIndex = int32(queueInfo.GraphicsFamilyIndex)
-		context.Device.PresentQueueIndex = int32(queueInfo.PresentFamilyIndex)
-		context.Device.TransferQueueIndex = int32(queueInfo.TransferFamilyIndex)
+		context.Device.GraphicsQueueIndex = queueInfo.GraphicsFamilyIndex
+		context.Device.PresentQueueIndex = queueInfo.PresentFamilyIndex
+		context.Device.TransferQueueIndex = queueInfo.TransferFamilyIndex
 		// NOTE: set compute index here if needed.
 
 		// Keep a copy of properties, features and memory info for later use.
 		context.Device.Properties = properties
 		context.Device.Features = features
 		context.Device.Memory = memory
-		break
 	}
 
 	// Ensure a device was selected
-	if context.Device.PhysicalDevice != nil {
+	if context.Device.PhysicalDevice == nil {
 		core.LogError("No physical devices were found which meet the requirements.")
 		return false
 	}
-
 	core.LogInfo("Physical device selected.")
 	return true
 }
@@ -436,16 +448,16 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 	features *vk.PhysicalDeviceFeatures, requirements *VulkanPhysicalDeviceRequirements) (*VulkanPhysicalDeviceQueueFamilyInfo, *VulkanSwapchainSupportInfo, error) {
 	// Evaluate device properties to determine if it meets the needs of our applcation.
 	outQueueInfo := &VulkanPhysicalDeviceQueueFamilyInfo{
-		GraphicsFamilyIndex: 0,
-		PresentFamilyIndex:  0,
-		ComputeFamilyIndex:  0,
-		TransferFamilyIndex: 0,
+		GraphicsFamilyIndex: -1,
+		PresentFamilyIndex:  -1,
+		ComputeFamilyIndex:  -1,
+		TransferFamilyIndex: -1,
 	}
 
 	// Discrete GPU?
 	if requirements.DiscreteGPU {
 		if properties.DeviceType != vk.PhysicalDeviceTypeDiscreteGpu {
-			err := fmt.Errorf("device is not a discrete GPU, and one is required. Skipping.")
+			err := fmt.Errorf("device is not a discrete GPU, and one is required. Skipping")
 			core.LogInfo(err.Error())
 			return nil, nil, err
 		}
@@ -461,26 +473,25 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 	minTransferScore := 255
 	for i := 0; i < int(queueFamilyCount); i++ {
 		currentTransferScore := 0
-
 		// Graphics queue?
-		if vk.QueueFlagBits(queueFamilies[i].QueueFlags)&vk.QueueGraphicsBit > 0 {
-			outQueueInfo.GraphicsFamilyIndex = uint32(i)
+		if (uint32(queueFamilies[i].QueueFlags) & uint32(vk.QueueGraphicsBit)) != 0 {
+			outQueueInfo.GraphicsFamilyIndex = int32(i)
 			currentTransferScore++
 		}
 
 		// Compute queue?
-		if queueFamilies[i].QueueFlags&vk.QueueFlags(vk.QueueComputeBit) > 0 {
-			outQueueInfo.ComputeFamilyIndex = uint32(i)
+		if (uint32(queueFamilies[i].QueueFlags) & uint32(vk.QueueComputeBit)) != 0 {
+			outQueueInfo.ComputeFamilyIndex = int32(i)
 			currentTransferScore++
 		}
 
 		// Transfer queue?
-		if vk.QueueFlagBits(queueFamilies[i].QueueFlags)&vk.QueueTransferBit > 0 {
+		if (uint32(queueFamilies[i].QueueFlags) & uint32(vk.QueueTransferBit)) != 0 {
 			// Take the index if it is the current lowest. This increases the
 			// liklihood that it is a dedicated transfer queue.
 			if currentTransferScore <= minTransferScore {
 				minTransferScore = currentTransferScore
-				outQueueInfo.TransferFamilyIndex = uint32(i)
+				outQueueInfo.TransferFamilyIndex = int32(i)
 			}
 		}
 
@@ -492,7 +503,7 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 			return nil, nil, err
 		}
 		if supportsPresent == vk.True {
-			outQueueInfo.PresentFamilyIndex = uint32(i)
+			outQueueInfo.PresentFamilyIndex = int32(i)
 		}
 	}
 
@@ -502,7 +513,7 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 		outQueueInfo.PresentFamilyIndex != 0,
 		outQueueInfo.ComputeFamilyIndex != 0,
 		outQueueInfo.TransferFamilyIndex != 0,
-		properties.DeviceName)
+		vk.ToString(properties.DeviceName[:]))
 
 	if (!requirements.Graphics || (requirements.Graphics && outQueueInfo.GraphicsFamilyIndex != 0)) &&
 		(!requirements.Present || (requirements.Present && outQueueInfo.PresentFamilyIndex != 0)) &&
@@ -526,7 +537,7 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 			if len(outSwapchainSupport.PresentModes) > 0 {
 				// kfree(out_swapchain_support.present_modes, sizeof(VkPresentModeKHR) * out_swapchain_support.PresentModeCount, MEMORY_TAG_RENDERER);
 			}
-			err := fmt.Errorf("Required swapchain support not present, skipping device.")
+			err := fmt.Errorf("required swapchain support not present, skipping device")
 			core.LogInfo(err.Error())
 			return nil, nil, err
 		}
@@ -553,13 +564,16 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 				for i := 0; i < requiredExtensionCount; i++ {
 					found := false
 					for j := 0; j < int(availableExtensionCount); j++ {
-						if requirements.DeviceExtensionNames[i] == string(availableExtensions[j].ExtensionName[:]) {
+						availableExtensions[j].Deref()
+						core.LogInfo("Available extension: `%s`", string(availableExtensions[j].ExtensionName[:]))
+						end := FindFirstZeroInByteArray(availableExtensions[j].ExtensionName[:])
+						if requirements.DeviceExtensionNames[i] == string(availableExtensions[j].ExtensionName[:end+1]) {
 							found = true
 							break
 						}
 					}
 					if !found {
-						err := fmt.Errorf("Required extension not found: '%s', skipping device.", requirements.DeviceExtensionNames[i])
+						err := fmt.Errorf("required extension not found: '%s', skipping device", requirements.DeviceExtensionNames[i])
 						core.LogInfo("Required extension not found: '%s', skipping device.", requirements.DeviceExtensionNames[i])
 						availableExtensions = nil
 						return nil, nil, err
@@ -570,10 +584,23 @@ func PhysicalDeviceMeetsRequirements(device vk.PhysicalDevice, surface vk.Surfac
 		}
 		// Sampler anisotropy
 		if requirements.SamplerAnisotropy && features.SamplerAnisotropy == vk.False {
-			err := fmt.Errorf("Device does not support samplerAnisotropy, skipping.")
-			core.LogInfo(err.Error())
-			return nil, nil, err
+			core.LogInfo("device does not support samplerAnisotropy, skipping")
 		}
+
+		// change values of queue otherwise conversion to uint32 will fail
+		if outQueueInfo.GraphicsFamilyIndex == -1 {
+			outQueueInfo.GraphicsFamilyIndex = 0
+		}
+		if outQueueInfo.PresentFamilyIndex == -1 {
+			outQueueInfo.PresentFamilyIndex = 0
+		}
+		if outQueueInfo.TransferFamilyIndex == -1 {
+			outQueueInfo.TransferFamilyIndex = 0
+		}
+		if outQueueInfo.ComputeFamilyIndex == -1 {
+			outQueueInfo.ComputeFamilyIndex = 0
+		}
+
 		// Device meets all requirements.
 		return outQueueInfo, outSwapchainSupport, nil
 	}
