@@ -1,4 +1,4 @@
-module github.com/spaghettifunk/alaska-engine
+module github.com/spaghettifunk/anima
 
 go 1.23.1
 

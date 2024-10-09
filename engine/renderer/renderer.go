@@ -3,9 +3,9 @@ package renderer
 import (
 	"sync"
 
-	"github.com/spaghettifunk/alaska-engine/engine/core"
-	"github.com/spaghettifunk/alaska-engine/engine/platform"
-	"github.com/spaghettifunk/alaska-engine/engine/renderer/vulkan"
+	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/platform"
+	"github.com/spaghettifunk/anima/engine/renderer/vulkan"
 )
 
 type RendererBackend interface {

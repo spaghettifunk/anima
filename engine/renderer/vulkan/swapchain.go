@@ -5,7 +5,7 @@ import (
 	"math"
 
 	vk "github.com/goki/vulkan"
-	"github.com/spaghettifunk/alaska-engine/engine/core"
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 type VulkanSwapchain struct {

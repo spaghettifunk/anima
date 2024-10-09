@@ -2,7 +2,7 @@ package vulkan
 
 import (
 	vk "github.com/goki/vulkan"
-	"github.com/spaghettifunk/alaska-engine/engine/core"
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 type VulkanContext struct {

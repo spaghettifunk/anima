@@ -4,7 +4,7 @@ import (
 	"runtime"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
-	"github.com/spaghettifunk/alaska-engine/engine/core"
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 var startTime float64 = 0

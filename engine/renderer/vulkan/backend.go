@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	vk "github.com/goki/vulkan"
-	"github.com/spaghettifunk/alaska-engine/engine/core"
-	"github.com/spaghettifunk/alaska-engine/engine/platform"
+	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/platform"
 )
 
 type VulkanRenderer struct {
@@ -73,7 +73,7 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 		ApiVersion:         uint32(vk.MakeVersion(1, 0, 0)),
 		ApplicationVersion: uint32(vk.MakeVersion(1, 0, 0)),
 		PApplicationName:   VulkanSafeString(appName),
-		PEngineName:        VulkanSafeString("Alaska Engine"),
+		PEngineName:        VulkanSafeString("Anima Engine"),
 	}
 
 	createInfo := vk.InstanceCreateInfo{

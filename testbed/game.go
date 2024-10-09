@@ -1,8 +1,8 @@
 package testbed
 
 import (
-	"github.com/spaghettifunk/alaska-engine/engine"
-	"github.com/spaghettifunk/alaska-engine/engine/core"
+	"github.com/spaghettifunk/anima/engine"
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 func NewTestGame() *engine.Game {
@@ -12,7 +12,7 @@ func NewTestGame() *engine.Game {
 			StartPosY:   100,
 			StartWidth:  1280,
 			StartHeight: 720,
-			Name:        "Alaska Game Engine",
+			Name:        "Anima Game Engine",
 		},
 		State:        nil,
 		FnInitialize: Initialize,

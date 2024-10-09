@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/spaghettifunk/alaska-engine/engine"
-	"github.com/spaghettifunk/alaska-engine/testbed"
+	"github.com/spaghettifunk/anima/engine"
+	"github.com/spaghettifunk/anima/testbed"
 )
 
 func main() {

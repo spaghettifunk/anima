@@ -1,6 +1,6 @@
 package engine
 
-import "github.com/spaghettifunk/alaska-engine/engine/core"
+import "github.com/spaghettifunk/anima/engine/core"
 
 type Stage uint8
 
