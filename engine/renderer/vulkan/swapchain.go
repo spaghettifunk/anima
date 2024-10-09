@@ -46,8 +46,8 @@ func (vs *VulkanSwapchain) SwapchainDestroy(context *VulkanContext) {
 }
 
 func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool) {
-	var outImageIndex *uint32
-	result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, outImageIndex)
+	var outImageIndex uint32
+	result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, &outImageIndex)
 
 	if result == vk.ErrorOutOfDate {
 		// Trigger swapchain recreation, then boot out of the render loop.
@@ -58,7 +58,7 @@ func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext
 		return 0, false
 	}
 
-	return *outImageIndex, true
+	return outImageIndex, true
 }
 
 func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueue vk.Queue, presentQueue vk.Queue, renderCompleteSemaphore vk.Semaphore, presentImageIndex uint32) {
@@ -119,12 +119,22 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		}
 	}
 
+	supportInfo := &VulkanSwapchainSupportInfo{}
+	if err := DeviceQuerySwapchainSupport(context.Device.PhysicalDevice, context.Surface, supportInfo); err != nil {
+		return nil, err
+	}
+	context.Device.SwapchainSupport = supportInfo
+
 	// Swapchain extent
+	context.Device.SwapchainSupport.Capabilities.CurrentExtent.Deref()
 	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != math.MaxUint32 {
 		swapchainExtent = context.Device.SwapchainSupport.Capabilities.CurrentExtent
 	}
 
 	// Clamp to the value allowed by the GPU.
+	context.Device.SwapchainSupport.Capabilities.MinImageExtent.Deref()
+	context.Device.SwapchainSupport.Capabilities.MaxImageExtent.Deref()
+
 	min := context.Device.SwapchainSupport.Capabilities.MinImageExtent
 	max := context.Device.SwapchainSupport.Capabilities.MaxImageExtent
 	swapchainExtent.Width = MathClamp(swapchainExtent.Width, min.Width, max.Width)
@@ -242,7 +252,8 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		true,
 		vk.ImageAspectFlags(vk.ImageAspectDepthBit))
 	if err != nil {
-
+		core.LogError(err.Error())
+		return nil, err
 	}
 
 	swapchain.DepthAttachment = depthAttachment

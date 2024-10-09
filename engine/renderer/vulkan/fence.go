@@ -12,24 +12,27 @@ type VulkanFence struct {
 	IsSignaled bool
 }
 
-func NewFence(context *VulkanContext, create_signaled bool) (*VulkanFence, error) {
+func NewFence(context *VulkanContext, createSignaled bool) (*VulkanFence, error) {
 	fence := &VulkanFence{
 		// Make sure to signal the fence if required.
-		IsSignaled: create_signaled,
+		IsSignaled: createSignaled,
 	}
 
-	fence_create_info := vk.FenceCreateInfo{
+	fenceCreateInfo := vk.FenceCreateInfo{
 		SType: vk.StructureTypeFenceCreateInfo,
 	}
 	if fence.IsSignaled {
-		fence_create_info.Flags = vk.FenceCreateFlags(vk.FenceCreateSignaledBit)
+		fenceCreateInfo.Flags = vk.FenceCreateFlags(vk.FenceCreateSignaledBit)
 	}
 
-	if res := vk.CreateFence(context.Device.LogicalDevice, &fence_create_info, context.Allocator, &fence.Handle); res != vk.Success {
+	var pFence vk.Fence
+	if res := vk.CreateFence(context.Device.LogicalDevice, &fenceCreateInfo, context.Allocator, &pFence); res != vk.Success {
 		err := fmt.Errorf("failed to create fence")
 		core.LogError(err.Error())
 		return nil, err
 	}
+	fenceCreateInfo.Deref()
+	fence.Handle = pFence
 	return fence, nil
 }
 
@@ -41,9 +44,9 @@ func (vf *VulkanFence) FenceDestroy(context *VulkanContext) {
 	vf.IsSignaled = false
 }
 
-func (vf *VulkanFence) FenceWait(context *VulkanContext, timeout_ns uint64) bool {
+func (vf *VulkanFence) FenceWait(context *VulkanContext, timeoutNs uint64) bool {
 	if !vf.IsSignaled {
-		result := vk.WaitForFences(context.Device.LogicalDevice, 1, []vk.Fence{vf.Handle}, vk.True, timeout_ns)
+		result := vk.WaitForFences(context.Device.LogicalDevice, 1, []vk.Fence{vf.Handle}, vk.True, timeoutNs)
 		switch result {
 		case vk.Success:
 			vf.IsSignaled = true

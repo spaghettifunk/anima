@@ -24,17 +24,13 @@ type VulkanCommandBuffer struct {
 	State VulkanCommandBufferState
 }
 
-func NewVulkanCommandBuffer(
-	context *VulkanContext,
-	pool vk.CommandPool,
-	is_primary bool,
-) (*VulkanCommandBuffer, error) {
+func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrimary bool) (*VulkanCommandBuffer, error) {
 	vCommandBuffer := &VulkanCommandBuffer{
 		State: COMMAND_BUFFER_STATE_NOT_ALLOCATED,
 	}
 
 	level := vk.CommandBufferLevelPrimary
-	if is_primary {
+	if isPrimary {
 		level = vk.CommandBufferLevelSecondary
 	}
 
@@ -46,49 +42,46 @@ func NewVulkanCommandBuffer(
 		PNext:              nil,
 	}
 
-	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, []vk.CommandBuffer{vCommandBuffer.Handle}); res != vk.Success {
+	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
+	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); res != vk.Success {
 		err := fmt.Errorf("failed to allocate command buffer")
 		core.LogError(err.Error())
 		return nil, err
 	}
+	vCommandBuffer.Handle = pCommandBuffers[0]
 	vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
 
-	return nil, nil
+	return vCommandBuffer, nil
 }
 
-func (v *VulkanCommandBuffer) Free(
-	context *VulkanContext,
-	pool vk.CommandPool) {
+func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) {
 	vk.FreeCommandBuffers(context.Device.LogicalDevice, pool, 1, []vk.CommandBuffer{v.Handle})
 	v.Handle = nil
 	v.State = COMMAND_BUFFER_STATE_NOT_ALLOCATED
 }
 
-func (v *VulkanCommandBuffer) Begin(
-	is_single_use,
-	is_renderpass_continue,
-	is_simultaneous_use bool) error {
-
-	vBeginInfo := &vk.CommandBufferBeginInfo{
+func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimultaneousUse bool) error {
+	vBeginInfo := vk.CommandBufferBeginInfo{
 		SType: vk.StructureTypeCommandBufferBeginInfo,
 		Flags: 0,
 	}
 
-	if is_single_use {
+	if isSingleUse {
 		vBeginInfo.Flags |= vk.CommandBufferUsageFlags(vk.CommandBufferUsageOneTimeSubmitBit)
 	}
-	if is_renderpass_continue {
+	if isRenderpassContinue {
 		vBeginInfo.Flags |= vk.CommandBufferUsageFlags(vk.CommandBufferUsageRenderPassContinueBit)
 	}
-	if is_simultaneous_use {
+	if isSimultaneousUse {
 		vBeginInfo.Flags |= vk.CommandBufferUsageFlags(vk.CommandBufferUsageSimultaneousUseBit)
 	}
 
-	if res := vk.BeginCommandBuffer(v.Handle, vBeginInfo); res != vk.Success {
+	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); res != vk.Success {
 		err := fmt.Errorf("failed to begin command buffer")
 		core.LogError(err.Error())
 		return err
 	}
+	vBeginInfo.Deref()
 	v.State = COMMAND_BUFFER_STATE_RECORDING
 
 	return nil
@@ -115,9 +108,7 @@ func (v *VulkanCommandBuffer) Reset() {
 /**
  * Allocates and begins recording to out_command_buffer.
  */
-func AllocateAndBeginSingleUse(
-	context *VulkanContext,
-	pool vk.CommandPool) (*VulkanCommandBuffer, error) {
+func AllocateAndBeginSingleUse(context *VulkanContext, pool vk.CommandPool) (*VulkanCommandBuffer, error) {
 	cb, err := NewVulkanCommandBuffer(context, pool, true)
 	if err != nil {
 		return nil, err
@@ -131,10 +122,7 @@ func AllocateAndBeginSingleUse(
 /**
  * Ends recording, submits to and waits for queue operation and frees the provided command buffer.
  */
-func (v *VulkanCommandBuffer) EndSingleUse(
-	context *VulkanContext,
-	pool vk.CommandPool,
-	queue vk.Queue) error {
+func (v *VulkanCommandBuffer) EndSingleUse(context *VulkanContext, pool vk.CommandPool, queue vk.Queue) error {
 	// End the command buffer.
 	if err := v.End(); err != nil {
 		return err

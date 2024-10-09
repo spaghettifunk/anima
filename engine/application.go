@@ -52,8 +52,8 @@ func ApplicationCreate(gameInstance *Game) error {
 			Platform:     platform.New(),
 			IsRunning:    true,
 			IsSuspended:  false,
-			Width:        0,
-			Height:       0,
+			Width:        gameInstance.ApplicationConfig.StartWidth,
+			Height:       gameInstance.ApplicationConfig.StartHeight,
 			LastTime:     0,
 		}
 	})

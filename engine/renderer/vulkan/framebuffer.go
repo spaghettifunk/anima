@@ -37,11 +37,13 @@ func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, wid
 		Layers:          1,
 	}
 
-	if res := vk.CreateFramebuffer(context.Device.LogicalDevice, &framebuffer_create_info, context.Allocator, &out_framebuffer.Handle); res != vk.Success {
+	var pFramebuffer vk.Framebuffer
+	if res := vk.CreateFramebuffer(context.Device.LogicalDevice, &framebuffer_create_info, context.Allocator, &pFramebuffer); res != vk.Success {
 		err := fmt.Errorf("failed to create famebuffer")
 		core.LogError(err.Error())
 		return nil, err
 	}
+	out_framebuffer.Handle = pFramebuffer
 	return out_framebuffer, nil
 }
 

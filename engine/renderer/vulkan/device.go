@@ -259,11 +259,10 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 		return nil
 	}
 	if supportInfo.FormatCount != 0 {
-		if supportInfo.Formats != nil {
+		if len(supportInfo.Formats) == 0 {
 			supportInfo.Formats = make([]vk.SurfaceFormat, supportInfo.FormatCount)
 			core.LogDebug("allocated memory for VkSurfaceFormatKHR")
 		}
-		supportInfo.Formats = make([]vk.SurfaceFormat, supportInfo.FormatCount)
 		if res := vk.GetPhysicalDeviceSurfaceFormats(physicalDevice, surface, &supportInfo.FormatCount, supportInfo.Formats); res != vk.Success {
 			err := fmt.Errorf("failed to get physical device surface formats")
 			core.LogError(err.Error())
@@ -280,11 +279,10 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 		return err
 	}
 	if supportInfo.PresentModeCount != 0 {
-		if supportInfo.PresentModes != nil {
+		if len(supportInfo.PresentModes) == 0 {
 			supportInfo.PresentModes = make([]vk.PresentMode, supportInfo.PresentModeCount)
 			core.LogDebug("allocated memory for VkPresentModeKHR")
 		}
-		supportInfo.PresentModes = make([]vk.PresentMode, supportInfo.PresentModeCount)
 		if res := vk.GetPhysicalDeviceSurfacePresentModes(physicalDevice, surface, &supportInfo.PresentModeCount, supportInfo.PresentModes); res != vk.Success {
 			err := fmt.Errorf("failed to get physical device surface present modes")
 			core.LogError(err.Error())

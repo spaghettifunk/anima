@@ -43,18 +43,22 @@ func ImageCreate(context *VulkanContext, imageType vk.ImageType, width uint32, h
 		SharingMode:   vk.SharingModeExclusive, // TODO: Configurable sharing mode.
 	}
 
-	if res := vk.CreateImage(context.Device.LogicalDevice, &imageCreateInfo, context.Allocator, &outImage.Handle); res != vk.Success {
+	var handle vk.Image
+	if res := vk.CreateImage(context.Device.LogicalDevice, &imageCreateInfo, context.Allocator, &handle); res != vk.Success {
 		return nil, nil
 	}
+	outImage.Handle = handle
 
 	// Query memory requirements.
-	memoryRequirements := vk.MemoryRequirements{}
+	var memoryRequirements vk.MemoryRequirements
 	vk.GetImageMemoryRequirements(context.Device.LogicalDevice, outImage.Handle, &memoryRequirements)
+	memoryRequirements.Deref()
 
 	memoryType := context.FindMemoryIndex(memoryRequirements.MemoryTypeBits, uint32(memoryFlags))
 	if memoryType == -1 {
-		core.LogError("Required memory type not found. Image not valid.")
-		return nil, nil
+		err := fmt.Errorf("required memory type not found. Image not valid")
+		core.LogError(err.Error())
+		return nil, err
 	}
 
 	// Allocate memory
@@ -63,11 +67,13 @@ func ImageCreate(context *VulkanContext, imageType vk.ImageType, width uint32, h
 		AllocationSize:  memoryRequirements.Size,
 		MemoryTypeIndex: uint32(memoryType),
 	}
-	if res := vk.AllocateMemory(context.Device.LogicalDevice, &memoryAllocateInfo, context.Allocator, &outImage.Memory); res != vk.Success {
+	var pMemory vk.DeviceMemory
+	if res := vk.AllocateMemory(context.Device.LogicalDevice, &memoryAllocateInfo, context.Allocator, &pMemory); res != vk.Success {
 		err := fmt.Errorf("failed to allocate memory for image")
 		core.LogError(err.Error())
 		return nil, err
 	}
+	outImage.Memory = pMemory
 
 	// Bind the memory
 	// TODO: configurable memory offset.
@@ -79,16 +85,20 @@ func ImageCreate(context *VulkanContext, imageType vk.ImageType, width uint32, h
 
 	// Create view
 	if createView {
-		outImage.View = nil
-		outImage.ImageViewCreate(context, format, viewAspectFlags)
+		view, err := ImageViewCreate(context, format, viewAspectFlags, outImage)
+		if err != nil {
+			core.LogError(err.Error())
+			return nil, err
+		}
+		outImage.View = *view
 	}
 	return outImage, nil
 }
 
-func (vi *VulkanImage) ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.ImageAspectFlags) error {
+func ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.ImageAspectFlags, image *VulkanImage) (*vk.ImageView, error) {
 	viewCreateInfo := vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
-		Image:    vi.Handle,
+		Image:    image.Handle,
 		ViewType: vk.ImageViewType2d, // TODO: Make configurable
 		Format:   format,
 		SubresourceRange: vk.ImageSubresourceRange{
@@ -101,10 +111,11 @@ func (vi *VulkanImage) ImageViewCreate(context *VulkanContext, format vk.Format,
 		},
 	}
 
-	if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &vi.View); res != vk.Success {
-		return nil
+	var view vk.ImageView
+	if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &view); res != vk.Success {
+		return nil, nil
 	}
-	return nil
+	return &view, nil
 }
 
 func (vi *VulkanImage) ImageDestroy(context *VulkanContext) {

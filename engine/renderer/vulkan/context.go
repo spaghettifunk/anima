@@ -2,6 +2,7 @@ package vulkan
 
 import (
 	vk "github.com/goki/vulkan"
+	"github.com/spaghettifunk/alaska-engine/engine/core"
 )
 
 type VulkanContext struct {
@@ -49,4 +50,18 @@ type VulkanContext struct {
 	RecreatingSwapchain bool
 }
 
-func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 { return 1 }
+func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 {
+	var memoryProperties vk.PhysicalDeviceMemoryProperties
+	vk.GetPhysicalDeviceMemoryProperties(vc.Device.PhysicalDevice, &memoryProperties)
+	memoryProperties.Deref()
+
+	for i := uint32(0); i < memoryProperties.MemoryTypeCount; i++ {
+		// Check each memory type to see if its bit is set to 1.
+		memoryProperties.MemoryTypes[i].Deref()
+		if (typeFilter&(1<<i)) != 0 && (uint32(memoryProperties.MemoryTypes[i].PropertyFlags)&propertyFlags) == propertyFlags {
+			return int32(i)
+		}
+	}
+	core.LogWarn("Unable to find suitable memory type!")
+	return -1
+}

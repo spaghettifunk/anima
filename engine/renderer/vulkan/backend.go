@@ -30,17 +30,6 @@ func New(p *platform.Platform) *VulkanRenderer {
 			FramebufferWidth:  800,
 			FramebufferHeight: 900,
 			Allocator:         nil,
-			// FramebufferSizeGeneration:     0,
-			// FramebufferSizeLastGeneration: 0,
-			// Device: &VulkanDevice{},
-			// Swapchain:                     &VulkanSwapchain{},
-			// MainRenderpass:                &VulkanRenderpass{},
-			// GraphicsCommandBuffers:        make([]*VulkanCommandBuffer, 0),
-			// InFlightFenceCount:            0,
-			// InFlightFences:                make([]*VulkanFence, 0),
-			// ImagesInFlight:                make([]*VulkanFence, 0),
-			// ImageIndex:                    0,
-			// CurrentFrame:                  0,
 		},
 		cachedFramebufferWidth:  0,
 		cachedFramebufferHeight: 0,
@@ -242,7 +231,9 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 
 	// Swapchain framebuffers.
 	vr.context.Swapchain.Framebuffers = make([]*VulkanFramebuffer, vr.context.Swapchain.ImageCount)
-	vr.regenerateFramebuffers(vr.context.Swapchain, vr.context.MainRenderpass)
+	if err := vr.regenerateFramebuffers(vr.context.Swapchain, vr.context.MainRenderpass); err != nil {
+		return err
+	}
 
 	// Create command buffers.
 	vr.createCommandBuffers()
@@ -253,11 +244,22 @@ func (vr VulkanRenderer) Initialize(appName string, appWidth, appHeight uint32) 
 	vr.context.InFlightFences = make([]*VulkanFence, vr.context.Swapchain.MaxFramesInFlight)
 
 	for i := 0; i < int(vr.context.Swapchain.MaxFramesInFlight); i++ {
-		semaphore_create_info := vk.SemaphoreCreateInfo{
+		semaphoreCreateInfo := vk.SemaphoreCreateInfo{
 			SType: vk.StructureTypeSemaphoreCreateInfo,
 		}
-		vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphore_create_info, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i])
-		vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphore_create_info, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i])
+		// semaphoreCreateInfo.Deref()
+
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); res != vk.Success {
+			err := fmt.Errorf("failed to create semaphore on image available")
+			core.LogError(err.Error())
+			return err
+		}
+
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i]); res != vk.Success {
+			err := fmt.Errorf("failed to create semaphore on queue complete")
+			core.LogError(err.Error())
+			return err
+		}
 
 		// Create the fence in a signaled state, indicating that the first frame has already been "rendered".
 		// This will prevent the application from waiting indefinitely for the first frame to render since it
@@ -520,30 +522,27 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 	return nil
 }
 
-func (vr VulkanRenderer) createCommandBuffers() {
+func (vr VulkanRenderer) createCommandBuffers() error {
 	if len(vr.context.GraphicsCommandBuffers) == 0 {
 		vr.context.GraphicsCommandBuffers = make([]*VulkanCommandBuffer, vr.context.Swapchain.ImageCount)
-		for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
-			// kzero_memory(&vr.context.graphics_command_buffers[i], sizeof(vulkan_command_buffer));
-			vr.context.GraphicsCommandBuffers[i] = nil
-		}
 	}
 	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
-		if vr.context.GraphicsCommandBuffers[i].Handle != nil {
+		if vr.context.GraphicsCommandBuffers[i] != nil && vr.context.GraphicsCommandBuffers[i].Handle != nil {
 			vr.context.GraphicsCommandBuffers[i].Free(vr.context, vr.context.Device.GraphicsCommandPool)
 		}
 		vr.context.GraphicsCommandBuffers[i] = nil
 		cb, err := NewVulkanCommandBuffer(vr.context, vr.context.Device.GraphicsCommandPool, true)
 		if err != nil {
-			panic(err)
+			return err
 		}
 		vr.context.GraphicsCommandBuffers[i] = cb
 	}
 
 	core.LogDebug("Vulkan command buffers created.")
+	return nil
 }
 
-func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, renderpass *VulkanRenderpass) {
+func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, renderpass *VulkanRenderpass) error {
 	for i := 0; i < int(swapchain.ImageCount); i++ {
 		// TODO: make this dynamic based on the currently configured attachments
 		var attachment_count uint32 = 2
@@ -553,10 +552,12 @@ func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, rend
 		}
 		fb, err := FramebufferCreate(vr.context, renderpass, vr.context.FramebufferWidth, vr.context.FramebufferHeight, attachment_count, attachments)
 		if err != nil {
-			panic(err)
+			core.LogError("failed to execute framebuffer create function")
+			return err
 		}
 		swapchain.Framebuffers[i] = fb
 	}
+	return nil
 }
 
 func (vr VulkanRenderer) recreateSwapchain() bool {
