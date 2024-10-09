@@ -30,7 +30,7 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 	}
 
 	level := vk.CommandBufferLevelPrimary
-	if isPrimary {
+	if !isPrimary {
 		level = vk.CommandBufferLevelSecondary
 	}
 
@@ -76,12 +76,13 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 		vBeginInfo.Flags |= vk.CommandBufferUsageFlags(vk.CommandBufferUsageSimultaneousUseBit)
 	}
 
+	vBeginInfo.Deref()
+
 	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); res != vk.Success {
 		err := fmt.Errorf("failed to begin command buffer")
 		core.LogError(err.Error())
 		return err
 	}
-	vBeginInfo.Deref()
 	v.State = COMMAND_BUFFER_STATE_RECORDING
 
 	return nil

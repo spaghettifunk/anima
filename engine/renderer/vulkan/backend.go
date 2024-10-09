@@ -27,8 +27,8 @@ func New(p *platform.Platform) *VulkanRenderer {
 		platform:    p,
 		FrameNumber: 0,
 		context: &VulkanContext{
-			FramebufferWidth:  800,
-			FramebufferHeight: 900,
+			FramebufferWidth:  0,
+			FramebufferHeight: 0,
 			Allocator:         nil,
 		},
 		cachedFramebufferWidth:  0,
@@ -429,7 +429,7 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 		X:        0.0,
 		Y:        float32(vr.context.FramebufferHeight),
 		Width:    float32(vr.context.FramebufferWidth),
-		Height:   -float32(vr.context.FramebufferHeight),
+		Height:   float32(vr.context.FramebufferHeight), // TODO: it was a negative value before
 		MinDepth: 0.0,
 		MaxDepth: 1.0,
 	}
