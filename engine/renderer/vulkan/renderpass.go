@@ -184,7 +184,7 @@ func (vr *VulkanRenderpass) RenderpassBegin(commandBuffer *VulkanCommandBuffer, 
 	commandBuffer.State = COMMAND_BUFFER_STATE_IN_RENDER_PASS
 }
 
-func (vr *VulkanRenderpass) RenderpassEnd(command_buffer *VulkanCommandBuffer) {
-	vk.CmdEndRenderPass(command_buffer.Handle)
-	command_buffer.State = COMMAND_BUFFER_STATE_RECORDING
+func (vr *VulkanRenderpass) RenderpassEnd(commandBuffer *VulkanCommandBuffer) {
+	vk.CmdEndRenderPass(commandBuffer.Handle)
+	commandBuffer.State = COMMAND_BUFFER_STATE_RECORDING
 }

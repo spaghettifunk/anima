@@ -197,11 +197,9 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		return nil, err
 	}
 	if len(swapchain.Images) == 0 {
-		// swapchain.images = (VkImage*)kallocate(sizeof(VkImage) * swapchain.image_count, MEMORY_TAG_RENDERER);
 		swapchain.Images = make([]vk.Image, swapchain.ImageCount)
 	}
 	if len(swapchain.Views) == 0 {
-		// swapchain.views = (VkImageView*)kallocate(sizeof(VkImageView) * swapchain.image_count, MEMORY_TAG_RENDERER);
 		swapchain.Views = make([]vk.ImageView, swapchain.ImageCount)
 	}
 	if res := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain.Images); res != vk.Success {
@@ -257,6 +255,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	}
 
 	swapchain.DepthAttachment = depthAttachment
+	swapchain.Framebuffers = make([]*VulkanFramebuffer, imageCount)
 
 	core.LogInfo("Swapchain created successfully.")
 

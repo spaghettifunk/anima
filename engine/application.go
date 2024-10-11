@@ -124,7 +124,7 @@ func ApplicationRun() error {
 
 			var current_time float64 = appState.Clock.Elapsed()
 			var delta float64 = (current_time - appState.LastTime)
-			var frame_start_time float64 = appState.Platform.GetAbsoluteTime()
+			var frame_start_time float64 = platform.GetAbsoluteTime()
 
 			if err := appState.GameInstance.FnUpdate(delta); err != nil {
 				core.LogFatal("Game update failed, shutting down.")
@@ -146,7 +146,7 @@ func ApplicationRun() error {
 			renderer.DrawFrame(packet)
 
 			// Figure out how long the frame took and, if below
-			var frame_end_time float64 = appState.Platform.GetAbsoluteTime()
+			var frame_end_time float64 = platform.GetAbsoluteTime()
 			var frame_elapsed_time float64 = frame_end_time - frame_start_time
 			runningTime += frame_elapsed_time
 			var remaining_seconds float64 = targetFrameSeconds - frame_elapsed_time

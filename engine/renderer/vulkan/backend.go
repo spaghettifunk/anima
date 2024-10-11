@@ -459,23 +459,32 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 }
 
 func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
-	command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
+	commandBuffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
 
 	// End renderpass
-	vr.context.MainRenderpass.RenderpassEnd(command_buffer)
+	vr.context.MainRenderpass.RenderpassEnd(commandBuffer)
 
-	command_buffer.End()
+	commandBuffer.End()
 
 	// Make sure the previous frame is not using this image (i.e. its fence is being waited on)
 	if vr.context.ImagesInFlight[vr.context.ImageIndex] != (*VulkanFence)(vk.NullHandle) { // was frame
-		vr.context.ImagesInFlight[vr.context.ImageIndex].FenceWait(vr.context, math.MaxUint64)
+		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.ImagesInFlight[vr.context.ImageIndex].Handle}, vk.True, math.MaxUint64)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("vkWaitForFences error: %s", VulkanResultString(result, true))
+			core.LogFatal(err.Error())
+			return err
+		}
 	}
 
 	// Mark the image fence as in-use by this frame.
 	vr.context.ImagesInFlight[vr.context.ImageIndex] = vr.context.InFlightFences[vr.context.CurrentFrame]
 
 	// Reset the fence for use on the next frame
-	vr.context.InFlightFences[vr.context.CurrentFrame].FenceReset(vr.context)
+	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame].Handle}); res != vk.Success {
+		err := fmt.Errorf("failed to reset fences")
+		core.LogError(err.Error())
+		return err
+	}
 
 	// Submit the queue and wait for the operation to complete.
 	// Begin queue submission
@@ -485,7 +494,7 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 
 	// Command buffer(s) to be executed.
 	submit_info.CommandBufferCount = 1
-	submit_info.PCommandBuffers = []vk.CommandBuffer{command_buffer.Handle}
+	submit_info.PCommandBuffers = []vk.CommandBuffer{commandBuffer.Handle}
 
 	// The semaphore(s) to be signaled when the queue is complete.
 	submit_info.SignalSemaphoreCount = 1
@@ -501,14 +510,15 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 	flags := vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit)
 	submit_info.PWaitDstStageMask = []vk.PipelineStageFlags{flags}
 
-	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, vr.context.InFlightFences[vr.context.CurrentFrame].Handle); result != vk.Success {
+	var fence vk.Fence
+	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, fence); result != vk.Success {
 		err := fmt.Errorf("vkQueueSubmit failed with result: %s", VulkanResultString(result, true))
 		core.LogError(err.Error())
 		return err
 	}
+	vr.context.InFlightFences[vr.context.CurrentFrame].Handle = fence
 
-	command_buffer.UpdateSubmitted()
-
+	commandBuffer.UpdateSubmitted()
 	// End queue submission
 
 	// Give the image back to the swapchain.
@@ -606,14 +616,15 @@ func (vr VulkanRenderer) recreateSwapchain() bool {
 	vr.context.FramebufferSizeLastGeneration = vr.context.FramebufferSizeGeneration
 
 	// cleanup swapchain
-	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
+	for i := uint32(0); i < vr.context.Swapchain.ImageCount; i++ {
 		vr.context.GraphicsCommandBuffers[i].Free(vr.context, vr.context.Device.GraphicsCommandPool)
 	}
 
 	// Framebuffers.
-	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
-		vr.context.Swapchain.Framebuffers[i].Destroy(vr.context)
-	}
+	// when SwapchainRecreate fuction is called, the Framebuffer is already destroyed and recreated empty
+	// for i := uint32(0); i < vr.context.Swapchain.ImageCount; i++ {
+	// 	vr.context.Swapchain.Framebuffers[i].Destroy(vr.context)
+	// }
 
 	vr.context.MainRenderpass.X = 0
 	vr.context.MainRenderpass.Y = 0
