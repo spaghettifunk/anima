@@ -279,7 +279,7 @@ type Geometry struct {
 	/** @brief The center of the geometry in local coordinates. */
 	Center math.Vec3
 	/** @brief The extents of the geometry in local coordinates. */
-	Extents Extents3D
+	Extents math.Extents3D
 	/** @brief The geometry name. */
 	Name [GeometryNameMaxLength]string
 	/** @brief A pointer to the material associated with this geometry.. */
@@ -290,7 +290,7 @@ type Mesh struct {
 	Generation     uint8
 	Geometry_count uint16
 	Geometries     []Geometry
-	Transform      Transform
+	Transform      math.Transform
 }
 
 type Skybox struct {
@@ -355,11 +355,11 @@ type ShaderScope int
 
 const (
 	/** @brief Global shader scope, generally updated once per frame. */
-	Shader_Scope_Global ShaderScope = 0
+	ShaderScopeGlobal ShaderScope = 0
 	/** @brief Instance shader scope, generally updated "per-instance" of the shader. */
-	Shader_Scope_Instance ShaderScope = 1
+	ShaderScopeInstance ShaderScope = 1
 	/** @brief Local shader scope, generally updated per-object */
-	Shader_Scope_Local ShaderScope = 2
+	ShaderScopeLocal ShaderScope = 2
 )
 
 /** @brief Configuration for an attribute. */

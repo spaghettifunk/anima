@@ -107,7 +107,7 @@ func fkrandom_in_range(min, max float32) float32 {
  * @param y The y value.
  * @return A new 2-element vector.
  */
-func Vec2Create(x, y float32) Vec2 {
+func NewVec2(x, y float32) Vec2 {
 	return Vec2{
 		X: x,
 		Y: y,
@@ -117,105 +117,78 @@ func Vec2Create(x, y float32) Vec2 {
 /**
  * @brief Creates and returns a 2-component vector with all components set to 0.0f.
  */
-func Vec2Zero() Vec2 {
+func NewVec2Zero() Vec2 {
 	return Vec2{X: 0.0, Y: 0.0}
 }
 
 /**
  * @brief Creates and returns a 2-component vector with all components set to 1.0f.
  */
-func Vec2One() Vec2 {
+func NewVec2One() Vec2 {
 	return Vec2{1.0, 1.0}
 }
 
 /**
  * @brief Creates and returns a 2-component vector pointing up (0, 1).
  */
-func Vec2Up() Vec2 {
+func NewVec2Up() Vec2 {
 	return Vec2{0.0, 1.0}
 }
 
 /**
  * @brief Creates and returns a 2-component vector pointing down (0, -1).
  */
-func Vec2Down() Vec2 {
+func NewVec2Down() Vec2 {
 	return Vec2{0.0, -1.0}
 }
 
 /**
  * @brief Creates and returns a 2-component vector pointing left (-1, 0).
  */
-func Vec2Left() Vec2 {
+func NewVec2Left() Vec2 {
 	return Vec2{-1.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 2-component vector pointing right (1, 0).
  */
-func Vec2Right() Vec2 {
+func NewVec2Right() Vec2 {
 	return Vec2{1.0, 0.0}
 }
 
 /**
- * @brief Adds vector_1 to vector_0 and returns a copy of the result.
- *
- * @param vector_0 The first vector.
- * @param vector_1 The second vector.
- * @return The resulting vector.
+ *  Adds other to v and returns a copy of the result.
  */
-func Vec2Add(vector_0, vector_1 Vec2) Vec2 {
-	return Vec2{
-		vector_0.X + vector_1.X,
-		vector_0.Y + vector_1.Y}
+func (v Vec2) Add(other Vec2) Vec2 {
+	return Vec2{v.X + other.X, v.Y + other.Y}
 }
 
 /**
- * @brief Subtracts vector_1 from vector_0 and returns a copy of the result.
- *
- * @param vector_0 The first vector.
- * @param vector_1 The second vector.
- * @return The resulting vector.
+ * Subtracts v from other and returns a copy of the result.
  */
-func Vec2Sub(vector_0, vector_1 Vec2) Vec2 {
-	return Vec2{
-		vector_0.X - vector_1.X,
-		vector_0.Y - vector_1.Y}
+func (v Vec2) Sub(other Vec2) Vec2 {
+	return Vec2{v.X - other.X, v.Y - other.Y}
 }
 
 /**
- * @brief Multiplies vector_0 by vector_1 and returns a copy of the result.
- *
- * @param vector_0 The first vector.
- * @param vector_1 The second vector.
- * @return The resulting vector.
+ *  Multiplies v by other and returns a copy of the result.
  */
-func Vec2Mul(vector_0, vector_1 Vec2) Vec2 {
-	return Vec2{
-		vector_0.X * vector_1.X,
-		vector_0.Y * vector_1.Y}
+func (v Vec2) Mul(other Vec2) Vec2 {
+	return Vec2{v.X * other.X, v.Y * other.Y}
 }
 
 /**
- * @brief Divides vector_0 by vector_1 and returns a copy of the result.
- *
- * @param vector_0 The first vector.
- * @param vector_1 The second vector.
- * @return The resulting vector.
+ * Divides v by other and returns a copy of the result.
  */
-func Vec2Div(vector_0, vector_1 Vec2) Vec2 {
-	return Vec2{
-		vector_0.X / vector_1.X,
-		vector_0.Y / vector_1.Y}
+func (v Vec2) Div(other Vec2) Vec2 {
+	return Vec2{v.X / other.X, v.Y / other.Y}
 }
 
 /**
- * @brief Returns the squared length of the provided vector.
- *
- * @param vector The vector to retrieve the squared length of.
- * @return The squared length.
+ * Returns the squared length of the provided vector.
  */
-func Vec2LengthSquared(vector Vec2) float32 {
-	return vector.X*vector.X + vector.Y*vector.Y
+func (v Vec2) LengthSquared() float32 {
+	return v.X*v.X + v.Y*v.Y
 }
 
 /**
@@ -224,19 +197,16 @@ func Vec2LengthSquared(vector Vec2) float32 {
  * @param vector The vector to retrieve the length of.
  * @return The length.
  */
-func Vec2Length(vector Vec2) float32 {
-	return ksqrt(Vec2LengthSquared(vector))
+func (v Vec2) Length() float32 {
+	return ksqrt(v.LengthSquared())
 }
 
 /**
- * @brief Normalizes the provided vector in place to a unit vector.
- *
- * @param vector A pointer to the vector to be normalized.
+ * Normalizes the provided vector in place to a unit vector.
  */
-func (vector Vec2) Normalize() {
-	length := Vec2Length(vector)
-	vector.X /= length
-	vector.Y /= length
+func (v Vec2) Normalize() Vec2 {
+	length := v.Length()
+	return Vec2{v.X / length, v.Y / length}
 }
 
 /**
@@ -245,9 +215,8 @@ func (vector Vec2) Normalize() {
  * @param vector The vector to be normalized.
  * @return A normalized copy of the supplied vector
  */
-func Vec2Normalized(vector Vec2) Vec2 {
-	vector.Normalize()
-	return vector
+func (v Vec2) Normalized() Vec2 {
+	return v.Normalize()
 }
 
 /**
@@ -259,11 +228,11 @@ func Vec2Normalized(vector Vec2) Vec2 {
  * @param tolerance The difference tolerance. Typically K_FLOAT_EPSILON or similar.
  * @return True if within tolerance; otherwise false.
  */
-func Vec2Compare(vector_0, vector_1 Vec2, tolerance float32) bool {
-	if kabs(vector_0.X-vector_1.X) > tolerance {
+func (v Vec2) Compare(other Vec2, tolerance float32) bool {
+	if kabs(v.X-other.X) > tolerance {
 		return false
 	}
-	if kabs(vector_0.Y-vector_1.Y) > tolerance {
+	if kabs(v.Y-other.Y) > tolerance {
 		return false
 	}
 	return true
@@ -276,11 +245,11 @@ func Vec2Compare(vector_0, vector_1 Vec2, tolerance float32) bool {
  * @param vector_1 The second vector.
  * @return The distance between vector_0 and vector_1.
  */
-func Vec2Distance(vector_0, vector_1 Vec2) float32 {
+func (v Vec2) Distance(other Vec2) float32 {
 	d := Vec2{
-		vector_0.X - vector_1.X,
-		vector_0.Y - vector_1.Y}
-	return Vec2Length(d)
+		v.X - other.X,
+		v.Y - other.Y}
+	return d.Length()
 }
 
 // ------------------------------------------
@@ -295,7 +264,7 @@ func Vec2Distance(vector_0, vector_1 Vec2) float32 {
  * @param z The z value.
  * @return A new 3-element vector.
  */
-func Vec3Create(x, y, z float32) Vec3 {
+func NewVec3(x, y, z float32) Vec3 {
 	return Vec3{x, y, z}
 }
 
@@ -306,7 +275,7 @@ func Vec3Create(x, y, z float32) Vec3 {
  * @param vector The 4-component vector to extract from.
  * @return A new vec3
  */
-func vec3FromVec4(vector Vec4) Vec3 {
+func NewVec3FromVec4(vector Vec4) Vec3 {
 	return Vec3{vector.X, vector.Y, vector.Z}
 }
 
@@ -317,63 +286,63 @@ func vec3FromVec4(vector Vec4) Vec3 {
  * @param w The w component.
  * @return A new vec4
  */
-func Vec3ToVec4(vector Vec3, w float32) Vec4 {
-	return Vec4{vector.X, vector.Y, vector.Z, w}
+func (v Vec3) ToVec4(w float32) Vec4 {
+	return Vec4{v.X, v.Y, v.Z, w}
 }
 
 /**
  * @brief Creates and returns a 3-component vector with all components set to 0.0f.
  */
-func Vec3Zero() Vec3 {
+func NewVec3Zero() Vec3 {
 	return Vec3{0.0, 0.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector with all components set to 1.0f.
  */
-func Vec3One() Vec3 {
+func NewVec3One() Vec3 {
 	return Vec3{1.0, 1.0, 1.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing up (0, 1, 0).
  */
-func Vec3Up() Vec3 {
+func NewVec3Up() Vec3 {
 	return Vec3{0.0, 1.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing down (0, -1, 0).
  */
-func Vec3Down() Vec3 {
+func NewVec3Down() Vec3 {
 	return Vec3{0.0, -1.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing left (-1, 0, 0).
  */
-func Vec3Left() Vec3 {
+func NewVec3Left() Vec3 {
 	return Vec3{-1.0, 0.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing right (1, 0, 0).
  */
-func Vec3Right() Vec3 {
+func NewVec3Right() Vec3 {
 	return Vec3{1.0, 0.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing forward (0, 0, -1).
  */
-func Vec3Forward() Vec3 {
+func NewVec3Forward() Vec3 {
 	return Vec3{0.0, 0.0, -1.0}
 }
 
 /**
  * @brief Creates and returns a 3-component vector pointing backward (0, 0, 1).
  */
-func Vec3Back() Vec3 {
+func NewVec3Back() Vec3 {
 	return Vec3{0.0, 0.0, 1.0}
 }
 
@@ -384,11 +353,11 @@ func Vec3Back() Vec3 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec3Add(vector_0, vector_1 Vec3) Vec3 {
+func (v Vec3) Add(other Vec3) Vec3 {
 	return Vec3{
-		vector_0.X + vector_1.X,
-		vector_0.Y + vector_1.Y,
-		vector_0.Z + vector_1.Z}
+		v.X + other.X,
+		v.Y + other.Y,
+		v.Z + other.Z}
 }
 
 /**
@@ -398,11 +367,11 @@ func Vec3Add(vector_0, vector_1 Vec3) Vec3 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec3Sub(vector_0, vector_1 Vec3) Vec3 {
+func (v Vec3) Sub(other Vec3) Vec3 {
 	return Vec3{
-		vector_0.X - vector_1.X,
-		vector_0.Y - vector_1.Y,
-		vector_0.Z - vector_1.Z}
+		v.X - other.X,
+		v.Y - other.Y,
+		v.Z - other.Z}
 }
 
 /**
@@ -412,11 +381,11 @@ func Vec3Sub(vector_0, vector_1 Vec3) Vec3 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec3Mul(vector_0, vector_1 Vec3) Vec3 {
+func (v Vec3) Mul(other Vec3) Vec3 {
 	return Vec3{
-		vector_0.X * vector_1.X,
-		vector_0.Y * vector_1.Y,
-		vector_0.Z * vector_1.Z}
+		v.X * other.X,
+		v.Y * other.Y,
+		v.Z * other.Z}
 }
 
 /**
@@ -426,11 +395,11 @@ func Vec3Mul(vector_0, vector_1 Vec3) Vec3 {
  * @param scalar The scalar value.
  * @return A copy of the resulting vector.
  */
-func Vec3MulScalar(vector_0 Vec3, scalar float32) Vec3 {
+func (v Vec3) MulScalar(scalar float32) Vec3 {
 	return Vec3{
-		vector_0.X * scalar,
-		vector_0.Y * scalar,
-		vector_0.Z * scalar}
+		v.X * scalar,
+		v.Y * scalar,
+		v.Z * scalar}
 }
 
 /**
@@ -440,11 +409,11 @@ func Vec3MulScalar(vector_0 Vec3, scalar float32) Vec3 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec3Div(vector_0, vector_1 Vec3) Vec3 {
+func (v Vec3) Div(other Vec3) Vec3 {
 	return Vec3{
-		vector_0.X / vector_1.X,
-		vector_0.Y / vector_1.Y,
-		vector_0.Z / vector_1.Z}
+		v.X / other.X,
+		v.Y / other.Y,
+		v.Z / other.Z}
 }
 
 /**
@@ -453,8 +422,8 @@ func Vec3Div(vector_0, vector_1 Vec3) Vec3 {
  * @param vector The vector to retrieve the squared length of.
  * @return The squared length.
  */
-func Vec3LengthSquared(vector Vec3) float32 {
-	return vector.X*vector.X + vector.Y*vector.Y + vector.Z*vector.Z
+func (v Vec3) LengthSquared() float32 {
+	return v.X*v.X + v.Y*v.Y + v.Z*v.Z
 }
 
 /**
@@ -463,8 +432,8 @@ func Vec3LengthSquared(vector Vec3) float32 {
  * @param vector The vector to retrieve the length of.
  * @return The length.
  */
-func Vec3Length(vector Vec3) float32 {
-	return ksqrt(Vec3LengthSquared(vector))
+func (v Vec3) Length() float32 {
+	return ksqrt(v.LengthSquared())
 }
 
 /**
@@ -472,11 +441,12 @@ func Vec3Length(vector Vec3) float32 {
  *
  * @param vector A pointer to the vector to be normalized.
  */
-func (vector Vec3) Normalize() {
-	length := Vec3Length(vector)
-	vector.X /= length
-	vector.Y /= length
-	vector.Z /= length
+func (v Vec3) Normalize() Vec3 {
+	length := v.Length()
+	return Vec3{
+		v.X / length,
+		v.Y / length,
+		v.Z / length}
 }
 
 /**
@@ -485,9 +455,8 @@ func (vector Vec3) Normalize() {
  * @param vector The vector to be normalized.
  * @return A normalized copy of the supplied vector
  */
-func Vec3Normalized(vector Vec3) Vec3 {
-	vector.Normalize()
-	return vector
+func (v Vec3) Normalized() Vec3 {
+	return v.Normalize()
 }
 
 /**
@@ -498,11 +467,11 @@ func Vec3Normalized(vector Vec3) Vec3 {
  * @param vector_1 The second vector.
  * @return The dot product.
  */
-func Vec3Dot(vector_0, vector_1 Vec3) float32 {
+func (v Vec3) Dot(other Vec3) float32 {
 	p := float32(0)
-	p += vector_0.X * vector_1.X
-	p += vector_0.Y * vector_1.Y
-	p += vector_0.Z * vector_1.Z
+	p += v.X * other.X
+	p += v.Y * other.Y
+	p += v.Z * other.Z
 	return p
 }
 
@@ -514,11 +483,11 @@ func Vec3Dot(vector_0, vector_1 Vec3) float32 {
  * @param vector_1 The second vector.
  * @return The cross product.
  */
-func Vec3Cross(vector_0, vector_1 Vec3) Vec3 {
+func (v Vec3) Cross(other Vec3) Vec3 {
 	return Vec3{
-		vector_0.Y*vector_1.Z - vector_0.Z*vector_1.Y,
-		vector_0.Z*vector_1.X - vector_0.X*vector_1.Z,
-		vector_0.X*vector_1.Y - vector_0.Y*vector_1.X}
+		v.Y*other.Z - v.Z*other.Y,
+		v.Z*other.X - v.X*other.Z,
+		v.X*other.Y - v.Y*other.X}
 }
 
 /**
@@ -530,16 +499,16 @@ func Vec3Cross(vector_0, vector_1 Vec3) Vec3 {
  * @param tolerance The difference tolerance. Typically K_FLOAT_EPSILON or similar.
  * @return True if within tolerance; otherwise false.
  */
-func Vec3Compare(vector_0, vector_1 Vec3, tolerance float32) bool {
-	if kabs(vector_0.X-vector_1.X) > tolerance {
+func (v Vec3) Compare(other Vec3, tolerance float32) bool {
+	if kabs(v.X-other.X) > tolerance {
 		return false
 	}
 
-	if kabs(vector_0.Y-vector_1.Y) > tolerance {
+	if kabs(v.Y-other.Y) > tolerance {
 		return false
 	}
 
-	if kabs(vector_0.Z-vector_1.Z) > tolerance {
+	if kabs(v.Z-other.Z) > tolerance {
 		return false
 	}
 
@@ -553,12 +522,12 @@ func Vec3Compare(vector_0, vector_1 Vec3, tolerance float32) bool {
  * @param vector_1 The second vector.
  * @return The distance between vector_0 and vector_1.
  */
-func Vec3Distance(vector_0, vector_1 Vec3) float32 {
+func (v Vec3) Distance(other Vec3) float32 {
 	d := Vec3{
-		vector_0.X - vector_1.X,
-		vector_0.Y - vector_1.Y,
-		vector_0.Z - vector_1.Z}
-	return Vec3Length(d)
+		v.X - other.X,
+		v.Y - other.Y,
+		v.Z - other.Z}
+	return d.Length()
 }
 
 /**
@@ -570,7 +539,7 @@ func Vec3Distance(vector_0, vector_1 Vec3) float32 {
  * @param m The matrix to transform by.
  * @return A transformed copy of v.
  */
-func Vec3Transform(v Vec3, m Mat4) Vec3 {
+func (v Vec3) Transform(m Mat4) Vec3 {
 	out := Vec3{}
 	out.X = v.X*m.Data[0+0] + v.Y*m.Data[4+0] + v.Z*m.Data[8+0] + 1.0*m.Data[12+0]
 	out.Y = v.X*m.Data[0+1] + v.Y*m.Data[4+1] + v.Z*m.Data[8+1] + 1.0*m.Data[12+1]
@@ -591,7 +560,7 @@ func Vec3Transform(v Vec3, m Mat4) Vec3 {
  * @param w The w value.
  * @return A new 4-element vector.
  */
-func Vec4Create(x, y, z, w float32) Vec4 {
+func NewVec4Create(x, y, z, w float32) Vec4 {
 	out_vector := Vec4{}
 	out_vector.X = x
 	out_vector.Y = y
@@ -607,8 +576,8 @@ func Vec4Create(x, y, z, w float32) Vec4 {
  * @param vector The 4-component vector to extract from.
  * @return A new vec3
  */
-func Vec4ToVec3(vector Vec4) Vec3 {
-	return Vec3{vector.X, vector.Y, vector.Z}
+func (v Vec4) ToVec3() Vec3 {
+	return Vec3{v.X, v.Y, v.Z}
 }
 
 /**
@@ -618,27 +587,27 @@ func Vec4ToVec3(vector Vec4) Vec3 {
  * @param w The w component.
  * @return A new vec4
  */
-func Vec4FromVec3(vector Vec3, w float32) Vec4 {
+func NewVec4FromVec3(v Vec3, w float32) Vec4 {
 	// TODO: SIMD
 	// vec4 out_vector;
 	// out_vector.Data = _mm_setr_ps(x, y, z, w);
 	// return out_vector;
 
-	return Vec4{vector.X, vector.Y, vector.Z, w}
+	return Vec4{v.X, v.Y, v.Z, w}
 
 }
 
 /**
  * @brief Creates and returns a 4-component vector with all components set to 0.0f.
  */
-func Vec4Zero() Vec4 {
+func NewVec4Zero() Vec4 {
 	return Vec4{0.0, 0.0, 0.0, 0.0}
 }
 
 /**
  * @brief Creates and returns a 4-component vector with all components set to 1.0f.
  */
-func Vec4One() Vec4 {
+func NewVec4One() Vec4 {
 	return Vec4{1.0, 1.0, 1.0, 1.0}
 }
 
@@ -649,12 +618,12 @@ func Vec4One() Vec4 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec4Add(vector_0, vector_1 Vec4) Vec4 {
+func (v Vec4) Add(other Vec4) Vec4 {
 	return Vec4{
-		X: vector_0.X + vector_1.X,
-		Y: vector_0.Y + vector_1.Y,
-		Z: vector_0.Z + vector_1.Z,
-		W: vector_0.W + vector_1.W,
+		X: v.X + other.X,
+		Y: v.Y + other.Y,
+		Z: v.Z + other.Z,
+		W: v.W + other.W,
 	}
 }
 
@@ -665,12 +634,12 @@ func Vec4Add(vector_0, vector_1 Vec4) Vec4 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec4Sub(vector_0, vector_1 Vec4) Vec4 {
+func (v Vec4) Sub(other Vec4) Vec4 {
 	return Vec4{
-		X: vector_0.X - vector_1.X,
-		Y: vector_0.Y - vector_1.Y,
-		Z: vector_0.Z - vector_1.Z,
-		W: vector_0.W - vector_1.W,
+		X: v.X - other.X,
+		Y: v.Y - other.Y,
+		Z: v.Z - other.Z,
+		W: v.W - other.W,
 	}
 }
 
@@ -681,12 +650,12 @@ func Vec4Sub(vector_0, vector_1 Vec4) Vec4 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec4Mul(vector_0, vector_1 Vec4) Vec4 {
+func (v Vec4) Mul(other Vec4) Vec4 {
 	return Vec4{
-		X: vector_0.X * vector_1.X,
-		Y: vector_0.Y * vector_1.Y,
-		Z: vector_0.Z * vector_1.Z,
-		W: vector_0.W * vector_1.W,
+		X: v.X * other.X,
+		Y: v.Y * other.Y,
+		Z: v.Z * other.Z,
+		W: v.W * other.W,
 	}
 }
 
@@ -697,12 +666,12 @@ func Vec4Mul(vector_0, vector_1 Vec4) Vec4 {
  * @param vector_1 The second vector.
  * @return The resulting vector.
  */
-func Vec4Div(vector_0, vector_1 Vec4) Vec4 {
+func (v Vec4) Div(other Vec4) Vec4 {
 	return Vec4{
-		X: vector_0.X / vector_1.X,
-		Y: vector_0.Y / vector_1.Y,
-		Z: vector_0.Z / vector_1.Z,
-		W: vector_0.W / vector_1.W,
+		X: v.X / other.X,
+		Y: v.Y / other.Y,
+		Z: v.Z / other.Z,
+		W: v.W / other.W,
 	}
 }
 
@@ -712,8 +681,8 @@ func Vec4Div(vector_0, vector_1 Vec4) Vec4 {
  * @param vector The vector to retrieve the squared length of.
  * @return The squared length.
  */
-func Vec4LengthSquared(vector Vec4) float32 {
-	return vector.X*vector.X + vector.Y*vector.Y + vector.Z*vector.Z + vector.W*vector.W
+func (v Vec4) LengthSquared() float32 {
+	return v.X*v.X + v.Y*v.Y + v.Z*v.Z + v.W*v.W
 }
 
 /**
@@ -722,8 +691,8 @@ func Vec4LengthSquared(vector Vec4) float32 {
  * @param vector The vector to retrieve the length of.
  * @return The length.
  */
-func Vec4Length(vector Vec4) float32 {
-	return ksqrt(Vec4LengthSquared(vector))
+func (v Vec4) Length() float32 {
+	return ksqrt(v.LengthSquared())
 }
 
 /**
@@ -731,12 +700,13 @@ func Vec4Length(vector Vec4) float32 {
  *
  * @param vector A pointer to the vector to be normalized.
  */
-func (vector Vec4) Normalize() {
-	length := Vec4Length(vector)
-	vector.X /= length
-	vector.Y /= length
-	vector.Z /= length
-	vector.W /= length
+func (v Vec4) Normalize() Vec4 {
+	length := v.Length()
+	return Vec4{
+		v.X / length,
+		v.Y / length,
+		v.Z / length,
+		v.W / length}
 }
 
 /**
@@ -745,9 +715,8 @@ func (vector Vec4) Normalize() {
  * @param vector The vector to be normalized.
  * @return A normalized copy of the supplied vector
  */
-func Vec4Normalized(vector Vec4) Vec4 {
-	vector.Normalize()
-	return vector
+func (v Vec4) Normalized() Vec4 {
+	return v.Normalize()
 }
 
 /**
@@ -763,9 +732,7 @@ func Vec4Normalized(vector Vec4) Vec4 {
  * @param b3 The fourth element of the b vector.
  * @return The dot product of vectors and b.
  */
-func Vec4DotFloat32(
-	a0, a1, a2, a3,
-	b0, b1, b2, b3 float32) float32 {
+func Vec4DotFloat32(a0, a1, a2, a3, b0, b1, b2, b3 float32) float32 {
 	p := a0*b0 + a1*b1 + a2*b2 + a3*b3
 	return p
 }
@@ -779,20 +746,20 @@ func Vec4DotFloat32(
  * @param tolerance The difference tolerance. Typically K_FLOAT_EPSILON or similar.
  * @return True if within tolerance; otherwise false.
  */
-func Vec4Compare(vector_0, vector_1 Vec4, tolerance float32) bool {
-	if kabs(vector_0.X-vector_1.X) > tolerance {
+func (v Vec4) Compare(other Vec4, tolerance float32) bool {
+	if kabs(v.X-other.X) > tolerance {
 		return false
 	}
 
-	if kabs(vector_0.Y-vector_1.Y) > tolerance {
+	if kabs(v.Y-other.Y) > tolerance {
 		return false
 	}
 
-	if kabs(vector_0.Z-vector_1.Z) > tolerance {
+	if kabs(v.Z-other.Z) > tolerance {
 		return false
 	}
 
-	if kabs(vector_0.W-vector_1.W) > tolerance {
+	if kabs(v.W-other.W) > tolerance {
 		return false
 	}
 
@@ -811,7 +778,7 @@ func Vec4Compare(vector_0, vector_1 Vec4, tolerance float32) bool {
  *
  * @return A new identity matrix
  */
-func Mat4Identity() Mat4 {
+func NewMat4Identity() Mat4 {
 	out_matrix := Mat4{}
 	// kzero_memory(out_matrix.Data, sizeof(f32) * 16);
 	out_matrix.Data[0] = 1.0
@@ -828,20 +795,19 @@ func Mat4Identity() Mat4 {
  * @param matrix_1 The second matrix to be multiplied.
  * @return The result of the matrix multiplication.
  */
-func Mat4Mul(matrix_0, matrix_1 Mat4) Mat4 {
-	out_matrix := Mat4Identity()
+func (mt Mat4) Mul(other Mat4) Mat4 {
+	out_matrix := NewMat4Identity()
 
-	m1_ptr := matrix_0.Data
-	m2_ptr := matrix_1.Data
-	dst_ptr := out_matrix.Data
-
-	for i := int32(0); i < 4; i++ {
-		for j := int32(0); j < 4; j++ {
-			dst_ptr = m1_ptr[0]*m2_ptr[0+j] + m1_ptr[1]*m2_ptr[4+j] + m1_ptr[2]*m2_ptr[8+j] + m1_ptr[3]*m2_ptr[12+j]
-			dst_ptr++
+	for row := 0; row < 4; row++ {
+		for col := 0; col < 4; col++ {
+			sum := float32(0)
+			for i := 0; i < 4; i++ {
+				sum += mt.Data[row*4+i] * other.Data[i*4+col]
+			}
+			out_matrix.Data[row*4+col] = sum
 		}
-		m1_ptr += 4
 	}
+
 	return out_matrix
 }
 
@@ -857,8 +823,8 @@ func Mat4Mul(matrix_0, matrix_1 Mat4) Mat4 {
  * @param far_clip The far clipping plane distance.
  * @return A new orthographic projection matrix.
  */
-func Mat4Orthographic(left, right, bottom, top, near_clip, far_clip float32) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4Orthographic(left, right, bottom, top, near_clip, far_clip float32) Mat4 {
+	out_matrix := NewMat4Identity()
 
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
@@ -883,7 +849,7 @@ func Mat4Orthographic(left, right, bottom, top, near_clip, far_clip float32) Mat
  * @param far_clip The far clipping plane distance.
  * @return A new perspective matrix.
  */
-func Mat4Perspective(fov_radians, aspect_ratio, near_clip, far_clip float32) Mat4 {
+func NewMat4Perspective(fov_radians, aspect_ratio, near_clip, far_clip float32) Mat4 {
 	half_tan_fov := ktan(fov_radians * 0.5)
 	out_matrix := Mat4{}
 	out_matrix.Data[0] = 1.0 / (aspect_ratio * half_tan_fov)
@@ -903,7 +869,7 @@ func Mat4Perspective(fov_radians, aspect_ratio, near_clip, far_clip float32) Mat
  * @param up The up vector.
  * @return A matrix looking at target from the perspective of position.
  */
-func Mat4LookAt(position, target, up Vec3) Mat4 {
+func NewMat4LookAt(position, target, up Vec3) Mat4 {
 	out_matrix := Mat4{}
 	z_axis := Vec3{}
 	z_axis.X = target.X - position.X
@@ -911,9 +877,9 @@ func Mat4LookAt(position, target, up Vec3) Mat4 {
 	z_axis.Z = target.Z - position.Z
 
 	z_axis.Normalize()
-	x_axis := Vec3Cross(z_axis, up)
+	x_axis := up.Cross(z_axis)
 	x_axis.Normalize()
-	y_axis := Vec3Cross(x_axis, z_axis)
+	y_axis := z_axis.Cross(x_axis)
 
 	out_matrix.Data[0] = x_axis.X
 	out_matrix.Data[1] = y_axis.X
@@ -927,9 +893,9 @@ func Mat4LookAt(position, target, up Vec3) Mat4 {
 	out_matrix.Data[9] = y_axis.Z
 	out_matrix.Data[10] = -z_axis.Z
 	out_matrix.Data[11] = 0
-	out_matrix.Data[12] = -Vec3Dot(x_axis, position)
-	out_matrix.Data[13] = -Vec3Dot(y_axis, position)
-	out_matrix.Data[14] = Vec3Dot(z_axis, position)
+	out_matrix.Data[12] = -x_axis.Dot(position)
+	out_matrix.Data[13] = -y_axis.Dot(position)
+	out_matrix.Data[14] = z_axis.Dot(position)
 	out_matrix.Data[15] = 1.0
 
 	return out_matrix
@@ -941,8 +907,8 @@ func Mat4LookAt(position, target, up Vec3) Mat4 {
  * @param matrix The matrix to be transposed.
  * @return A transposed copy of of the provided matrix.
  */
-func Mat4Transposed(matrix Mat4) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4Transposed(matrix Mat4) Mat4 {
+	out_matrix := NewMat4Identity()
 	out_matrix.Data[0] = matrix.Data[0]
 	out_matrix.Data[1] = matrix.Data[4]
 	out_matrix.Data[2] = matrix.Data[8]
@@ -968,8 +934,8 @@ func Mat4Transposed(matrix Mat4) Mat4 {
  * @param matrix The matrix to be inverted.
  * @return A inverted copy of the provided matrix.
  */
-func Mat4Inverse(matrix Mat4) Mat4 {
-	m := matrix.Data
+func (mt Mat4) Inverse() Mat4 {
+	m := mt.Data
 
 	t0 := m[10] * m[15]
 	t1 := m[14] * m[11]
@@ -1032,8 +998,8 @@ func Mat4Inverse(matrix Mat4) Mat4 {
  * @param position The position to be used to create the matrix.
  * @return A newly created translation matrix.
  */
-func Mat4Translation(position Vec3) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4Translation(position Vec3) Mat4 {
+	out_matrix := NewMat4Identity()
 	out_matrix.Data[12] = position.X
 	out_matrix.Data[13] = position.Y
 	out_matrix.Data[14] = position.Z
@@ -1046,8 +1012,8 @@ func Mat4Translation(position Vec3) Mat4 {
  * @param scale The 3-component scale.
  * @return A scale matrix.
  */
-func Mat4Ccale(scale Vec3) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4Scale(scale Vec3) Mat4 {
+	out_matrix := NewMat4Identity()
 	out_matrix.Data[0] = scale.X
 	out_matrix.Data[5] = scale.Y
 	out_matrix.Data[10] = scale.Z
@@ -1060,8 +1026,8 @@ func Mat4Ccale(scale Vec3) Mat4 {
  * @param angle_radians The x angle in radians.
  * @return A rotation matrix.
  */
-func Mat4EulerX(angle_radians float32) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4EulerX(angle_radians float32) Mat4 {
+	out_matrix := NewMat4Identity()
 	c := kcos(angle_radians)
 	s := ksin(angle_radians)
 
@@ -1078,8 +1044,8 @@ func Mat4EulerX(angle_radians float32) Mat4 {
  * @param angle_radians The y angle in radians.
  * @return A rotation matrix.
  */
-func Mat4EulerY(angle_radians float32) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4EulerY(angle_radians float32) Mat4 {
+	out_matrix := NewMat4Identity()
 	c := kcos(angle_radians)
 	s := ksin(angle_radians)
 
@@ -1096,8 +1062,8 @@ func Mat4EulerY(angle_radians float32) Mat4 {
  * @param angle_radians The z angle in radians.
  * @return A rotation matrix.
  */
-func Mat4EulerZ(angle_radians float32) Mat4 {
-	out_matrix := Mat4Identity()
+func NewMat4EulerZ(angle_radians float32) Mat4 {
+	out_matrix := NewMat4Identity()
 
 	c := kcos(angle_radians)
 	s := ksin(angle_radians)
@@ -1117,12 +1083,12 @@ func Mat4EulerZ(angle_radians float32) Mat4 {
  * @param z_radians The z rotation.
  * @return A rotation matrix.
  */
-func Mat4EulerXYZ(x_radians, y_radians, z_radians float32) Mat4 {
-	rx := Mat4EulerX(x_radians)
-	ry := Mat4EulerY(y_radians)
-	rz := Mat4EulerZ(z_radians)
-	out_matrix := Mat4Mul(rx, ry)
-	out_matrix = Mat4Mul(out_matrix, rz)
+func NewMat4EulerXYZ(x_radians, y_radians, z_radians float32) Mat4 {
+	rx := NewMat4EulerX(x_radians)
+	ry := NewMat4EulerY(y_radians)
+	rz := NewMat4EulerZ(z_radians)
+	out_matrix := rx.Mul(ry)
+	out_matrix = out_matrix.Mul(rz)
 	return out_matrix
 }
 
@@ -1132,11 +1098,11 @@ func Mat4EulerXYZ(x_radians, y_radians, z_radians float32) Mat4 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Forward(matrix Mat4) Vec3 {
+func (mt Mat4) Forward() Vec3 {
 	forward := Vec3{}
-	forward.X = -matrix.Data[2]
-	forward.Y = -matrix.Data[6]
-	forward.Z = -matrix.Data[10]
+	forward.X = -mt.Data[2]
+	forward.Y = -mt.Data[6]
+	forward.Z = -mt.Data[10]
 	forward.Normalize()
 	return forward
 }
@@ -1147,11 +1113,11 @@ func Mat4Forward(matrix Mat4) Vec3 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Backward(matrix Mat4) Vec3 {
+func (mt Mat4) Backward() Vec3 {
 	backward := Vec3{}
-	backward.X = matrix.Data[2]
-	backward.Y = matrix.Data[6]
-	backward.Z = matrix.Data[10]
+	backward.X = mt.Data[2]
+	backward.Y = mt.Data[6]
+	backward.Z = mt.Data[10]
 	backward.Normalize()
 	return backward
 }
@@ -1162,11 +1128,11 @@ func Mat4Backward(matrix Mat4) Vec3 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Up(matrix Mat4) Vec3 {
+func (mt Mat4) Up() Vec3 {
 	up := Vec3{}
-	up.X = matrix.Data[1]
-	up.Y = matrix.Data[5]
-	up.Z = matrix.Data[9]
+	up.X = mt.Data[1]
+	up.Y = mt.Data[5]
+	up.Z = mt.Data[9]
 	up.Normalize()
 	return up
 }
@@ -1177,11 +1143,11 @@ func Mat4Up(matrix Mat4) Vec3 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Down(matrix Mat4) Vec3 {
+func (mt Mat4) Down() Vec3 {
 	down := Vec3{}
-	down.X = -matrix.Data[1]
-	down.Y = -matrix.Data[5]
-	down.Z = -matrix.Data[9]
+	down.X = -mt.Data[1]
+	down.Y = -mt.Data[5]
+	down.Z = -mt.Data[9]
 	down.Normalize()
 	return down
 }
@@ -1192,11 +1158,11 @@ func Mat4Down(matrix Mat4) Vec3 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Left(matrix Mat4) Vec3 {
+func (mt Mat4) Left() Vec3 {
 	left := Vec3{}
-	left.X = -matrix.Data[0]
-	left.Y = -matrix.Data[4]
-	left.Z = -matrix.Data[8]
+	left.X = -mt.Data[0]
+	left.Y = -mt.Data[4]
+	left.Z = -mt.Data[8]
 	left.Normalize()
 	return left
 }
@@ -1207,11 +1173,11 @@ func Mat4Left(matrix Mat4) Vec3 {
  * @param matrix The matrix from which to base the vector.
  * @return A 3-component directional vector.
  */
-func Mat4Right(matrix Mat4) Vec3 {
+func (mt Mat4) Right() Vec3 {
 	right := Vec3{}
-	right.X = matrix.Data[0]
-	right.Y = matrix.Data[4]
-	right.Z = matrix.Data[8]
+	right.X = mt.Data[0]
+	right.Y = mt.Data[4]
+	right.Z = mt.Data[8]
 	right.Normalize()
 	return right
 }
@@ -1225,7 +1191,7 @@ func Mat4Right(matrix Mat4) Vec3 {
  *
  * @return An identity quaternion.
  */
-func QuatIdentity() Quaternion {
+func NewQuatIdentity() Quaternion {
 	return Quaternion{0, 0, 0, 1.0}
 }
 
@@ -1235,7 +1201,7 @@ func QuatIdentity() Quaternion {
  * @param q The quaternion.
  * @return The normal of the provided quaternion.
  */
-func QuatNormal(q Quaternion) float32 {
+func (q Quaternion) Normal() float32 {
 	return ksqrt(
 		q.X*q.X +
 			q.Y*q.Y +
@@ -1249,12 +1215,13 @@ func QuatNormal(q Quaternion) float32 {
  * @param q The quaternion to normalize.
  * @return A normalized copy of the provided quaternion.
  */
-func (q Quaternion) Normalize() {
-	normal := QuatNormal(q)
-	q.X /= normal
-	q.Y /= normal
-	q.Z /= normal
-	q.W /= normal
+func (q Quaternion) Normalize() Quaternion {
+	normal := q.Normal()
+	return Quaternion{
+		q.X / normal,
+		q.Y / normal,
+		q.Z / normal,
+		q.W / normal}
 }
 
 /**
@@ -1264,11 +1231,8 @@ func (q Quaternion) Normalize() {
  * @param q The quaternion to obtain a conjugate of.
  * @return The conjugate quaternion.
  */
-func (q Quaternion) Conjugate() {
-	q.X = -q.X
-	q.Y = -q.Y
-	q.Z = -q.Z
-	q.W = q.W
+func (q Quaternion) Conjugate() Quaternion {
+	return Quaternion{-q.X, -q.Y, -q.Z, q.W}
 }
 
 /**
@@ -1277,9 +1241,9 @@ func (q Quaternion) Conjugate() {
  * @param q The quaternion to invert.
  * @return An inverse copy of the provided quaternion.
  */
-func (q Quaternion) Inverse() {
-	q.Conjugate()
-	q.Normalize()
+func (q Quaternion) Inverse() Quaternion {
+	c := q.Conjugate()
+	return c.Normalize()
 }
 
 /**
@@ -1289,28 +1253,28 @@ func (q Quaternion) Inverse() {
  * @param q_1 The second quaternion.
  * @return The multiplied quaternion.
  */
-func QuatMul(q_0, q_1 Quaternion) Quaternion {
+func (q Quaternion) Mul(other Quaternion) Quaternion {
 	out_quaternion := Quaternion{}
 
-	out_quaternion.X = q_0.X*q_1.W +
-		q_0.Y*q_1.Z -
-		q_0.Z*q_1.Y +
-		q_0.W*q_1.X
+	out_quaternion.X = q.X*other.W +
+		q.Y*other.Z -
+		q.Z*other.Y +
+		q.W*other.X
 
-	out_quaternion.Y = -q_0.X*q_1.Z +
-		q_0.Y*q_1.W +
-		q_0.Z*q_1.X +
-		q_0.W*q_1.Y
+	out_quaternion.Y = -q.X*other.Z +
+		q.Y*other.W +
+		q.Z*other.X +
+		q.W*other.Y
 
-	out_quaternion.Z = q_0.X*q_1.Y -
-		q_0.Y*q_1.X +
-		q_0.Z*q_1.W +
-		q_0.W*q_1.Z
+	out_quaternion.Z = q.X*other.Y -
+		q.Y*other.X +
+		q.Z*other.W +
+		q.W*other.Z
 
-	out_quaternion.W = -q_0.X*q_1.X -
-		q_0.Y*q_1.Y -
-		q_0.Z*q_1.Z +
-		q_0.W*q_1.W
+	out_quaternion.W = -q.X*other.X -
+		q.Y*other.Y -
+		q.Z*other.Z +
+		q.W*other.W
 
 	return out_quaternion
 }
@@ -1322,11 +1286,11 @@ func QuatMul(q_0, q_1 Quaternion) Quaternion {
  * @param q_1 The second quaternion.
  * @return The dot product of the provided quaternions.
  */
-func QuatDot(q_0, q_1 Quaternion) float32 {
-	return q_0.X*q_1.X +
-		q_0.Y*q_1.Y +
-		q_0.Z*q_1.Z +
-		q_0.W*q_1.W
+func (q Quaternion) Dot(other Quaternion) float32 {
+	return q.X*other.X +
+		q.Y*other.Y +
+		q.Z*other.Z +
+		q.W*other.W
 }
 
 /**
@@ -1335,8 +1299,8 @@ func QuatDot(q_0, q_1 Quaternion) float32 {
  * @param q The quaternion to be used.
  * @return A rotation matrix.
  */
-func QuatToMat4(q Quaternion) Mat4 {
-	out_matrix := Mat4Identity()
+func (q Quaternion) ToMat4() Mat4 {
+	out_matrix := NewMat4Identity()
 
 	// https://stackoverflow.com/questions/1556260/convert-quaternion-rotation-to-rotation-matrix
 
@@ -1366,7 +1330,7 @@ func QuatToMat4(q Quaternion) Mat4 {
  * @param center The center point.
  * @return A rotation matrix.
  */
-func QuatToRotationMatrix(q Quaternion, center Vec3) Mat4 {
+func (q Quaternion) ToRotationMatrix(center Vec3) Mat4 {
 	out_matrix := Mat4{}
 
 	o := out_matrix.Data
@@ -1400,7 +1364,7 @@ func QuatToRotationMatrix(q Quaternion, center Vec3) Mat4 {
  * @param normalize Indicates if the quaternion should be normalized.
  * @return A new quaternion.
  */
-func QuatFromAxisAngle(axis Vec3, angle float32, normalize bool) Quaternion {
+func NewQuatFromAxisAngle(axis Vec3, angle float32, normalize bool) Quaternion {
 	half_angle := 0.5 * angle
 	s := ksin(half_angle)
 	c := kcos(half_angle)
@@ -1421,18 +1385,15 @@ func QuatFromAxisAngle(axis Vec3, angle float32, normalize bool) Quaternion {
  * @param percentage The percentage of interpolation, typically a value from 0.0f-1.0f.
  * @return An interpolated quaternion.
  */
-func QuatSlerp(q_0, q_1 Quaternion, percentage float32) Quaternion {
-	out_quaternion := Quaternion{}
+func (q Quaternion) Slerp(other Quaternion, percentage float32) Quaternion {
 	// Source: https://en.Wikipedia.org/wiki/Slerp
 	// Only unit quaternions are valid rotations.
 	// Normalize to avoid undefined behavior.
-	q_0.Normalize()
-	v0 := q_0
-	q_1.Normalize()
-	v1 := q_1
+	v0 := q.Normalize()
+	v1 := other.Normalize()
 
 	// Compute the cosine of the angle between the two vectors.
-	dot := QuatDot(v0, v1)
+	dot := v0.Dot(v1)
 
 	// If the dot product is negative, slerp won't take
 	// the shorter path. Note that v1 and -v1 are equivalent when
@@ -1450,14 +1411,13 @@ func QuatSlerp(q_0, q_1 Quaternion, percentage float32) Quaternion {
 	if dot > DOT_THRESHOLD {
 		// If the inputs are too close for comfort, linearly interpolate
 		// and normalize the result.
-		out_quaternion = Quaternion{
+		qt := Quaternion{
 			v0.X + ((v1.X - v0.X) * percentage),
 			v0.Y + ((v1.Y - v0.Y) * percentage),
 			v0.Z + ((v1.Z - v0.Z) * percentage),
 			v0.W + ((v1.W - v0.W) * percentage)}
 
-		out_quaternion.Normalize()
-		return out_quaternion
+		return qt.Normalize()
 	}
 
 	// Since dot is in range [0, DOT_THRESHOLD], acos is safe

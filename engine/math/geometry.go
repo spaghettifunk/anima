@@ -8,10 +8,11 @@ func geometry_generate_normals(vertex_count uint32, vertices []Vertex3D, index_c
 		i1 := indices[i+1]
 		i2 := indices[i+2]
 
-		edge1 := vec3_sub(vertices[i1].Position, vertices[i0].Position)
-		edge2 := vec3_sub(vertices[i2].Position, vertices[i0].Position)
+		edge1 := vertices[i1].Position.Sub(vertices[i0].Position)
+		edge2 := vertices[i2].Position.Sub(vertices[i0].Position)
 
-		normal := vec3_normalized(vec3_cross(edge1, edge2))
+		c := edge1.Cross(edge2)
+		normal := c.Normalized()
 
 		// NOTE: This just generates a face normal. Smoothing out should be done in a separate pass if desired.
 		vertices[i0].Normal = normal
@@ -26,8 +27,8 @@ func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_
 		i1 := indices[i+1]
 		i2 := indices[i+2]
 
-		edge1 := vec3_sub(vertices[i1].Position, vertices[i0].Position)
-		edge2 := vec3_sub(vertices[i2].Position, vertices[i0].Position)
+		edge1 := vertices[i1].Position.Sub(vertices[i0].Position)
+		edge2 := vertices[i2].Position.Sub(vertices[i0].Position)
 
 		deltaU1 := vertices[i1].Texcoord.X - vertices[i0].Texcoord.X
 		deltaV1 := vertices[i1].Texcoord.Y - vertices[i0].Texcoord.Y
@@ -43,7 +44,7 @@ func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_
 			(fc * (deltaV2*edge1.Y - deltaV1*edge2.Y)),
 			(fc * (deltaV2*edge1.Z - deltaV1*edge2.Z))}
 
-		tangent = vec3_normalized(tangent)
+		tangent = tangent.Normalized()
 
 		sx := deltaU1
 		sy := deltaU2
@@ -55,7 +56,7 @@ func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_
 			handedness = -1.0
 		}
 
-		t4 := vec3_mul_scalar(tangent, handedness)
+		t4 := tangent.MulScalar(float32(handedness))
 		vertices[i0].Tangent = t4
 		vertices[i1].Tangent = t4
 		vertices[i2].Tangent = t4
@@ -63,11 +64,11 @@ func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_
 }
 
 func vertex3d_equal(vert_0 Vertex3D, vert_1 Vertex3D) bool {
-	return vec3_compare(vert_0.Position, vert_1.Position, K_FLOAT_EPSILON) &&
-		vec3_compare(vert_0.Normal, vert_1.Normal, K_FLOAT_EPSILON) &&
-		vec2_compare(vert_0.Texcoord, vert_1.Texcoord, K_FLOAT_EPSILON) &&
-		vec4_compare(vert_0.Colour, vert_1.Colour, K_FLOAT_EPSILON) &&
-		vec3_compare(vert_0.Tangent, vert_1.Tangent, K_FLOAT_EPSILON)
+	return vert_0.Position.Compare(vert_1.Position, K_FLOAT_EPSILON) &&
+		vert_0.Normal.Compare(vert_1.Normal, K_FLOAT_EPSILON) &&
+		vert_0.Texcoord.Compare(vert_1.Texcoord, K_FLOAT_EPSILON) &&
+		vert_0.Colour.Compare(vert_1.Colour, K_FLOAT_EPSILON) &&
+		vert_0.Tangent.Compare(vert_1.Tangent, K_FLOAT_EPSILON)
 }
 
 func reassignIndex(index_count uint32, indices []uint32, from uint32, to uint32) {
