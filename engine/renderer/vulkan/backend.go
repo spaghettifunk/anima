@@ -2,7 +2,7 @@ package vulkan
 
 import (
 	"fmt"
-	"math"
+	m "math"
 	"runtime"
 	"unsafe"
 
@@ -10,6 +10,7 @@ import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
+	"github.com/spaghettifunk/anima/engine/resources"
 )
 
 type VulkanRenderer struct {
@@ -363,7 +364,7 @@ func (vr VulkanRenderer) Resized(width, height uint16) error {
 	vr.cachedFramebufferHeight = uint32(height)
 	vr.context.FramebufferSizeGeneration++
 
-	core.LogInfo("Vulkan renderer backend->resized: w/h/gen: %d/%d/%d", width, height, vr.context.FramebufferSizeGeneration)
+	core.LogInfo("Vulkan renderer backend.resized: w/h/gen: %d/%d/%d", width, height, vr.context.FramebufferSizeGeneration)
 	return nil
 }
 
@@ -403,7 +404,7 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 	}
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
-	if !vr.context.InFlightFences[vr.context.CurrentFrame].FenceWait(vr.context, math.MaxUint32) {
+	if !vr.context.InFlightFences[vr.context.CurrentFrame].FenceWait(vr.context, m.MaxUint32) {
 		err := fmt.Errorf("in-flight fence wait failure")
 		core.LogWarn(err.Error())
 		return err
@@ -411,7 +412,7 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
 	// This same semaphore will later be waited on by the queue submission to ensure this image is available.
-	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, math.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
+	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, m.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok {
 		err := fmt.Errorf("failed to swapchain aquire next image index")
 		core.LogError(err.Error())
@@ -468,7 +469,7 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 
 	// Make sure the previous frame is not using this image (i.e. its fence is being waited on)
 	if vr.context.ImagesInFlight[vr.context.ImageIndex] != (*VulkanFence)(vk.NullHandle) { // was frame
-		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.ImagesInFlight[vr.context.ImageIndex].Handle}, vk.True, math.MaxUint64)
+		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.ImagesInFlight[vr.context.ImageIndex].Handle}, vk.True, m.MaxUint64)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("vkWaitForFences error: %s", VulkanResultString(result, true))
 			core.LogFatal(err.Error())
@@ -648,6 +649,91 @@ func (vr VulkanRenderer) createVulkanSurface() uintptr {
 		return 0
 	}
 	return surface
+}
+
+func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_size, vertexCount uint32, vertices interface{}, index_size uint32, indexCount uint32, indices []uint32) bool {
+	if vertexCount == 0 || vertices == nil {
+		core.LogError("vulkan_renderer_create_geometry requires vertex data, and none was supplied. VertexCount=%d, vertices=%p", vertexCount, vertices)
+		return false
+	}
+
+	// Check if this is a re-upload. If it is, need to free old data afterward.
+	is_reupload := geometry.InternalID != INVALID_ID
+	old_range := &vulkan_geometry_data{}
+
+	var internal_data *vulkan_geometry_data
+	if is_reupload {
+		internal_data = &vr.context.Geometries[geometry.InternalID]
+
+		// Take a copy of the old range.
+		old_range.IndexBufferOffset = internal_data.IndexBufferOffset
+		old_range.IndexCount = internal_data.IndexCount
+		old_range.IndexElementSize = internal_data.IndexElementSize
+		old_range.VertexBufferOffset = internal_data.VertexBufferOffset
+		old_range.VertexCount = internal_data.VertexCount
+		old_range.VertexElementSize = internal_data.VertexElementSize
+	} else {
+		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
+			if vr.context.Geometries[i].ID == INVALID_ID {
+				// Found a free index.
+				geometry.InternalID = i
+				vr.context.Geometries[i].ID = i
+				internal_data = &vr.context.Geometries[i]
+				break
+			}
+		}
+	}
+	if internal_data == nil {
+		core.LogFatal("vulkan_renderer_create_geometry failed to find a free index for a new geometry upload. Adjust config to allow for more.")
+		return false
+	}
+
+	// Vertex data.
+	internal_data.VertexCount = vertexCount
+	internal_data.VertexElementSize = 0 //sizeof(vertex_3d);
+	total_size := vertexCount * vertex_size
+
+	// Load the data.
+	if !renderer_renderbuffer_load_range(&vr.context.ObjectVertexBuffer, internal_data.VertexBufferOffset, total_size, vertices) {
+		core.LogError("vulkan_renderer_create_geometry failed to upload to the vertex buffer!")
+		return false
+	}
+
+	// Index data, if applicable
+	if indexCount > 0 && len(indices) > 0 {
+		internal_data.IndexCount = indexCount
+		internal_data.IndexElementSize = 0 //sizeof(u32)
+		total_size = indexCount * index_size
+
+		if !renderer_renderbuffer_load_range(&vr.context.ObjectIndexBuffer, internal_data.IndexBufferOffset, total_size, indices) {
+			core.LogError("vulkan_renderer_create_geometry failed to upload to the index buffer!")
+			return false
+		}
+	}
+
+	if internal_data.Generation == INVALID_ID {
+		internal_data.Generation = 0
+	} else {
+		internal_data.Generation++
+	}
+
+	if is_reupload {
+		// Free vertex data
+		// if (!renderer_renderbuffer_free(&context.ObjectVertexBuffer, old_range.VertexElementSize * old_range.VertexCount, old_range.VertexBufferOffset)) {
+		//     core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of vertex data.");
+		//     return false
+		// }
+
+		// Free index data, if applicable
+		if old_range.IndexElementSize > 0 {
+			// if (!renderer_renderbuffer_free(&context.ObjectIndexBuffer, old_range.IndexElementSize * old_range.IndexCount, old_range.IndexBufferOffset)) {
+			//     core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of index data.");
+			//     return false
+			// }
+		}
+	}
+
+	return true
 }
 
 func dbgCallbackFunc(flags vk.DebugReportFlags, objectType vk.DebugReportObjectType, object uint64, location uint64, messageCode int32, pLayerPrefix string, pMessage string, pUserData unsafe.Pointer) vk.Bool32 {

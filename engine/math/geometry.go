@@ -2,8 +2,8 @@ package math
 
 import "github.com/spaghettifunk/anima/engine/core"
 
-func geometry_generate_normals(vertex_count uint32, vertices []Vertex3D, index_count uint32, indices []uint32) {
-	for i := uint32(0); i < index_count; i += 3 {
+func GeometryGenerateNormals(vertexCount uint32, vertices []Vertex3D, indexCount uint32, indices []uint32) {
+	for i := uint32(0); i < indexCount; i += 3 {
 		i0 := indices[i+0]
 		i1 := indices[i+1]
 		i2 := indices[i+2]
@@ -21,8 +21,8 @@ func geometry_generate_normals(vertex_count uint32, vertices []Vertex3D, index_c
 	}
 }
 
-func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_count uint32, indices []uint32) {
-	for i := uint32(0); i < index_count; i += 3 {
+func GeometryGenerateTangents(vertexCount uint32, vertices []Vertex3D, indexCount uint32, indices []uint32) []Vertex3D {
+	for i := uint32(0); i < indexCount; i += 3 {
 		i0 := indices[i+0]
 		i1 := indices[i+1]
 		i2 := indices[i+2]
@@ -61,18 +61,19 @@ func geometry_generate_tangents(vertex_count uint32, vertices []Vertex3D, index_
 		vertices[i1].Tangent = t4
 		vertices[i2].Tangent = t4
 	}
+	return vertices
 }
 
-func vertex3d_equal(vert_0 Vertex3D, vert_1 Vertex3D) bool {
-	return vert_0.Position.Compare(vert_1.Position, K_FLOAT_EPSILON) &&
-		vert_0.Normal.Compare(vert_1.Normal, K_FLOAT_EPSILON) &&
-		vert_0.Texcoord.Compare(vert_1.Texcoord, K_FLOAT_EPSILON) &&
-		vert_0.Colour.Compare(vert_1.Colour, K_FLOAT_EPSILON) &&
-		vert_0.Tangent.Compare(vert_1.Tangent, K_FLOAT_EPSILON)
+func Vertex3dEqual(vert0 Vertex3D, vert1 Vertex3D) bool {
+	return vert0.Position.Compare(vert1.Position, K_FLOAT_EPSILON) &&
+		vert0.Normal.Compare(vert1.Normal, K_FLOAT_EPSILON) &&
+		vert0.Texcoord.Compare(vert1.Texcoord, K_FLOAT_EPSILON) &&
+		vert0.Colour.Compare(vert1.Colour, K_FLOAT_EPSILON) &&
+		vert0.Tangent.Compare(vert1.Tangent, K_FLOAT_EPSILON)
 }
 
-func reassignIndex(index_count uint32, indices []uint32, from uint32, to uint32) {
-	for i := uint32(0); i < index_count; i++ {
+func reassignIndex(indexCount uint32, indices []uint32, from uint32, to uint32) {
+	for i := uint32(0); i < indexCount; i++ {
 		if indices[i] == from {
 			indices[i] = to
 		} else if indices[i] > from {
@@ -110,9 +111,9 @@ func GeometryDeduplicateVertices(vertexCount uint32, vertices []Vertex3D, indexC
 	}
 
 	// Allocate new vertices array for the final result
-	outVertices := make([]Vertex3D, outVertexCount)
+	// outVertices := make([]Vertex3D, outVertexCount)
 	// Copy over unique vertices
-	outVertices = uniqueVerts[:outVertexCount]
+	outVertices := uniqueVerts[:outVertexCount]
 
 	removedCount := vertexCount - outVertexCount
 	core.LogDebug("geometry_deduplicate_vertices: removed %d vertices, orig/now %d/%d.\n", removedCount, vertexCount, outVertexCount)

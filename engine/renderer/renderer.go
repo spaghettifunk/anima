@@ -6,6 +6,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/vulkan"
+	"github.com/spaghettifunk/anima/engine/resources"
 )
 
 type RendererBackend interface {
@@ -14,6 +15,7 @@ type RendererBackend interface {
 	Resized(width, height uint16) error
 	BeginFrame(deltaTime float64) error
 	EndFrame(deltaTime float64) error
+	CreateGeometry(geometry *resources.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool
 }
 
 type RendererType uint8
@@ -27,10 +29,6 @@ const (
 
 type Renderer struct {
 	backend RendererBackend
-}
-
-type RenderPacket struct {
-	DeltaTime float64
 }
 
 var initRenderer sync.Once
@@ -71,4 +69,8 @@ func DrawFrame(renderPacket *RenderPacket) error {
 		return err
 	}
 	return nil
+}
+
+func CreateGeometry(geometry *resources.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool {
+	return renderer.backend.CreateGeometry(geometry, vertex_size, vertex_count, vertices, index_size, index_count, indices)
 }
