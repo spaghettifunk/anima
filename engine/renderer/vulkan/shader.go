@@ -2,6 +2,7 @@ package vulkan
 
 import (
 	vk "github.com/goki/vulkan"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/resources"
 )
 
@@ -95,7 +96,7 @@ type VulkanShaderInstanceState struct {
 	 * @brief Instance texture map pointers, which are used during rendering. These
 	 * are set by calls to set_sampler.
 	 */
-	InstanceTextureMaps []TextureMap
+	InstanceTextureMaps []resources.TextureMap
 }
 
 /**
@@ -127,7 +128,7 @@ type VulkanShader struct {
 	/** @brief Global descriptor sets, one per frame. */
 	GlobalDescriptorSets [3]vk.DescriptorSet
 	/** @brief The uniform buffer used by this shader. */
-	UniformBuffer RenderBuffer
+	UniformBuffer metadata.RenderBuffer
 
 	/** @brief The Pipeline associated with this shader. */
 	Pipeline *VulkanPipeline

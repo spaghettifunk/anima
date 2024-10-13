@@ -10,7 +10,9 @@ import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/resources"
+	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
 type VulkanRenderer struct {
@@ -658,10 +660,10 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 	}
 
 	// Check if this is a re-upload. If it is, need to free old data afterward.
-	is_reupload := geometry.InternalID != INVALID_ID
-	old_range := &vulkan_geometry_data{}
+	is_reupload := geometry.InternalID != loaders.InvalidID
+	old_range := &VulkanGeometryData{}
 
-	var internal_data *vulkan_geometry_data
+	var internal_data *VulkanGeometryData
 	if is_reupload {
 		internal_data = &vr.context.Geometries[geometry.InternalID]
 
@@ -674,7 +676,7 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 		old_range.VertexElementSize = internal_data.VertexElementSize
 	} else {
 		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-			if vr.context.Geometries[i].ID == INVALID_ID {
+			if vr.context.Geometries[i].ID == loaders.InvalidID {
 				// Found a free index.
 				geometry.InternalID = i
 				vr.context.Geometries[i].ID = i
@@ -691,10 +693,10 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 	// Vertex data.
 	internal_data.VertexCount = vertexCount
 	internal_data.VertexElementSize = 0 //sizeof(vertex_3d);
-	total_size := vertexCount * vertex_size
+	total_size := uint64(vertexCount * vertex_size)
 
 	// Load the data.
-	if !renderer_renderbuffer_load_range(&vr.context.ObjectVertexBuffer, internal_data.VertexBufferOffset, total_size, vertices) {
+	if !vr.RenderBufferLoadRange(&vr.context.ObjectVertexBuffer, internal_data.VertexBufferOffset, total_size, vertices) {
 		core.LogError("vulkan_renderer_create_geometry failed to upload to the vertex buffer!")
 		return false
 	}
@@ -703,15 +705,15 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 	if indexCount > 0 && len(indices) > 0 {
 		internal_data.IndexCount = indexCount
 		internal_data.IndexElementSize = 0 //sizeof(u32)
-		total_size = indexCount * index_size
+		total_size = uint64(indexCount * index_size)
 
-		if !renderer_renderbuffer_load_range(&vr.context.ObjectIndexBuffer, internal_data.IndexBufferOffset, total_size, indices) {
+		if !vr.RenderBufferLoadRange(&vr.context.ObjectIndexBuffer, internal_data.IndexBufferOffset, total_size, indices) {
 			core.LogError("vulkan_renderer_create_geometry failed to upload to the index buffer!")
 			return false
 		}
 	}
 
-	if internal_data.Generation == INVALID_ID {
+	if internal_data.Generation == loaders.InvalidID {
 		internal_data.Generation = 0
 	} else {
 		internal_data.Generation++
@@ -734,6 +736,134 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 	}
 
 	return true
+}
+
+func (vr VulkanRenderer) TextureCreate(pixels []uint8, texture *resources.Texture) {}
+
+func (vr VulkanRenderer) TextureDestroy(texture *resources.Texture) {}
+
+func (vr VulkanRenderer) TextureCreateWriteable(texture *resources.Texture) {}
+
+func (vr VulkanRenderer) TextureResize(texture *resources.Texture, new_width, new_height uint32) {}
+
+func (vr VulkanRenderer) TextureWriteData(texture *resources.Texture, offset, size uint32, pixels []uint8) {
+}
+
+func (vr VulkanRenderer) DestroyGeometry(geometry *resources.Geometry) {}
+
+func (vr VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) {}
+
+func (vr VulkanRenderer) RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
+	return nil, nil
+}
+
+func (vr VulkanRenderer) RenderpassDestroy(pass *metadata.RenderPass) {}
+
+func (vr VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool { return false }
+
+func (vr VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass { return nil }
+
+func (vr VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *resources.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []resources.ShaderStage) bool {
+	return false
+}
+
+func (vr VulkanRenderer) ShaderDestroy(shader *metadata.Shader) {}
+
+func (vr VulkanRenderer) ShaderInitialize(shader *metadata.Shader) bool { return false }
+
+func (vr VulkanRenderer) ShaderUse(shader *metadata.Shader) bool { return false }
+
+func (vr VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) bool { return false }
+
+func (vr VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
+	return false
+}
+
+func (vr VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
+
+func (vr VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool {
+	return false
+}
+
+func (vr VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*resources.TextureMap) (out_instance_id uint32) {
+	return 0
+}
+
+func (vr VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
+	return false
+}
+
+func (vr VulkanRenderer) SetUniform(shader *metadata.Shader, uniform resources.ShaderUniformType, value interface{}) bool {
+	return false
+}
+
+func (vr VulkanRenderer) TextureMapAcquireResources(texture_map *resources.TextureMap) bool {
+	return false
+}
+
+func (vr VulkanRenderer) TextureMapReleaseResources(texture_map *resources.TextureMap) {}
+
+func (vr VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*resources.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
+	return nil
+}
+
+func (vr VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget) {}
+
+func (vr VulkanRenderer) IsMultithreaded() bool { return false }
+
+func (vr VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) *metadata.RenderBuffer {
+	return nil
+}
+
+func (vr VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {}
+
+func (vr VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool { return false }
+
+func (vr VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
+	return nil
+}
+
+func (vr VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) {
+}
+
+func (vr VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (out_memory []interface{}) {
+	return nil
+}
+
+func (vr VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
+	return 0
+}
+
+func (vr VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
+	return false
+}
+
+func (vr VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
+	return false
 }
 
 func dbgCallbackFunc(flags vk.DebugReportFlags, objectType vk.DebugReportObjectType, object uint64, location uint64, messageCode int32, pLayerPrefix string, pMessage string, pUserData unsafe.Pointer) vk.Bool32 {

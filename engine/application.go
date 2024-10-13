@@ -7,6 +7,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
 type ApplicationConfig struct {
@@ -140,7 +141,7 @@ func ApplicationRun() error {
 			}
 
 			// TODO: refactor packet creation
-			packet := &renderer.RenderPacket{
+			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
 			}
 			renderer.DrawFrame(packet)

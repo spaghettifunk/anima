@@ -3,7 +3,54 @@ package vulkan
 import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
+
+const VULKAN_MAX_REGISTERED_RENDERPASSES uint32 = 31
+
+/**
+ * @brief Represents a Vulkan-specific buffer.
+ * Used to load data onto the GPU.
+ */
+type VulkanBuffer struct {
+	/** @brief The Handle to the internal buffer. */
+	Handle vk.Buffer
+	/** @brief The Usage flags. */
+	Usage vk.BufferUsageFlagBits
+	/** @brief Indicates if the buffer's memory is currently locked. */
+	IsLocked bool
+	/** @brief The Memory used by the buffer. */
+	Memory vk.DeviceMemory
+	/** @brief The memory requirements for this buffer. */
+	MemoryRequirements vk.MemoryRequirements
+	/** @brief The index of the memory used by the buffer. */
+	MemoryIndex int32
+	/** @brief The property flags for the memory used by the buffer. */
+	MemoryPropertyFlags uint32
+}
+
+/**
+ * @brief Internal buffer data for geometry. This data gets loaded
+ * directly into a buffer.
+ */
+type VulkanGeometryData struct {
+	/** @brief The unique geometry identifier. */
+	ID uint32
+	/** @brief The geometry Generation. Incremented every time the geometry data changes. */
+	Generation uint32
+	/** @brief The vertex count. */
+	VertexCount uint32
+	/** @brief The size of each vertex. */
+	VertexElementSize uint32
+	/** @brief The offset in bytes in the vertex buffer. */
+	VertexBufferOffset uint64
+	/** @brief The index count. */
+	IndexCount uint32
+	/** @brief The size of each index. */
+	IndexElementSize uint32
+	/** @brief The offset in bytes in the index buffer. */
+	IndexBufferOffset uint64
+}
 
 type VulkanContext struct {
 	// The framebuffer's current width.
@@ -26,17 +73,23 @@ type VulkanContext struct {
 
 	Device *VulkanDevice
 
-	Swapchain      *VulkanSwapchain
+	Swapchain *VulkanSwapchain
+
+	// TODO: not sure about the type here
+	RenderPassTableBlock interface{}
+	RenderPassTable      map[string]interface{}
+	/** @brief Registered renderpasses. */
+	RegisteredPasses [VULKAN_MAX_REGISTERED_RENDERPASSES]metadata.RenderPass
+	/** @brief The object vertex buffer, used to hold geometry vertices. */
+	ObjectVertexBuffer metadata.RenderBuffer
+	/** @brief The object index buffer, used to hold geometry indices. */
+	ObjectIndexBuffer metadata.RenderBuffer
+
 	MainRenderpass *VulkanRenderpass
 
-	// darray
-	GraphicsCommandBuffers []*VulkanCommandBuffer
-
-	// darray
+	GraphicsCommandBuffers   []*VulkanCommandBuffer
 	ImageAvailableSemaphores []vk.Semaphore
-
-	// darray
-	QueueCompleteSemaphores []vk.Semaphore
+	QueueCompleteSemaphores  []vk.Semaphore
 
 	InFlightFenceCount uint32
 	InFlightFences     []*VulkanFence
@@ -48,6 +101,15 @@ type VulkanContext struct {
 	CurrentFrame uint32
 
 	RecreatingSwapchain bool
+
+	/** @brief The A collection of loaded Geometries. @todo TODO: make dynamic */
+	Geometries [VULKAN_MAX_GEOMETRY_COUNT]VulkanGeometryData
+
+	/** @brief Render targets used for world rendering. @note One per frame. */
+	WorldRenderTargets [3]metadata.RenderTarget
+
+	/** @brief Indicates if multi-threading is supported by this device. */
+	MultithreadingEnabled bool
 }
 
 func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 {
@@ -65,3 +127,5 @@ func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32
 	core.LogWarn("Unable to find suitable memory type!")
 	return -1
 }
+
+func (vc *VulkanContext) OnRenderTargetRefreshRequired() {}

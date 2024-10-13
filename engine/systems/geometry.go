@@ -5,6 +5,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/resources"
+	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
 /** @brief The geometry system configuration. */
@@ -169,14 +170,14 @@ func (gs *GeometrySystem) SetDefaultGeometries() bool {
 	indices := []uint32{0, 1, 2, 0, 3, 1}
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	gs.DefaultGeometry.InternalID = INVALID_ID
+	gs.DefaultGeometry.InternalID = loaders.InvalidID
 	if !renderer.CreateGeometry(&gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
 		core.LogFatal("Failed to create default geometry. Application cannot continue.")
 		return false
 	}
 
 	// Acquire the default material.
-	gs.DefaultGeometry.Material = material_system_get_default()
+	gs.DefaultGeometry.Material = MaterialSystemGetDefault()
 
 	// Create default 2d geometry.
 	verts2d := make([]math.Vertex2D, 4)
@@ -210,7 +211,7 @@ func (gs *GeometrySystem) SetDefaultGeometries() bool {
 	}
 
 	// Acquire the default material.
-	gs.Default2DGeometry.Material = material_system_get_default()
+	gs.Default2DGeometry.Material = MaterialSystemGetDefault()
 
 	return true
 }
