@@ -2,10 +2,11 @@ package vulkan
 
 import (
 	"fmt"
-	"math"
+	m "math"
 
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 )
 
 type VulkanSwapchain struct {
@@ -127,7 +128,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 	// Swapchain extent
 	context.Device.SwapchainSupport.Capabilities.CurrentExtent.Deref()
-	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != math.MaxUint32 {
+	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != m.MaxUint32 {
 		swapchainExtent = context.Device.SwapchainSupport.Capabilities.CurrentExtent
 	}
 
@@ -137,8 +138,8 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 	min := context.Device.SwapchainSupport.Capabilities.MinImageExtent
 	max := context.Device.SwapchainSupport.Capabilities.MaxImageExtent
-	swapchainExtent.Width = MathClamp(swapchainExtent.Width, min.Width, max.Width)
-	swapchainExtent.Height = MathClamp(swapchainExtent.Height, min.Height, max.Height)
+	swapchainExtent.Width = math.Clamp(swapchainExtent.Width, min.Width, max.Width)
+	swapchainExtent.Height = math.Clamp(swapchainExtent.Height, min.Height, max.Height)
 
 	imageCount := context.Device.SwapchainSupport.Capabilities.MinImageCount + 1
 	if context.Device.SwapchainSupport.Capabilities.MaxImageCount > 0 && imageCount > context.Device.SwapchainSupport.Capabilities.MaxImageCount {

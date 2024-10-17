@@ -54,8 +54,8 @@ type GeometryReference struct {
 type GeometrySystem struct {
 	Config GeometrySystemConfig
 
-	DefaultGeometry   resources.Geometry
-	Default2DGeometry resources.Geometry
+	DefaultGeometry   *resources.Geometry
+	Default2DGeometry *resources.Geometry
 
 	// Array of registered meshes.
 	RegisteredGeometries []GeometryReference
@@ -129,8 +129,8 @@ func (gs *GeometrySystem) Release(geometry *resources.Geometry) {
  *
  * @return A pointer to the default geometry.
  */
-func (gs *GeometrySystem) GetDefault() (*resources.Geometry, error) {
-	return nil, nil
+func (gs *GeometrySystem) GetDefault() *resources.Geometry {
+	return gs.DefaultGeometry
 }
 
 /**
@@ -138,8 +138,8 @@ func (gs *GeometrySystem) GetDefault() (*resources.Geometry, error) {
  *
  * @return A pointer to the default geometry.
  */
-func (gs *GeometrySystem) GetDefault2D() (*resources.Geometry, error) {
-	return nil, nil
+func (gs *GeometrySystem) GetDefault2D() *resources.Geometry {
+	return gs.Default2DGeometry
 }
 
 func (gs *GeometrySystem) SetDefaultGeometries() bool {
@@ -171,7 +171,7 @@ func (gs *GeometrySystem) SetDefaultGeometries() bool {
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
 	gs.DefaultGeometry.InternalID = loaders.InvalidID
-	if !renderer.CreateGeometry(&gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
+	if !renderer.CreateGeometry(gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
 		core.LogFatal("Failed to create default geometry. Application cannot continue.")
 		return false
 	}
@@ -205,7 +205,7 @@ func (gs *GeometrySystem) SetDefaultGeometries() bool {
 	indices2d := []uint32{2, 1, 0, 3, 0, 1}
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	if !renderer.CreateGeometry(&gs.Default2DGeometry, 0, 4, verts2d, 0, 6, indices2d) {
+	if !renderer.CreateGeometry(gs.Default2DGeometry, 0, 4, verts2d, 0, 6, indices2d) {
 		core.LogFatal("Failed to create default 2d geometry. Application cannot continue.")
 		return false
 	}

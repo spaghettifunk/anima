@@ -8,21 +8,21 @@ import (
 )
 
 type jobSystemState struct {
-	running      bool
-	thread_count uint8
-	job_threads  chan<- metadata.JobThread
+	Running     bool
+	ThreadCount uint8
+	JobThreads  chan<- metadata.JobThread
 
-	low_priority_queue    *containers.RingQueue
-	normal_priority_queue *containers.RingQueue
-	high_priority_queue   *containers.RingQueue
+	LowPriorityQueue    *containers.RingQueue
+	NormalPriorityQueue *containers.RingQueue
+	HighPriorityQueue   *containers.RingQueue
 
 	// Mutexes for each queue, since a job could be kicked off from another job (thread).
-	low_pri_queue_mutex    sync.Mutex
-	normal_pri_queue_mutex sync.Mutex
-	high_pri_queue_mutex   sync.Mutex
+	LowPriQueueMutex    sync.Mutex
+	NormalPriQueueMutex sync.Mutex
+	HighPriQueueMutex   sync.Mutex
 
-	pending_results [metadata.MAX_JOB_RESULTS]metadata.JobResultEntry
-	result_mutex    sync.Mutex
+	PendingResults [metadata.MAX_JOB_RESULTS]metadata.JobResultEntry
+	ResultMutex    sync.Mutex
 	// A mutex for the result array
 }
 
