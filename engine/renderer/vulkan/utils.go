@@ -119,17 +119,6 @@ func ConditionalOperator(condition bool, res1, res2 string) string {
 	}
 }
 
-// Clamp returns f clamped to [low, high]
-func MathClamp(f, low, high uint32) uint32 {
-	if f < low {
-		return low
-	}
-	if f > high {
-		return high
-	}
-	return f
-}
-
 var end = "\x00"
 var endChar byte = '\x00'
 

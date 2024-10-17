@@ -15,7 +15,7 @@ type VulkanFramebuffer struct {
 }
 
 func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, width uint32, height uint32, attachment_count uint32, attachments []vk.ImageView) (*VulkanFramebuffer, error) {
-	out_framebuffer := &VulkanFramebuffer{
+	outFramebuffer := &VulkanFramebuffer{
 		Attachments:     make([]vk.ImageView, attachment_count),
 		Renderpass:      renderpass,
 		AttachmentCount: attachment_count,
@@ -23,7 +23,7 @@ func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, wid
 	// Take a copy of the attachments, renderpass and attachment count
 	// out_framebuffer->attachments = kallocate(sizeof(VkImageView) * attachment_count, MEMORY_TAG_RENDERER);
 	for i := 0; i < int(attachment_count); i++ {
-		out_framebuffer.Attachments[i] = attachments[i]
+		outFramebuffer.Attachments[i] = attachments[i]
 	}
 
 	// Creation info
@@ -31,7 +31,7 @@ func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, wid
 		SType:           vk.StructureTypeFramebufferCreateInfo,
 		RenderPass:      renderpass.Handle,
 		AttachmentCount: attachment_count,
-		PAttachments:    out_framebuffer.Attachments,
+		PAttachments:    outFramebuffer.Attachments,
 		Width:           width,
 		Height:          height,
 		Layers:          1,
@@ -43,14 +43,13 @@ func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, wid
 		core.LogError(err.Error())
 		return nil, err
 	}
-	out_framebuffer.Handle = pFramebuffer
-	return out_framebuffer, nil
+	outFramebuffer.Handle = pFramebuffer
+	return outFramebuffer, nil
 }
 
 func (vfb *VulkanFramebuffer) Destroy(context *VulkanContext) {
 	vk.DestroyFramebuffer(context.Device.LogicalDevice, vfb.Handle, context.Allocator)
 	if len(vfb.Attachments) > 0 {
-		// kfree(vfb.attachments, sizeof(VkImageView) * vfb.attachment_count, MEMORY_TAG_RENDERER);
 		vfb.Attachments = nil
 	}
 	vfb.Handle = nil

@@ -62,7 +62,7 @@ func (p *Platform) Shutdown() error {
 	return nil
 }
 
-func (p *Platform) GetAbsoluteTime() float64 {
+func GetAbsoluteTime() float64 {
 	return glfw.GetTime()
 }
 

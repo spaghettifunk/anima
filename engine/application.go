@@ -7,6 +7,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
 type ApplicationConfig struct {
@@ -124,7 +125,7 @@ func ApplicationRun() error {
 
 			var current_time float64 = appState.Clock.Elapsed()
 			var delta float64 = (current_time - appState.LastTime)
-			var frame_start_time float64 = appState.Platform.GetAbsoluteTime()
+			var frame_start_time float64 = platform.GetAbsoluteTime()
 
 			if err := appState.GameInstance.FnUpdate(delta); err != nil {
 				core.LogFatal("Game update failed, shutting down.")
@@ -140,13 +141,13 @@ func ApplicationRun() error {
 			}
 
 			// TODO: refactor packet creation
-			packet := &renderer.RenderPacket{
+			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
 			}
 			renderer.DrawFrame(packet)
 
 			// Figure out how long the frame took and, if below
-			var frame_end_time float64 = appState.Platform.GetAbsoluteTime()
+			var frame_end_time float64 = platform.GetAbsoluteTime()
 			var frame_elapsed_time float64 = frame_end_time - frame_start_time
 			runningTime += frame_elapsed_time
 			var remaining_seconds float64 = targetFrameSeconds - frame_elapsed_time
