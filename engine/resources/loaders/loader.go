@@ -2,7 +2,12 @@ package loaders
 
 import "github.com/spaghettifunk/anima/engine/resources"
 
-const InvalidID uint32 = 99999
+const (
+	InvalidIDUint64 uint64 = 18446744073709551615
+	InvalidID       uint32 = 4294967295
+	InvalidIDUint16 uint16 = 65535
+	InvalidIDUint8  uint8  = 255
+)
 
 /** @brief An "interface" for a resource loader. All registered loaders use this. */
 type ResourceLoader struct {

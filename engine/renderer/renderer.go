@@ -114,6 +114,112 @@ func DrawFrame(renderPacket *metadata.RenderPacket) error {
 	return nil
 }
 
+func TextureCreate(pixels []uint8, texture *resources.Texture) {}
+
+func TextureDestroy(texture *resources.Texture) {}
+
+func TextureCreateWriteable(texture *resources.Texture) {}
+
+func TextureResize(texture *resources.Texture, new_width, new_height uint32) {}
+
+func TextureWriteData(texture *resources.Texture, offset, size uint32, pixels []uint8) {}
+
 func CreateGeometry(geometry *resources.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool {
 	return renderer.backend.CreateGeometry(geometry, vertex_size, vertex_count, vertices, index_size, index_count, indices)
+}
+
+func DestroyGeometry(geometry *resources.Geometry) {}
+
+func DrawGeometry(data *metadata.GeometryRenderData) {}
+
+func RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
+	return nil, nil
+}
+
+func RenderpassDestroy(pass *metadata.RenderPass) {}
+
+func RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool { return false }
+
+func RenderPassEnd(pass *metadata.RenderPass) bool { return false }
+
+func RenderPassGet(name string) *metadata.RenderPass { return nil }
+
+func ShaderCreate(shader *metadata.Shader, config *resources.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []resources.ShaderStage) bool {
+	return false
+}
+
+func ShaderDestroy(shader *metadata.Shader) {}
+
+func ShaderInitialize(shader *metadata.Shader) bool { return false }
+
+func ShaderUse(shader *metadata.Shader) bool { return false }
+
+func ShaderBindGlobals(shader *metadata.Shader) bool { return false }
+
+func ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool { return false }
+
+func ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
+
+func ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool { return false }
+
+func ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*resources.TextureMap) (out_instance_id uint32) {
+	return 0
+}
+
+func ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool { return false }
+
+func SetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
+	return false
+}
+
+func TextureMapAcquireResources(texture_map *resources.TextureMap) bool { return false }
+
+func TextureMapReleaseResources(texture_map *resources.TextureMap) {}
+
+func RenderTargetCreate(attachment_count uint8, attachments []*resources.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
+	return nil
+}
+
+func RenderTargetDestroy(target *metadata.RenderTarget) {}
+
+func IsMultithreaded() bool { return false }
+
+func RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) *metadata.RenderBuffer {
+	return nil
+}
+
+func RenderBufferDestroy(buffer *metadata.RenderBuffer) {}
+
+func RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool { return false }
+
+func RenderBufferUnbind(buffer *metadata.RenderBuffer) bool { return false }
+
+func RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
+	return nil
+}
+
+func RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) {}
+
+func RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool { return false }
+
+func RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (out_memory []interface{}) {
+	return nil
+}
+
+func RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool { return false }
+
+func RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) { return 0 }
+
+func RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool { return false }
+
+func RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
+	return false
+}
+
+func RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
+	return false
+}
+
+func RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
+	return false
 }

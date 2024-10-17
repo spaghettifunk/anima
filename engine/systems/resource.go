@@ -2,6 +2,7 @@ package systems
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/resources"
@@ -16,48 +17,53 @@ type ResourceSystemConfig struct {
 	AssetBasePath string
 }
 
-type ResourceSystemState struct {
+type resourceSystemState struct {
 	Config            ResourceSystemConfig
 	RegisteredLoaders []loaders.ResourceLoader
 }
 
-func NewResourceSystem(config ResourceSystemConfig) (*ResourceSystemState, error) {
+var onceResourceSystemState sync.Once
+var rsState *resourceSystemState
+
+func NewResourceSystem(config ResourceSystemConfig) error {
 	if config.MaxLoaderCount == 0 {
 		err := fmt.Errorf("failed to run NewResourceSystem because config.MaxLoaderCount==0")
 		core.LogFatal(err.Error())
-		return nil, err
+		return err
 	}
 
-	resourceSystemState := &ResourceSystemState{
-		Config:            config,
-		RegisteredLoaders: make([]loaders.ResourceLoader, config.MaxLoaderCount),
-	}
+	onceResourceSystemState.Do(func() {
+		rsState = &resourceSystemState{
+			Config:            config,
+			RegisteredLoaders: make([]loaders.ResourceLoader, config.MaxLoaderCount),
+		}
 
-	// Invalidate all loaders
-	for i := uint32(0); i < config.MaxLoaderCount; i++ {
-		resourceSystemState.RegisteredLoaders[i].ID = loaders.InvalidID
-	}
+		// Invalidate all loaders
+		for i := uint32(0); i < config.MaxLoaderCount; i++ {
+			rsState.RegisteredLoaders[i].ID = loaders.InvalidID
+		}
 
-	// NOTE: Auto-register known loader types here.
-	// resourceSystemState.RegisterLoader(binary_resource_loader_create())
-	// resourceSystemState.RegisterLoader(image_resource_loader_create())
-	// resourceSystemState.RegisterLoader(material_resource_loader_create())
-	// resourceSystemState.RegisterLoader(shader_resource_loader_create())
-	// resourceSystemState.RegisterLoader(mesh_resource_loader_create())
+		// NOTE: Auto-register known loader types here.
+		// rsState.RegisterLoader(binary_resource_loader_create())
+		// rsState.RegisterLoader(image_resource_loader_create())
+		// rsState.RegisterLoader(material_resource_loader_create())
+		// rsState.RegisterLoader(shader_resource_loader_create())
+		// rsState.RegisterLoader(mesh_resource_loader_create())
+	})
 
 	core.LogInfo("Resource system initialized with base path '%s'.", config.AssetBasePath)
 
-	return resourceSystemState, nil
+	return nil
 }
 
-func (rs *ResourceSystemState) Shutdown() {
+func ResourceStateSystemShutdown() {
 }
 
-func (rs *ResourceSystemState) RegisterLoader(loader loaders.ResourceLoader) bool {
-	count := rs.Config.MaxLoaderCount
+func ResourceStateSystemRegisterLoader(loader loaders.ResourceLoader) bool {
+	count := rsState.Config.MaxLoaderCount
 	// Ensure no loaders for the given type already exist
 	for i := uint32(0); i < count; i++ {
-		l := rs.RegisteredLoaders[i]
+		l := rsState.RegisteredLoaders[i]
 		if l.ID != loaders.InvalidID {
 			if l.ResourceType == loader.ResourceType {
 				core.LogError("resource_system_register_loader - Loader of type %d already exists and will not be registered.", loader.ResourceType)
@@ -69,9 +75,9 @@ func (rs *ResourceSystemState) RegisterLoader(loader loaders.ResourceLoader) boo
 		}
 	}
 	for i := uint32(0); i < count; i++ {
-		if rs.RegisteredLoaders[i].ID == loaders.InvalidID {
-			rs.RegisteredLoaders[i] = loader
-			rs.RegisteredLoaders[i].ID = i
+		if rsState.RegisteredLoaders[i].ID == loaders.InvalidID {
+			rsState.RegisteredLoaders[i] = loader
+			rsState.RegisteredLoaders[i].ID = i
 			core.LogDebug("Loader registered.")
 			return true
 		}
@@ -80,47 +86,47 @@ func (rs *ResourceSystemState) RegisterLoader(loader loaders.ResourceLoader) boo
 	return false
 }
 
-func (rs *ResourceSystemState) Load(name string, resourceType resources.ResourceType, params interface{}) (*resources.Resource, error) {
-	out_resource := &resources.Resource{}
+func ResourceStateSystemLoad(name string, resourceType resources.ResourceType, params interface{}) (*resources.Resource, error) {
+	outResource := &resources.Resource{}
 	if resourceType != resources.ResourceTypeCustom {
 		// Select loader.
-		count := rs.Config.MaxLoaderCount
+		count := rsState.Config.MaxLoaderCount
 		for i := uint32(0); i < count; i++ {
-			l := rs.RegisteredLoaders[i]
+			l := rsState.RegisteredLoaders[i]
 			if l.ID != loaders.InvalidID && l.ResourceType == resourceType {
 				return l.Load(name, params)
 			}
 		}
 	}
 
-	out_resource.LoaderID = loaders.InvalidID
+	outResource.LoaderID = loaders.InvalidID
 	core.LogError("resource_system_load - No loader for type %d was found.", resourceType)
 
-	return out_resource, nil
+	return outResource, nil
 }
 
-func (rs *ResourceSystemState) LoadCustom(name, custom_type string, params interface{}) (*resources.Resource, error) {
-	out_resource := &resources.Resource{}
+func ResourceStateSystemLoadCustom(name, custom_type string, params interface{}) (*resources.Resource, error) {
+	outResource := &resources.Resource{}
 	if len(custom_type) > 0 {
 		// Select loader.
-		count := rs.Config.MaxLoaderCount
+		count := rsState.Config.MaxLoaderCount
 		for i := uint32(0); i < count; i++ {
-			l := rs.RegisteredLoaders[i]
+			l := rsState.RegisteredLoaders[i]
 			if l.ID != loaders.InvalidID && l.ResourceType == resources.ResourceTypeCustom && l.CustomType == custom_type {
 				return load(name, l, params)
 			}
 		}
 	}
 
-	out_resource.LoaderID = loaders.InvalidID
+	outResource.LoaderID = loaders.InvalidID
 	core.LogError("resource_system_load_custom - No loader for type %s was found.", custom_type)
-	return out_resource, nil
+	return outResource, nil
 }
 
-func (rs *ResourceSystemState) Unload(resource *resources.Resource) error {
+func ResourceStateSystemUnload(resource *resources.Resource) error {
 	if resource != nil {
 		if resource.LoaderID != loaders.InvalidID {
-			l := rs.RegisteredLoaders[resource.LoaderID]
+			l := rsState.RegisteredLoaders[resource.LoaderID]
 			if l.ID != loaders.InvalidID {
 				if err := l.Unload(resource); err != nil {
 					return err

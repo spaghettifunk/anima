@@ -71,7 +71,7 @@ type ImageResourceData struct {
 	/** @brief The height of the image. */
 	Height uint32
 	/** @brief The pixel data of the image. */
-	Pixels *uint8
+	Pixels []uint8
 }
 
 /** @brief Parameters used when loading an image. */
@@ -144,7 +144,7 @@ type Texture struct {
 	/** @brief The texture Generation. Incremented every time the data is reloaded. */
 	Generation uint32
 	/** @brief The texture Name. */
-	Name [TextureNameMaxLength]string
+	Name string
 	/** @brief The raw texture data (pixels). */
 	InternalData interface{}
 }
@@ -403,11 +403,11 @@ type ShaderConfig struct {
 	/** @brief The count of attributes. */
 	AttributeCount uint8
 	/** @brief The collection of attributes. Darray. */
-	Attributes []ShaderAttributeConfig
+	Attributes []*ShaderAttributeConfig
 	/** @brief The count of uniforms. */
 	UniformCount uint8
 	/** @brief The collection of uniforms. Darray. */
-	Uniforms []ShaderUniformConfig
+	Uniforms []*ShaderUniformConfig
 	/** @brief The name of the renderpass used by this shader. */
 	RenderpassName string
 	/** @brief The number of stages present in the shader. */
