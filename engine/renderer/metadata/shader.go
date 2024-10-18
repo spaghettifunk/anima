@@ -1,9 +1,5 @@
 package metadata
 
-import (
-	"github.com/spaghettifunk/anima/engine/resources"
-)
-
 /** @brief Configuration for the shader system. */
 type ShaderSystemConfig struct {
 	/** @brief The maximum number of shaders held in the system. NOTE: Should be at least 512. */
@@ -48,9 +44,9 @@ type ShaderUniform struct {
 	/** @brief The index of the descriptor set the uniform belongs to (0=global, 1=instance, INVALID_ID=local). */
 	SetIndex uint8
 	/** @brief The Scope of the uniform. */
-	Scope resources.ShaderScope
+	Scope ShaderScope
 	/** @brief The type of uniform. */
-	ShaderUniformType resources.ShaderUniformType
+	ShaderUniformType ShaderUniformType
 }
 
 /**
@@ -60,7 +56,7 @@ type ShaderAttribute struct {
 	/** @brief The attribute Name. */
 	Name string
 	/** @brief The attribute type. */
-	ShaderUniformAttributeType resources.ShaderAttributeType
+	ShaderUniformAttributeType ShaderAttributeType
 	/** @brief The attribute Size in bytes. */
 	Size uint32
 }
@@ -106,12 +102,12 @@ type Shader struct {
 	PushConstantStride uint64
 
 	/** @brief An array of global texture map pointers. Darray */
-	GlobalTextureMaps []*resources.TextureMap
+	GlobalTextureMaps []*TextureMap
 
 	/** @brief The number of instance textures. */
 	InstanceTextureCount uint8
 
-	BoundScope resources.ShaderScope
+	BoundScope ShaderScope
 
 	/** @brief The identifier of the currently bound instance. */
 	BoundInstanceID uint32
@@ -142,4 +138,123 @@ type Shader struct {
 
 	/** @brief An opaque pointer to hold renderer API specific data. Renderer is responsible for creation and destruction of this.  */
 	InternalData interface{}
+}
+
+/** @brief Shader stages available in the system. */
+type ShaderStage int
+
+const (
+	ShaderStageVertex   ShaderStage = 0x00000001
+	ShaderStageGeometry ShaderStage = 0x00000002
+	ShaderStageFragment ShaderStage = 0x00000004
+	ShaderStageCompute  ShaderStage = 0x0000008
+)
+
+/** @brief Available attribute types. */
+type ShaderAttributeType uint
+
+const (
+	ShaderAttribTypeFloat32   ShaderAttributeType = 0
+	ShaderAttribTypeFloat32_2 ShaderAttributeType = 1
+	ShaderAttribTypeFloat32_3 ShaderAttributeType = 2
+	ShaderAttribTypeFloat32_4 ShaderAttributeType = 3
+	ShaderAttribTypeMatrix4   ShaderAttributeType = 4
+	ShaderAttribTypeInt8      ShaderAttributeType = 5
+	ShaderAttribTypeUint8     ShaderAttributeType = 6
+	ShaderAttribTypeInt16     ShaderAttributeType = 7
+	ShaderAttribTypeUint16    ShaderAttributeType = 8
+	ShaderAttribTypeInt32     ShaderAttributeType = 9
+	ShaderAttribTypeUint32    ShaderAttributeType = 10
+)
+
+/** @brief Available uniform types. */
+type ShaderUniformType uint
+
+const (
+	ShaderUniformTypeFloat32   ShaderUniformType = 0
+	ShaderUniformTypeFloat32_2 ShaderUniformType = 1
+	ShaderUniformTypeFloat32_3 ShaderUniformType = 2
+	ShaderUniformTypeFloat32_4 ShaderUniformType = 3
+	ShaderUniformTypeInt8      ShaderUniformType = 4
+	ShaderUniformTypeUint8     ShaderUniformType = 5
+	ShaderUniformTypeInt16     ShaderUniformType = 6
+	ShaderUniformTypeUint16    ShaderUniformType = 7
+	ShaderUniformTypeInt32     ShaderUniformType = 8
+	ShaderUniformTypeUint32    ShaderUniformType = 9
+	ShaderUniformTypeMatrix4   ShaderUniformType = 10
+	ShaderUniformTypeSampler   ShaderUniformType = 11
+	ShaderUniformTypeCustom    ShaderUniformType = 255
+)
+
+/**
+ * @brief Defines shader scope, which indicates how
+ * often it gets updated.
+ */
+type ShaderScope int
+
+const (
+	/** @brief Global shader scope, generally updated once per frame. */
+	ShaderScopeGlobal ShaderScope = 0
+	/** @brief Instance shader scope, generally updated "per-instance" of the shader. */
+	ShaderScopeInstance ShaderScope = 1
+	/** @brief Local shader scope, generally updated per-object */
+	ShaderScopeLocal ShaderScope = 2
+)
+
+/** @brief Configuration for an attribute. */
+type ShaderAttributeConfig struct {
+	/** @brief The length of the name. */
+	NameLength uint8
+	/** @brief The name of the attribute. */
+	Name string
+	/** @brief The size of the attribute. */
+	Size uint8
+	/** @brief The type of the attribute. */
+	ShaderAttributeType ShaderAttributeType
+}
+
+/** @brief Configuration for a uniform. */
+type ShaderUniformConfig struct {
+	/** @brief The length of the name. */
+	NameLength uint8
+	/** @brief The name of the uniform. */
+	Name string
+	/** @brief The size of the uniform. */
+	Size uint8
+	/** @brief The location of the uniform. */
+	Location uint32
+	/** @brief The type of the uniform. */
+	ShaderUniformType ShaderUniformType
+	/** @brief The scope of the uniform. */
+	Scope ShaderScope
+}
+
+/**
+ * @brief Configuration for a shader. Typically created and
+ * destroyed by the shader resource loader, and set to the
+ * properties found in a .shadercfg resource file.
+ */
+type ShaderConfig struct {
+	/** @brief The name of the shader to be created. */
+	Name string
+	/** @brief The face cull mode to be used. Default is BACK if not supplied. */
+	CullMode FaceCullMode
+	/** @brief The count of attributes. */
+	AttributeCount uint8
+	/** @brief The collection of attributes. Darray. */
+	Attributes []*ShaderAttributeConfig
+	/** @brief The count of uniforms. */
+	UniformCount uint8
+	/** @brief The collection of uniforms. Darray. */
+	Uniforms []*ShaderUniformConfig
+	/** @brief The name of the renderpass used by this shader. */
+	RenderpassName string
+	/** @brief The number of stages present in the shader. */
+	StageCount uint8
+	/** @brief The collection of stages. Darray. */
+	Stages []ShaderStage
+	/** @brief The collection of stage names. Must align with stages array. Darray. */
+	StageNames []string
+	/** @brief The collection of stage file names to be loaded (one per stage). Must align with stages array. Darray. */
+	StageFilenames []string
 }

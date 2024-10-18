@@ -11,7 +11,6 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
@@ -653,7 +652,7 @@ func (vr VulkanRenderer) createVulkanSurface() uintptr {
 	return surface
 }
 
-func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_size, vertexCount uint32, vertices interface{}, index_size uint32, indexCount uint32, indices []uint32) bool {
+func (vr VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_size, vertexCount uint32, vertices interface{}, index_size uint32, indexCount uint32, indices []uint32) bool {
 	if vertexCount == 0 || vertices == nil {
 		core.LogError("vulkan_renderer_create_geometry requires vertex data, and none was supplied. VertexCount=%d, vertices=%p", vertexCount, vertices)
 		return false
@@ -738,18 +737,18 @@ func (vr VulkanRenderer) CreateGeometry(geometry *resources.Geometry, vertex_siz
 	return true
 }
 
-func (vr VulkanRenderer) TextureCreate(pixels []uint8, texture *resources.Texture) {}
+func (vr VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureDestroy(texture *resources.Texture) {}
+func (vr VulkanRenderer) TextureDestroy(texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureCreateWriteable(texture *resources.Texture) {}
+func (vr VulkanRenderer) TextureCreateWriteable(texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureResize(texture *resources.Texture, new_width, new_height uint32) {}
+func (vr VulkanRenderer) TextureResize(texture *metadata.Texture, new_width, new_height uint32) {}
 
-func (vr VulkanRenderer) TextureWriteData(texture *resources.Texture, offset, size uint32, pixels []uint8) {
+func (vr VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, size uint32, pixels []uint8) {
 }
 
-func (vr VulkanRenderer) DestroyGeometry(geometry *resources.Geometry) {}
+func (vr VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) {}
 
 func (vr VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) {}
 
@@ -767,7 +766,7 @@ func (vr VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool { return 
 
 func (vr VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass { return nil }
 
-func (vr VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *resources.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []resources.ShaderStage) bool {
+func (vr VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
 	return false
 }
 
@@ -789,7 +788,7 @@ func (vr VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upda
 	return false
 }
 
-func (vr VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*resources.TextureMap) (out_instance_id uint32) {
+func (vr VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
 	return 0
 }
 
@@ -797,17 +796,17 @@ func (vr VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader,
 	return false
 }
 
-func (vr VulkanRenderer) SetUniform(shader *metadata.Shader, uniform resources.ShaderUniformType, value interface{}) bool {
+func (vr VulkanRenderer) SetUniform(shader *metadata.Shader, uniform metadata.ShaderUniformType, value interface{}) bool {
 	return false
 }
 
-func (vr VulkanRenderer) TextureMapAcquireResources(texture_map *resources.TextureMap) bool {
+func (vr VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {
 	return false
 }
 
-func (vr VulkanRenderer) TextureMapReleaseResources(texture_map *resources.TextureMap) {}
+func (vr VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {}
 
-func (vr VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*resources.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
+func (vr VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
 	return nil
 }
 

@@ -8,25 +8,19 @@ import (
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
 type MaterialSystemState struct {
-	Config metadata.MaterialSystemConfig
-
-	DefaultMaterial *resources.Material
-
+	Config          metadata.MaterialSystemConfig
+	DefaultMaterial *metadata.Material
 	// Array of registered materials.
-	RegisteredMaterials []*resources.Material
-
+	RegisteredMaterials []*metadata.Material
 	// Hashtable for material lookups.
 	RegisteredMaterialTable map[string]*metadata.MaterialReference
-
 	// Known locations for the material shader.
 	MaterialLocations *metadata.MaterialShaderUniformLocations
 	MaterialShaderID  uint32
-
 	// Known locations for the UI shader.
 	UILocations *metadata.UIShaderUniformLocations
 	UIShaderID  uint32
@@ -76,7 +70,7 @@ func NewMaterialSystem(config *metadata.MaterialSystemConfig) bool {
 				Projection:     loaders.InvalidIDUint16,
 				Model:          loaders.InvalidIDUint16,
 			},
-			RegisteredMaterials:     make([]*resources.Material, config.MaxMaterialCount),
+			RegisteredMaterials:     make([]*metadata.Material, config.MaxMaterialCount),
 			RegisteredMaterialTable: make(map[string]*metadata.MaterialReference),
 		}
 
@@ -131,9 +125,9 @@ func MaterialSystemShutdown() {
  * @param name The name of the material to find.
  * @return A pointer to the loaded material. Can be a pointer to the default material if not found.
  */
-func MaterialSystemAcquire(name string) (*resources.Material, error) {
+func MaterialSystemAcquire(name string) (*metadata.Material, error) {
 	// Load material configuration from resource;
-	materialResource, err := ResourceSystemLoad(name, resources.ResourceTypeMaterial, 0)
+	materialResource, err := ResourceSystemLoad(name, metadata.ResourceTypeMaterial, 0)
 	if err != nil {
 		err := fmt.Errorf("failed to load material resource, returning nullptr")
 		core.LogError(err.Error())
@@ -141,11 +135,11 @@ func MaterialSystemAcquire(name string) (*resources.Material, error) {
 	}
 
 	// Now acquire from loaded config.
-	m := &resources.Material{}
+	m := &metadata.Material{}
 	if materialResource.Data != nil {
-		cfg, ok := materialResource.Data.(*resources.MaterialConfig)
+		cfg, ok := materialResource.Data.(*metadata.MaterialConfig)
 		if !ok {
-			err := fmt.Errorf("failed to cast to `*resources.MaterialConfig`")
+			err := fmt.Errorf("failed to cast to `*metadata.MaterialConfig`")
 			core.LogError(err.Error())
 			return nil, err
 		}
@@ -176,7 +170,7 @@ func MaterialSystemAcquire(name string) (*resources.Material, error) {
  * @param config The config of the material to load.
  * @return A pointer to the loaded material.
  */
-func MaterialSystemAcquireFromConfig(config *resources.MaterialConfig) (*resources.Material, error) {
+func MaterialSystemAcquireFromConfig(config *metadata.MaterialConfig) (*metadata.Material, error) {
 	// Return default material.
 	if config.Name == metadata.DefaultMaterialName {
 		return msState.DefaultMaterial, nil
@@ -192,7 +186,7 @@ func MaterialSystemAcquireFromConfig(config *resources.MaterialConfig) (*resourc
 	if ref.Handle == loaders.InvalidID {
 		// This means no material exists here. Find a free index first.
 		count := msState.Config.MaxMaterialCount
-		var material *resources.Material
+		var material *metadata.Material
 		for i := uint32(0); i < count; i++ {
 			if msState.RegisteredMaterials[i].ID == loaders.InvalidID {
 				// A free slot has been found. Use its index as the handle.
@@ -304,7 +298,7 @@ func MaterialSystemRelease(name string) {
 /**
  * @brief Gets a pointer to the default material. Does not reference count.
  */
-func MaterialSystemGetDefault() *resources.Material {
+func MaterialSystemGetDefault() *metadata.Material {
 	return msState.DefaultMaterial
 }
 
@@ -370,7 +364,7 @@ func MaterialSystemApplyGlobal(shaderID uint32, renderer_frame_number uint64, pr
  * @param needsUpdate Indicates if material internals require updating, or if they should just be bound.
  * @return True on success; otherwise false.
  */
-func MaterialSystemApplyInstance(material *resources.Material, needsUpdate bool) bool {
+func MaterialSystemApplyInstance(material *metadata.Material, needsUpdate bool) bool {
 	// Apply instance-level uniforms.
 	if ok := ShaderSystemBindInstance(material.InternalID); !ok {
 		return msState.materialFail("material.InternalID")
@@ -419,7 +413,7 @@ func MaterialSystemApplyInstance(material *resources.Material, needsUpdate bool)
  * @param model A constant pointer to the model matrix to be applied.
  * @return True on success; otherwise false.
  */
-func MaterialSystemApplyLocal(material *resources.Material, model [][]math.Mat4) bool {
+func MaterialSystemApplyLocal(material *metadata.Material, model [][]math.Mat4) bool {
 	if material.ShaderID == msState.MaterialShaderID {
 		return ShaderSystemSetUniformByIndex(msState.MaterialLocations.Model, model)
 	} else if material.ShaderID == msState.UIShaderID {
@@ -429,8 +423,8 @@ func MaterialSystemApplyLocal(material *resources.Material, model [][]math.Mat4)
 	return false
 }
 
-func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *resources.Material {
-	material := &resources.Material{}
+func (ms *MaterialSystemState) loadMaterial(config *metadata.MaterialConfig) *metadata.Material {
+	material := &metadata.Material{}
 
 	material.Name = config.Name
 
@@ -443,17 +437,17 @@ func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *r
 	// Diffuse map
 	// TODO: Make this configurable.
 	// TODO: DRY
-	material.DiffuseMap.FilterMinify = resources.TextureFilterModeLinear
-	material.DiffuseMap.FilterMagnify = resources.TextureFilterModeLinear
-	material.DiffuseMap.RepeatU = resources.TextureRepeatRepeat
-	material.DiffuseMap.RepeatV = resources.TextureRepeatRepeat
-	material.DiffuseMap.RepeatW = resources.TextureRepeatRepeat
+	material.DiffuseMap.FilterMinify = metadata.TextureFilterModeLinear
+	material.DiffuseMap.FilterMagnify = metadata.TextureFilterModeLinear
+	material.DiffuseMap.RepeatU = metadata.TextureRepeatRepeat
+	material.DiffuseMap.RepeatV = metadata.TextureRepeatRepeat
+	material.DiffuseMap.RepeatW = metadata.TextureRepeatRepeat
 	if !renderer.TextureMapAcquireResources(material.DiffuseMap) {
 		core.LogError("Unable to acquire resources for diffuse texture map.")
 		return nil
 	}
 	if len(config.DiffuseMapName) > 0 {
-		material.DiffuseMap.Use = resources.TextureUseMapDiffuse
+		material.DiffuseMap.Use = metadata.TextureUseMapDiffuse
 		t, err := TextureSystemAcquire(config.DiffuseMapName, true)
 		if err != nil {
 			core.LogError(err.Error())
@@ -467,23 +461,23 @@ func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *r
 		}
 	} else {
 		// This is done when a texture is not configured, as opposed to when it is configured and not found (above).
-		material.DiffuseMap.Use = resources.TextureUseMapDiffuse
+		material.DiffuseMap.Use = metadata.TextureUseMapDiffuse
 		material.DiffuseMap.Texture = TextureSystemGetDefaultDiffuseTexture()
 	}
 
 	// Specular map
 	// TODO: Make this configurable.
-	material.SpecularMap.FilterMinify = resources.TextureFilterModeLinear
-	material.SpecularMap.FilterMagnify = resources.TextureFilterModeLinear
-	material.SpecularMap.RepeatU = resources.TextureRepeatRepeat
-	material.SpecularMap.RepeatV = resources.TextureRepeatRepeat
-	material.SpecularMap.RepeatW = resources.TextureRepeatRepeat
+	material.SpecularMap.FilterMinify = metadata.TextureFilterModeLinear
+	material.SpecularMap.FilterMagnify = metadata.TextureFilterModeLinear
+	material.SpecularMap.RepeatU = metadata.TextureRepeatRepeat
+	material.SpecularMap.RepeatV = metadata.TextureRepeatRepeat
+	material.SpecularMap.RepeatW = metadata.TextureRepeatRepeat
 	if !renderer.TextureMapAcquireResources(material.SpecularMap) {
 		core.LogError("Unable to acquire resources for specular texture map.")
 		return nil
 	}
 	if len(config.SpecularMapName) > 0 {
-		material.SpecularMap.Use = resources.TextureUseMapSpecular
+		material.SpecularMap.Use = metadata.TextureUseMapSpecular
 		t, err := TextureSystemAcquire(config.SpecularMapName, true)
 		if err != nil {
 			core.LogError(err.Error())
@@ -496,23 +490,23 @@ func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *r
 		}
 	} else {
 		// NOTE: Only set for clarity, as call to kzero_memory above does this already.
-		material.SpecularMap.Use = resources.TextureUseMapSpecular
+		material.SpecularMap.Use = metadata.TextureUseMapSpecular
 		material.SpecularMap.Texture = TextureSystemGetDefaultSpecularTexture()
 	}
 
 	// Normal map
 	// TODO: Make this configurable.
-	material.NormalMap.FilterMinify = resources.TextureFilterModeLinear
-	material.NormalMap.FilterMagnify = resources.TextureFilterModeLinear
-	material.NormalMap.RepeatU = resources.TextureRepeatRepeat
-	material.NormalMap.RepeatV = resources.TextureRepeatRepeat
-	material.NormalMap.RepeatW = resources.TextureRepeatRepeat
+	material.NormalMap.FilterMinify = metadata.TextureFilterModeLinear
+	material.NormalMap.FilterMagnify = metadata.TextureFilterModeLinear
+	material.NormalMap.RepeatU = metadata.TextureRepeatRepeat
+	material.NormalMap.RepeatV = metadata.TextureRepeatRepeat
+	material.NormalMap.RepeatW = metadata.TextureRepeatRepeat
 	if !renderer.TextureMapAcquireResources(material.NormalMap) {
 		core.LogError("Unable to acquire resources for normal texture map.")
 		return nil
 	}
 	if len(config.NormalMapName) > 0 {
-		material.NormalMap.Use = resources.TextureUseMapNormal
+		material.NormalMap.Use = metadata.TextureUseMapNormal
 		t, err := TextureSystemAcquire(config.NormalMapName, true)
 		if err != nil {
 			core.LogError(err.Error())
@@ -525,7 +519,7 @@ func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *r
 		}
 	} else {
 		// Use default
-		material.NormalMap.Use = resources.TextureUseMapNormal
+		material.NormalMap.Use = metadata.TextureUseMapNormal
 		material.NormalMap.Texture = TextureSystemGetDefaultNormalTexture()
 	}
 
@@ -539,13 +533,13 @@ func (ms *MaterialSystemState) loadMaterial(config *resources.MaterialConfig) *r
 	}
 
 	// Gather a list of pointers to texture maps;
-	texture_map := []*resources.TextureMap{material.DiffuseMap, material.SpecularMap, material.NormalMap}
+	texture_map := []*metadata.TextureMap{material.DiffuseMap, material.SpecularMap, material.NormalMap}
 	material.InternalID = renderer.ShaderAcquireInstanceResources(shader, texture_map)
 
 	return material
 }
 
-func (ms *MaterialSystemState) destroyMaterial(material *resources.Material) {
+func (ms *MaterialSystemState) destroyMaterial(material *metadata.Material) {
 	// KTRACE("Destroying material '%s'...", material.name);
 
 	// Release texture references.
@@ -589,16 +583,16 @@ func (ms *MaterialSystemState) createDefaultMaterial() bool {
 	ms.DefaultMaterial.Generation = loaders.InvalidID
 	ms.DefaultMaterial.Name = metadata.DefaultMaterialName
 	ms.DefaultMaterial.DiffuseColour = math.NewVec4Zero() // white
-	ms.DefaultMaterial.DiffuseMap.Use = resources.TextureUseMapDiffuse
+	ms.DefaultMaterial.DiffuseMap.Use = metadata.TextureUseMapDiffuse
 	ms.DefaultMaterial.DiffuseMap.Texture = TextureSystemGetDefaultTexture()
 
-	ms.DefaultMaterial.SpecularMap.Use = resources.TextureUseMapSpecular
+	ms.DefaultMaterial.SpecularMap.Use = metadata.TextureUseMapSpecular
 	ms.DefaultMaterial.SpecularMap.Texture = TextureSystemGetDefaultSpecularTexture()
 
-	ms.DefaultMaterial.NormalMap.Use = resources.TextureUseMapSpecular
+	ms.DefaultMaterial.NormalMap.Use = metadata.TextureUseMapSpecular
 	ms.DefaultMaterial.NormalMap.Texture = TextureSystemGetDefaultNormalTexture()
 
-	texture_maps := []*resources.TextureMap{ms.DefaultMaterial.DiffuseMap, ms.DefaultMaterial.SpecularMap, ms.DefaultMaterial.NormalMap}
+	texture_maps := []*metadata.TextureMap{ms.DefaultMaterial.DiffuseMap, ms.DefaultMaterial.SpecularMap, ms.DefaultMaterial.NormalMap}
 
 	shader, err := ShaderSystemGetShader(metadata.BUILTIN_SHADER_NAME_MATERIAL)
 	if err != nil {

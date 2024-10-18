@@ -1,14 +1,14 @@
 package loaders
 
-import "github.com/spaghettifunk/anima/engine/resources"
+import "github.com/spaghettifunk/anima/engine/renderer/metadata"
 
 type ShaderLoader struct {
 }
 
-func (sl *ShaderLoader) Load(name string, params interface{}) (*resources.Resource, error) {
+func (sl *ShaderLoader) Load(name string, params interface{}) (*metadata.Resource, error) {
 	return nil, nil
 }
 
-func (sl *ShaderLoader) Unload(resource *resources.Resource) error {
+func (sl *ShaderLoader) Unload(resource *metadata.Resource) error {
 	return nil
 }

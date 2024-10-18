@@ -7,18 +7,17 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
 type TextureSystem struct {
 	Config                 metadata.TextureSystemConfig
-	DefaultTexture         *resources.Texture
-	DefaultDiffuseTexture  *resources.Texture
-	DefaultSpecularTexture *resources.Texture
-	DefaultNormalTexture   *resources.Texture
+	DefaultTexture         *metadata.Texture
+	DefaultDiffuseTexture  *metadata.Texture
+	DefaultSpecularTexture *metadata.Texture
+	DefaultNormalTexture   *metadata.Texture
 	// Array of registered textures.
-	RegisteredTextures []*resources.Texture
+	RegisteredTextures []*metadata.Texture
 	// Hashtable for texture lookups.
 	RegisteredTextureTable map[string]*metadata.TextureReference
 }
@@ -45,7 +44,7 @@ func NewTextureSystem(config metadata.TextureSystemConfig) error {
 	onceTextureSystem.Do(func() {
 		tsState = &TextureSystem{
 			Config:                 config,
-			RegisteredTextures:     make([]*resources.Texture, config.MaxTextureCount),
+			RegisteredTextures:     make([]*metadata.Texture, config.MaxTextureCount),
 			RegisteredTextureTable: make(map[string]*metadata.TextureReference),
 		}
 
@@ -93,7 +92,7 @@ func TextureSystemShutdown() {
  * Only takes effect the first time the texture is acquired.
  * @return A pointer to the loaded texture. Can be a pointer to the default texture if not found.
  */
-func TextureSystemAcquire(name string, autoRelease bool) (*resources.Texture, error) {
+func TextureSystemAcquire(name string, autoRelease bool) (*metadata.Texture, error) {
 	// Return default texture, but warn about it since this should be returned via get_default_texture();
 	// TODO: Check against other default texture names?
 	if name == metadata.DEFAULT_TEXTURE_NAME {
@@ -101,7 +100,7 @@ func TextureSystemAcquire(name string, autoRelease bool) (*resources.Texture, er
 		return tsState.DefaultTexture, nil
 	}
 	// NOTE: Increments reference count, or creates new entry.
-	id, ok := TextureSystemProcessTextureReference(name, resources.TextureType2d, 1, autoRelease, false)
+	id, ok := TextureSystemProcessTextureReference(name, metadata.TextureType2d, 1, autoRelease, false)
 	if !ok {
 		err := fmt.Errorf("func texture system Acquire failed to obtain a new texture id")
 		core.LogError(err.Error())
@@ -129,7 +128,7 @@ func TextureSystemAcquire(name string, autoRelease bool) (*resources.Texture, er
  * Only takes effect the first time the texture is acquired.
  * @return A pointer to the loaded texture. Can be a pointer to the default texture if not found.
  */
-func TextureSystemAcquireCube(name string, autoRelease bool) (*resources.Texture, error) {
+func TextureSystemAcquireCube(name string, autoRelease bool) (*metadata.Texture, error) {
 	// Return default texture, but warn about it since this should be returned via get_default_texture();
 	// TODO: Check against other default texture names?
 	if name == metadata.DEFAULT_TEXTURE_NAME {
@@ -137,7 +136,7 @@ func TextureSystemAcquireCube(name string, autoRelease bool) (*resources.Texture
 		return tsState.DefaultTexture, nil
 	}
 	// NOTE: Increments reference count, or creates new entry.
-	id, ok := TextureSystemProcessTextureReference(name, resources.TextureTypeCube, 1, autoRelease, false)
+	id, ok := TextureSystemProcessTextureReference(name, metadata.TextureTypeCube, 1, autoRelease, false)
 	if !ok {
 		err := fmt.Errorf("func texture system AcquireCube failed to obtain a new texture id")
 		core.LogError(err.Error())
@@ -158,10 +157,10 @@ func TextureSystemAcquireCube(name string, autoRelease bool) (*resources.Texture
  * @param hasTransparency Indicates if the texture will have transparency.
  * @return A pointer to the generated texture.
  */
-func TextureSystemAquireWriteable(name string, width, height uint32, channelCount uint8, hasTransparency bool) (*resources.Texture, error) {
+func TextureSystemAquireWriteable(name string, width, height uint32, channelCount uint8, hasTransparency bool) (*metadata.Texture, error) {
 	// NOTE: Wrapped textures are never auto-released because it means that thier
 	// resources are created and managed somewhere within the renderer internals.
-	id, ok := TextureSystemProcessTextureReference(name, resources.TextureType2d, 1, false, true)
+	id, ok := TextureSystemProcessTextureReference(name, metadata.TextureType2d, 1, false, true)
 	if !ok {
 		err := fmt.Errorf("func texture system Acquire failed to obtain a new texture id")
 		core.LogError(err.Error())
@@ -170,19 +169,19 @@ func TextureSystemAquireWriteable(name string, width, height uint32, channelCoun
 
 	texture := tsState.RegisteredTextures[id]
 	texture.ID = id
-	texture.TextureType = resources.TextureType2d
+	texture.TextureType = metadata.TextureType2d
 	texture.Name = name
 	texture.Width = width
 	texture.Height = height
 	texture.ChannelCount = channelCount
 	texture.Generation = loaders.InvalidID
 
-	texture.Flags |= resources.TextureFlagBits(resources.TextureFlagHasTransparency)
+	texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
 	if hasTransparency {
 		texture.Flags |= 0
 	}
 
-	texture.Flags |= resources.TextureFlagBits(resources.TextureFlagIsWriteable)
+	texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)
 	texture.InternalData = nil
 
 	renderer.TextureCreateWriteable(texture)
@@ -204,7 +203,7 @@ func TextureSystemRelease(name string) {
 		return
 	}
 	// NOTE: Decrement the reference count.
-	id, ok := TextureSystemProcessTextureReference(name, resources.TextureType2d, -1, false, false)
+	id, ok := TextureSystemProcessTextureReference(name, metadata.TextureType2d, -1, false, false)
 	if !ok {
 		core.LogError("texture_system_release failed to release texture '%s' properly.", name)
 	}
@@ -228,13 +227,13 @@ func TextureSystemRelease(name string) {
  * @param registerTexture Indicates if the texture should be registered with the system.
  * @return A pointer to the wrapped texture.
  */
-func TextureSystemWrapInternal(name string, width, height uint32, channelCount uint8, hasTransparency, isWriteable, registerTexture bool, internalData interface{}) (*resources.Texture, error) {
+func TextureSystemWrapInternal(name string, width, height uint32, channelCount uint8, hasTransparency, isWriteable, registerTexture bool, internalData interface{}) (*metadata.Texture, error) {
 	id := loaders.InvalidID
-	var texture *resources.Texture
+	var texture *metadata.Texture
 	if registerTexture {
 		// NOTE: Wrapped textures are never auto-released because it means that thier
 		// resources are created and managed somewhere within the renderer internals.
-		id, ok := TextureSystemProcessTextureReference(name, resources.TextureType2d, 1, false, true)
+		id, ok := TextureSystemProcessTextureReference(name, metadata.TextureType2d, 1, false, true)
 		if !ok {
 			err := fmt.Errorf("func texture system WrapInternal failed to obtain a new texture id")
 			core.LogError(err.Error())
@@ -242,11 +241,11 @@ func TextureSystemWrapInternal(name string, width, height uint32, channelCount u
 		}
 		texture = tsState.RegisteredTextures[id]
 	} else {
-		texture = &resources.Texture{}
+		texture = &metadata.Texture{}
 	}
 
 	texture.ID = id
-	texture.TextureType = resources.TextureType2d
+	texture.TextureType = metadata.TextureType2d
 	texture.Name = name
 	texture.Width = width
 	texture.Height = height
@@ -256,13 +255,13 @@ func TextureSystemWrapInternal(name string, width, height uint32, channelCount u
 
 	texture.Flags |= 0
 	if hasTransparency {
-		texture.Flags |= resources.TextureFlagBits(resources.TextureFlagHasTransparency)
+		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
 	}
 	texture.Flags |= 0
 	if isWriteable {
-		texture.Flags |= resources.TextureFlagBits(resources.TextureFlagIsWriteable)
+		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)
 	}
-	texture.Flags |= resources.TextureFlagBits(resources.TextureFlagIsWrapped)
+	texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWrapped)
 
 	return texture, nil
 }
@@ -275,7 +274,7 @@ func TextureSystemWrapInternal(name string, width, height uint32, channelCount u
  * @param internalData A pointer to the internal data to be set.
  * @return True on success; otherwise false.
  */
-func TextureSystemSetInternal(texture *resources.Texture, internalData interface{}) bool {
+func TextureSystemSetInternal(texture *metadata.Texture, internalData interface{}) bool {
 	if texture != nil {
 		texture.InternalData = internalData
 		texture.Generation++
@@ -294,9 +293,9 @@ func TextureSystemSetInternal(texture *resources.Texture, internalData interface
  * @param regenerateInternalData Indicates if the internal data should be regenerated.
  * @return True on success; otherwise false.
  */
-func TextureSystemResize(texture *resources.Texture, width, height uint32, regenerateInternalData bool) bool {
+func TextureSystemResize(texture *metadata.Texture, width, height uint32, regenerateInternalData bool) bool {
 	if texture != nil {
-		if (texture.Flags & resources.TextureFlagBits(resources.TextureFlagIsWriteable)) == 0 {
+		if (texture.Flags & metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)) == 0 {
 			core.LogWarn("texture_system_resize should not be called on textures that are not writeable.")
 			return false
 		}
@@ -306,7 +305,7 @@ func TextureSystemResize(texture *resources.Texture, width, height uint32, regen
 		// Wrapped textures can call texture_system_set_internal then call
 		// this function to get the above parameter updates and a generation
 		// update.
-		if (texture.Flags&resources.TextureFlagBits(resources.TextureFlagIsWrapped) == 0) && regenerateInternalData {
+		if (texture.Flags&metadata.TextureFlagBits(metadata.TextureFlagIsWrapped) == 0) && regenerateInternalData {
 			// Regenerate internals for the new size.
 			renderer.TextureResize(texture, width, height)
 			return false
@@ -327,7 +326,7 @@ func TextureSystemResize(texture *resources.Texture, width, height uint32, regen
  * @param data A pointer to the data to be written.
  * @return True on success; otherwise false.
  */
-func TextureSystemWriteData(texture *resources.Texture, offset, size uint32, data interface{}) bool {
+func TextureSystemWriteData(texture *metadata.Texture, offset, size uint32, data interface{}) bool {
 	if texture != nil {
 		// Type assertion to []uint8
 		pixels, ok := data.([]uint8)
@@ -345,7 +344,7 @@ func TextureSystemWriteData(texture *resources.Texture, offset, size uint32, dat
  * @brief Gets a pointer to the default texture. No reference counting is
  * done for default textures.
  */
-func TextureSystemGetDefaultTexture() *resources.Texture {
+func TextureSystemGetDefaultTexture() *metadata.Texture {
 	return tsState.DefaultTexture
 }
 
@@ -353,7 +352,7 @@ func TextureSystemGetDefaultTexture() *resources.Texture {
  * @brief Gets a pointer to the default diffuse texture. No reference counting is
  * done for default textures.
  */
-func TextureSystemGetDefaultDiffuseTexture() *resources.Texture {
+func TextureSystemGetDefaultDiffuseTexture() *metadata.Texture {
 	return tsState.DefaultDiffuseTexture
 }
 
@@ -361,7 +360,7 @@ func TextureSystemGetDefaultDiffuseTexture() *resources.Texture {
  * @brief Gets a pointer to the default specular texture. No reference counting is
  * done for default textures.
  */
-func TextureSystemGetDefaultSpecularTexture() *resources.Texture {
+func TextureSystemGetDefaultSpecularTexture() *metadata.Texture {
 	return tsState.DefaultSpecularTexture
 }
 
@@ -369,7 +368,7 @@ func TextureSystemGetDefaultSpecularTexture() *resources.Texture {
  * @brief Gets a pointer to the default normal texture. No reference counting is
  * done for default textures.
  */
-func TextureSystemGetDefaultNormalTexture() *resources.Texture {
+func TextureSystemGetDefaultNormalTexture() *metadata.Texture {
 	return tsState.DefaultNormalTexture
 }
 
@@ -409,7 +408,7 @@ func TextureSystemCreateDefaultTextures() bool {
 	tsState.DefaultTexture.ChannelCount = 4
 	tsState.DefaultTexture.Generation = loaders.InvalidID
 	tsState.DefaultTexture.Flags = 0
-	tsState.DefaultTexture.TextureType = resources.TextureType2d
+	tsState.DefaultTexture.TextureType = metadata.TextureType2d
 	renderer.TextureCreate(pixels, tsState.DefaultTexture)
 	// Manually set the texture generation to invalid since this is a default texture.
 	tsState.DefaultTexture.Generation = loaders.InvalidID
@@ -425,7 +424,7 @@ func TextureSystemCreateDefaultTextures() bool {
 	tsState.DefaultDiffuseTexture.ChannelCount = 4
 	tsState.DefaultDiffuseTexture.Generation = loaders.InvalidID
 	tsState.DefaultDiffuseTexture.Flags = 0
-	tsState.DefaultDiffuseTexture.TextureType = resources.TextureType2d
+	tsState.DefaultDiffuseTexture.TextureType = metadata.TextureType2d
 	renderer.TextureCreate(diffPixels, tsState.DefaultDiffuseTexture)
 
 	// Manually set the texture generation to invalid since this is a default texture.
@@ -442,7 +441,7 @@ func TextureSystemCreateDefaultTextures() bool {
 	tsState.DefaultSpecularTexture.ChannelCount = 4
 	tsState.DefaultSpecularTexture.Generation = loaders.InvalidID
 	tsState.DefaultSpecularTexture.Flags = 0
-	tsState.DefaultSpecularTexture.TextureType = resources.TextureType2d
+	tsState.DefaultSpecularTexture.TextureType = metadata.TextureType2d
 
 	renderer.TextureCreate(specPixels, tsState.DefaultSpecularTexture)
 	// Manually set the texture generation to invalid since this is a default texture.
@@ -471,7 +470,7 @@ func TextureSystemCreateDefaultTextures() bool {
 	tsState.DefaultNormalTexture.ChannelCount = 4
 	tsState.DefaultNormalTexture.Generation = loaders.InvalidID
 	tsState.DefaultNormalTexture.Flags = 0
-	tsState.DefaultNormalTexture.TextureType = resources.TextureType2d
+	tsState.DefaultNormalTexture.TextureType = metadata.TextureType2d
 	renderer.TextureCreate(normalPixels, tsState.DefaultNormalTexture)
 
 	// Manually set the texture generation to invalid since this is a default texture.
@@ -487,15 +486,15 @@ func TextureSystemDestroyDefaultTextures() {
 	TextureSystemDestroyTexture(tsState.DefaultNormalTexture)
 }
 
-func TextureSystemLoadTexture(textureName string, texture *resources.Texture) bool {
+func TextureSystemLoadTexture(textureName string, texture *metadata.Texture) bool {
 	// Kick off a texture loading job. Only handles loading from disk
 	// to CPU. GPU upload is handled after completion of this job.
 	params := &metadata.TextureLoadParams{
 		ResourceName:      textureName,
 		OutTexture:        texture,
-		ImageResource:     &resources.Resource{},
+		ImageResource:     &metadata.Resource{},
 		CurrentGeneration: texture.Generation,
-		TempTexture:       &resources.Texture{},
+		TempTexture:       &metadata.Texture{},
 	}
 
 	job, err := JobSystemJobCreate(tsState.TextureLoadJobStart, tsState.TextureLoadJobSuccess, tsState.TextureLoadJobFail, params)
@@ -508,23 +507,23 @@ func TextureSystemLoadTexture(textureName string, texture *resources.Texture) bo
 	return true
 }
 
-func TextureSystemLoadCubeTextures(name string, textureNames []string, texture *resources.Texture) bool {
+func TextureSystemLoadCubeTextures(name string, textureNames []string, texture *metadata.Texture) bool {
 	pixels := make([]uint8, 0)
 	// image_size := uint64(0)
 	for i := 0; i < len(textureNames); i++ {
-		params := &resources.ImageResourceParams{
+		params := &metadata.ImageResourceParams{
 			FlipY: false,
 		}
 
-		imgResource, err := ResourceSystemLoad(textureNames[i], resources.ResourceTypeImage, params)
+		imgResource, err := ResourceSystemLoad(textureNames[i], metadata.ResourceTypeImage, params)
 		if err != nil {
 			core.LogError("func LoadCubeTextures - Failed to load image resource for texture '%s'", textureNames[i])
 			return false
 		}
 
-		resourceData, ok := imgResource.Data.(*resources.ImageResourceData)
+		resourceData, ok := imgResource.Data.(*metadata.ImageResourceData)
 		if !ok {
-			core.LogError("failed to type cast img_resource.Data to `*resources.ImageResourceData`")
+			core.LogError("failed to type cast img_resource.Data to `*metadata.ImageResourceData`")
 			return false
 		}
 
@@ -563,7 +562,7 @@ func TextureSystemLoadCubeTextures(name string, textureNames []string, texture *
 	return true
 }
 
-func TextureSystemDestroyTexture(texture *resources.Texture) {
+func TextureSystemDestroyTexture(texture *metadata.Texture) {
 	// Clean up backend resources.
 	renderer.TextureDestroy(texture)
 
@@ -571,7 +570,7 @@ func TextureSystemDestroyTexture(texture *resources.Texture) {
 	texture.Generation = loaders.InvalidID
 }
 
-func TextureSystemProcessTextureReference(name string, textureType resources.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, bool) {
+func TextureSystemProcessTextureReference(name string, textureType metadata.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, bool) {
 	outTextureID := loaders.InvalidID
 
 	ref, ok := tsState.RegisteredTextureTable[name]
@@ -645,7 +644,7 @@ func TextureSystemProcessTextureReference(name string, textureType resources.Tex
 					if skipLoad {
 						// KTRACE("Load skipped for texture '%s'. This is expected behaviour.");
 					} else {
-						if textureType == resources.TextureTypeCube {
+						if textureType == metadata.TextureTypeCube {
 							texture_names := make([]string, 6)
 
 							// +X,-X,+Y,-Y,+Z,-Z in _cubemap_ space, which is LH y-down
@@ -697,7 +696,7 @@ func (ts *TextureSystem) TextureLoadJobSuccess(params interface{}) {
 	}
 
 	// This also handles the GPU upload. Can't be jobified until the renderer is multithreaded.
-	resource_data := texture_params.ImageResource.Data.(*resources.ImageResourceData)
+	resource_data := texture_params.ImageResource.Data.(*metadata.ImageResourceData)
 
 	// Acquire internal texture resources and upload to GPU. Can't be jobified until the renderer is multithreaded.
 	renderer.TextureCreate(resource_data.Pixels, texture_params.TempTexture)
@@ -735,18 +734,18 @@ func (ts *TextureSystem) TextureLoadJobFail(params interface{}) {
 func (ts *TextureSystem) TextureLoadJobStart(params, result_data interface{}) bool {
 	load_params := params.(*metadata.TextureLoadParams)
 
-	resource_params := &resources.ImageResourceParams{
+	resource_params := &metadata.ImageResourceParams{
 		FlipY: true,
 	}
 
-	result, err := ResourceSystemLoad(load_params.ResourceName, resources.ResourceTypeImage, resource_params)
+	result, err := ResourceSystemLoad(load_params.ResourceName, metadata.ResourceTypeImage, resource_params)
 	if err != nil {
 		core.LogError(err.Error())
 		return false
 	}
 	load_params.ImageResource = result
 
-	resource_data := load_params.ImageResource.Data.(*resources.ImageResourceData)
+	resource_data := load_params.ImageResource.Data.(*metadata.ImageResourceData)
 
 	// Use a temporary texture to load into.
 	load_params.TempTexture.Width = resource_data.Width
@@ -772,7 +771,7 @@ func (ts *TextureSystem) TextureLoadJobStart(params, result_data interface{}) bo
 	load_params.TempTexture.Generation = loaders.InvalidID
 	load_params.TempTexture.Flags |= 0
 	if has_transparency {
-		load_params.TempTexture.Flags |= resources.TextureFlagBits(resources.TextureFlagHasTransparency)
+		load_params.TempTexture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
 	}
 
 	return true

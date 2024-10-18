@@ -7,7 +7,6 @@ import (
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/vulkan"
-	"github.com/spaghettifunk/anima/engine/resources"
 )
 
 type RendererBackend interface {
@@ -16,20 +15,20 @@ type RendererBackend interface {
 	Resized(width, height uint16) error
 	BeginFrame(deltaTime float64) error
 	EndFrame(deltaTime float64) error
-	TextureCreate(pixels []uint8, texture *resources.Texture)
-	TextureDestroy(texture *resources.Texture)
-	TextureCreateWriteable(texture *resources.Texture)
-	TextureResize(texture *resources.Texture, new_width, new_height uint32)
-	TextureWriteData(texture *resources.Texture, offset, size uint32, pixels []uint8)
-	CreateGeometry(geometry *resources.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool
-	DestroyGeometry(geometry *resources.Geometry)
+	TextureCreate(pixels []uint8, texture *metadata.Texture)
+	TextureDestroy(texture *metadata.Texture)
+	TextureCreateWriteable(texture *metadata.Texture)
+	TextureResize(texture *metadata.Texture, new_width, new_height uint32)
+	TextureWriteData(texture *metadata.Texture, offset, size uint32, pixels []uint8)
+	CreateGeometry(geometry *metadata.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool
+	DestroyGeometry(geometry *metadata.Geometry)
 	DrawGeometry(data *metadata.GeometryRenderData)
 	RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error)
 	RenderpassDestroy(pass *metadata.RenderPass)
 	RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool
 	RenderPassEnd(pass *metadata.RenderPass) bool
 	RenderPassGet(name string) *metadata.RenderPass
-	ShaderCreate(shader *metadata.Shader, config *resources.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []resources.ShaderStage) bool
+	ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool
 	ShaderDestroy(shader *metadata.Shader)
 	ShaderInitialize(shader *metadata.Shader) bool
 	ShaderUse(shader *metadata.Shader) bool
@@ -37,12 +36,12 @@ type RendererBackend interface {
 	ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool
 	ShaderApplyGlobals(shader *metadata.Shader) bool
 	ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool
-	ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*resources.TextureMap) (out_instance_id uint32)
+	ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32)
 	ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool
-	SetUniform(shader *metadata.Shader, uniform resources.ShaderUniformType, value interface{}) bool
-	TextureMapAcquireResources(texture_map *resources.TextureMap) bool
-	TextureMapReleaseResources(texture_map *resources.TextureMap)
-	RenderTargetCreate(attachment_count uint8, attachments []*resources.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget)
+	SetUniform(shader *metadata.Shader, uniform metadata.ShaderUniformType, value interface{}) bool
+	TextureMapAcquireResources(texture_map *metadata.TextureMap) bool
+	TextureMapReleaseResources(texture_map *metadata.TextureMap)
+	RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget)
 	RenderTargetDestroy(target *metadata.RenderTarget)
 	IsMultithreaded() bool
 	RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) *metadata.RenderBuffer
@@ -114,21 +113,21 @@ func DrawFrame(renderPacket *metadata.RenderPacket) error {
 	return nil
 }
 
-func TextureCreate(pixels []uint8, texture *resources.Texture) {}
+func TextureCreate(pixels []uint8, texture *metadata.Texture) {}
 
-func TextureDestroy(texture *resources.Texture) {}
+func TextureDestroy(texture *metadata.Texture) {}
 
-func TextureCreateWriteable(texture *resources.Texture) {}
+func TextureCreateWriteable(texture *metadata.Texture) {}
 
-func TextureResize(texture *resources.Texture, new_width, new_height uint32) {}
+func TextureResize(texture *metadata.Texture, new_width, new_height uint32) {}
 
-func TextureWriteData(texture *resources.Texture, offset, size uint32, pixels []uint8) {}
+func TextureWriteData(texture *metadata.Texture, offset, size uint32, pixels []uint8) {}
 
-func CreateGeometry(geometry *resources.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool {
+func CreateGeometry(geometry *metadata.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool {
 	return renderer.backend.CreateGeometry(geometry, vertex_size, vertex_count, vertices, index_size, index_count, indices)
 }
 
-func DestroyGeometry(geometry *resources.Geometry) {}
+func DestroyGeometry(geometry *metadata.Geometry) {}
 
 func DrawGeometry(data *metadata.GeometryRenderData) {}
 
@@ -144,7 +143,7 @@ func RenderPassEnd(pass *metadata.RenderPass) bool { return false }
 
 func RenderPassGet(name string) *metadata.RenderPass { return nil }
 
-func ShaderCreate(shader *metadata.Shader, config *resources.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []resources.ShaderStage) bool {
+func ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
 	return false
 }
 
@@ -162,7 +161,7 @@ func ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
 
 func ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool { return false }
 
-func ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*resources.TextureMap) (out_instance_id uint32) {
+func ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
 	return 0
 }
 
@@ -172,11 +171,11 @@ func SetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value i
 	return false
 }
 
-func TextureMapAcquireResources(texture_map *resources.TextureMap) bool { return false }
+func TextureMapAcquireResources(texture_map *metadata.TextureMap) bool { return false }
 
-func TextureMapReleaseResources(texture_map *resources.TextureMap) {}
+func TextureMapReleaseResources(texture_map *metadata.TextureMap) {}
 
-func RenderTargetCreate(attachment_count uint8, attachments []*resources.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
+func RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
 	return nil
 }
 

@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/spaghettifunk/anima/engine/core"
-	"github.com/spaghettifunk/anima/engine/resources"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
@@ -86,9 +86,9 @@ func ResourceSystemRegisterLoader(loader loaders.ResourceLoader) bool {
 	return false
 }
 
-func ResourceSystemLoad(name string, resourceType resources.ResourceType, params interface{}) (*resources.Resource, error) {
-	outResource := &resources.Resource{}
-	if resourceType != resources.ResourceTypeCustom {
+func ResourceSystemLoad(name string, resourceType metadata.ResourceType, params interface{}) (*metadata.Resource, error) {
+	outResource := &metadata.Resource{}
+	if resourceType != metadata.ResourceTypeCustom {
 		// Select loader.
 		count := rsState.Config.MaxLoaderCount
 		for i := uint32(0); i < count; i++ {
@@ -105,14 +105,14 @@ func ResourceSystemLoad(name string, resourceType resources.ResourceType, params
 	return outResource, nil
 }
 
-func ResourceSystemLoadCustom(name, custom_type string, params interface{}) (*resources.Resource, error) {
-	outResource := &resources.Resource{}
+func ResourceSystemLoadCustom(name, custom_type string, params interface{}) (*metadata.Resource, error) {
+	outResource := &metadata.Resource{}
 	if len(custom_type) > 0 {
 		// Select loader.
 		count := rsState.Config.MaxLoaderCount
 		for i := uint32(0); i < count; i++ {
 			l := rsState.RegisteredLoaders[i]
-			if l.ID != loaders.InvalidID && l.ResourceType == resources.ResourceTypeCustom && l.CustomType == custom_type {
+			if l.ID != loaders.InvalidID && l.ResourceType == metadata.ResourceTypeCustom && l.CustomType == custom_type {
 				return load(name, l, params)
 			}
 		}
@@ -123,7 +123,7 @@ func ResourceSystemLoadCustom(name, custom_type string, params interface{}) (*re
 	return outResource, nil
 }
 
-func ResourceSystemUnload(resource *resources.Resource) error {
+func ResourceSystemUnload(resource *metadata.Resource) error {
 	if resource != nil {
 		if resource.LoaderID != loaders.InvalidID {
 			l := rsState.RegisteredLoaders[resource.LoaderID]
@@ -138,7 +138,7 @@ func ResourceSystemUnload(resource *resources.Resource) error {
 }
 
 // TODO: when do I need to use this???
-func load(name string, loader loaders.ResourceLoader, params interface{}) (*resources.Resource, error) {
+func load(name string, loader loaders.ResourceLoader, params interface{}) (*metadata.Resource, error) {
 	err := fmt.Errorf("function `load` not implemented")
 	core.LogFatal(err.Error())
 	return nil, err

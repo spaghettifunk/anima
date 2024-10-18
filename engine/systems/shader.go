@@ -7,7 +7,6 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
@@ -86,7 +85,7 @@ func ShaderSystemShutdown() error {
  * @param config The configuration to be used when creating the shader.
  * @return True on success; otherwise false.
  */
-func ShaderSystemCreateShader(config *resources.ShaderConfig) (*metadata.Shader, error) {
+func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, error) {
 	id := ssState.newShaderID()
 
 	shader := ssState.Shaders[id]
@@ -105,7 +104,7 @@ func ShaderSystemCreateShader(config *resources.ShaderConfig) (*metadata.Shader,
 	shader.AttributeStride = 0
 
 	// Setup arrays
-	shader.GlobalTextureMaps = make([]*resources.TextureMap, 1)
+	shader.GlobalTextureMaps = make([]*metadata.TextureMap, 1)
 	shader.Uniforms = make([]metadata.ShaderUniform, 1)
 	shader.Attributes = make([]metadata.ShaderAttribute, 1)
 
@@ -143,7 +142,7 @@ func ShaderSystemCreateShader(config *resources.ShaderConfig) (*metadata.Shader,
 
 	// Process uniforms
 	for i := uint8(0); i < config.UniformCount; i++ {
-		if config.Uniforms[i].ShaderUniformType == resources.ShaderUniformTypeSampler {
+		if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
 			ssState.addSampler(shader, config.Uniforms[i])
 		} else {
 			ssState.addUniform(shader, config.Uniforms[i])
@@ -273,7 +272,7 @@ func ShaderSystemSetUniform(uniformName string, value interface{}) bool {
  * @param t A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetTextureSampler(samplerName string, texture *resources.Texture) bool {
+func ShaderSystemSetTextureSampler(samplerName string, texture *metadata.Texture) bool {
 	return ShaderSystemSetUniform(samplerName, texture)
 }
 
@@ -289,9 +288,9 @@ func ShaderSystemSetUniformByIndex(index uint16, value interface{}) bool {
 	shader := ssState.Shaders[index]
 	uniform := shader.Uniforms[index]
 	if shader.BoundScope != uniform.Scope {
-		if uniform.Scope == resources.ShaderScopeGlobal {
+		if uniform.Scope == metadata.ShaderScopeGlobal {
 			renderer.ShaderBindGlobals(shader)
-		} else if uniform.Scope == resources.ShaderScopeInstance {
+		} else if uniform.Scope == metadata.ShaderScopeInstance {
 			renderer.ShaderBindInstance(shader, shader.BoundInstanceID)
 		} else {
 			// NOTE: Nothing to do here for locals, just set the uniform.
@@ -301,7 +300,7 @@ func ShaderSystemSetUniformByIndex(index uint16, value interface{}) bool {
 	return renderer.SetUniform(shader, uniform, value)
 }
 
-func ShaderSystemSetSampler(samplerName string, texture *resources.Texture) bool {
+func ShaderSystemSetSampler(samplerName string, texture *metadata.Texture) bool {
 	return ShaderSystemSetUniform(samplerName, texture)
 }
 
@@ -313,7 +312,7 @@ func ShaderSystemSetSampler(samplerName string, texture *resources.Texture) bool
  * @param value A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetSamplerByIndex(index uint16, texture *resources.Texture) bool {
+func ShaderSystemSetSamplerByIndex(index uint16, texture *metadata.Texture) bool {
 	return ShaderSystemSetUniformByIndex(index, texture)
 }
 
@@ -353,24 +352,24 @@ func ShaderSystemBindInstance(instanceID uint32) bool {
 	return renderer.ShaderBindInstance(shader, instanceID)
 }
 
-func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *resources.ShaderAttributeConfig) bool {
+func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.ShaderAttributeConfig) bool {
 	size := uint32(0)
 	switch config.ShaderAttributeType {
-	case resources.ShaderAttribTypeInt8:
-	case resources.ShaderAttribTypeUint8:
+	case metadata.ShaderAttribTypeInt8:
+	case metadata.ShaderAttribTypeUint8:
 		size = 1
-	case resources.ShaderAttribTypeInt16:
-	case resources.ShaderAttribTypeUint16:
+	case metadata.ShaderAttribTypeInt16:
+	case metadata.ShaderAttribTypeUint16:
 		size = 2
-	case resources.ShaderAttribTypeFloat32:
-	case resources.ShaderAttribTypeInt32:
-	case resources.ShaderAttribTypeUint32:
+	case metadata.ShaderAttribTypeFloat32:
+	case metadata.ShaderAttribTypeInt32:
+	case metadata.ShaderAttribTypeUint32:
 		size = 4
-	case resources.ShaderAttribTypeFloat32_2:
+	case metadata.ShaderAttribTypeFloat32_2:
 		size = 8
-	case resources.ShaderAttribTypeFloat32_3:
+	case metadata.ShaderAttribTypeFloat32_3:
 		size = 12
-	case resources.ShaderAttribTypeFloat32_4:
+	case metadata.ShaderAttribTypeFloat32_4:
 		size = 16
 	default:
 		core.LogError("Unrecognized type %d, defaulting to size of 4. This probably is not what is desired.", size)
@@ -390,9 +389,9 @@ func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *resources.S
 	return true
 }
 
-func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *resources.ShaderUniformConfig) bool {
+func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
 	// Samples can't be used for push constants.
-	if config.Scope == resources.ShaderScopeLocal {
+	if config.Scope == metadata.ShaderScopeLocal {
 		core.LogError("add_sampler cannot add a sampler at local scope.")
 		return false
 	}
@@ -404,7 +403,7 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *resources.Sha
 
 	// If global, push into the global list.
 	location := uint32(0)
-	if config.Scope == resources.ShaderScopeGlobal {
+	if config.Scope == metadata.ShaderScopeGlobal {
 		global_texture_count := len(shader.GlobalTextureMaps)
 		if global_texture_count+1 > int(s.Config.MaxGlobalTextures) {
 			core.LogError("Shader global texture count `%d` exceeds max of `%d`", global_texture_count, s.Config.MaxGlobalTextures)
@@ -413,13 +412,13 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *resources.Sha
 		location = uint32(global_texture_count)
 
 		// NOTE: creating a default texture map to be used here. Can always be updated later.
-		default_map := &resources.TextureMap{
-			FilterMagnify: resources.TextureFilterModeLinear,
-			FilterMinify:  resources.TextureFilterModeLinear,
-			RepeatU:       resources.TextureRepeatRepeat,
-			RepeatV:       resources.TextureRepeatRepeat,
-			RepeatW:       resources.TextureRepeatRepeat,
-			Use:           resources.TextureUseUnknown,
+		default_map := &metadata.TextureMap{
+			FilterMagnify: metadata.TextureFilterModeLinear,
+			FilterMinify:  metadata.TextureFilterModeLinear,
+			RepeatU:       metadata.TextureRepeatRepeat,
+			RepeatV:       metadata.TextureRepeatRepeat,
+			RepeatW:       metadata.TextureRepeatRepeat,
+			Use:           metadata.TextureUseUnknown,
 		}
 		if !renderer.TextureMapAcquireResources(default_map) {
 			core.LogError("Failed to acquire resources for global texture map during shader creation.")
@@ -454,7 +453,7 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *resources.Sha
 	return true
 }
 
-func (s *ShaderSystem) addUniform(shader *metadata.Shader, config *resources.ShaderUniformConfig) bool {
+func (s *ShaderSystem) addUniform(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
 	if !s.shaderUniformAddStateValid(shader) || !s.uniformNameValid(shader, config.Name) {
 		return false
 	}
@@ -479,7 +478,7 @@ func (s *ShaderSystem) newShaderID() uint32 {
 	return loaders.InvalidID
 }
 
-func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, size uint32, shader_uniform_type resources.ShaderUniformType, scope resources.ShaderScope, set_location uint32, is_sampler bool) bool {
+func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, size uint32, shader_uniform_type metadata.ShaderUniformType, scope metadata.ShaderScope, set_location uint32, is_sampler bool) bool {
 	uniform_count := len(shader.Uniforms)
 	if uniform_count+1 > int(s.Config.MaxUniformCount) {
 		core.LogError("A shader can only accept a combined maximum of %d uniforms and samplers at global, instance and local scopes.", s.Config.MaxUniformCount)
@@ -491,7 +490,7 @@ func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, 
 		ShaderUniformType: shader_uniform_type,
 	}
 
-	is_global := (scope == resources.ShaderScopeGlobal)
+	is_global := (scope == metadata.ShaderScopeGlobal)
 	if is_sampler {
 		// Just use the passed in location
 		entry.Location = uint16(set_location)
@@ -499,7 +498,7 @@ func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, 
 		entry.Location = entry.Index
 	}
 
-	if scope != resources.ShaderScopeLocal {
+	if scope != metadata.ShaderScopeLocal {
 		entry.SetIndex = uint8(scope)
 		entry.Offset = 0
 		entry.Size = 0
@@ -536,9 +535,9 @@ func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, 
 	shader.Uniforms = append(shader.Uniforms, entry)
 
 	if !is_sampler {
-		if entry.Scope == resources.ShaderScopeGlobal {
+		if entry.Scope == metadata.ShaderScopeGlobal {
 			shader.GlobalUboSize += uint64(entry.Size)
-		} else if entry.Scope == resources.ShaderScopeInstance {
+		} else if entry.Scope == metadata.ShaderScopeInstance {
 			shader.UboSize += uint64(entry.Size)
 		}
 	}
@@ -594,6 +593,6 @@ func (s *ShaderSystem) shaderDestroy(shader *metadata.Shader) error {
 	for i := 0; i < len(shader.GlobalTextureMaps); i++ {
 		shader.GlobalTextureMaps[i] = nil
 	}
-	shader.GlobalTextureMaps = make([]*resources.TextureMap, 1)
+	shader.GlobalTextureMaps = make([]*metadata.TextureMap, 1)
 	return nil
 }

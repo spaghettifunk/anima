@@ -1,6 +1,6 @@
 package loaders
 
-import "github.com/spaghettifunk/anima/engine/resources"
+import "github.com/spaghettifunk/anima/engine/renderer/metadata"
 
 const (
 	InvalidIDUint64 uint64 = 18446744073709551615
@@ -14,7 +14,7 @@ type ResourceLoader struct {
 	/** @brief The loader identifier. */
 	ID uint32
 	/** @brief The loader resource type. */
-	ResourceType resources.ResourceType
+	ResourceType metadata.ResourceType
 	/** @brief The loader custom type string, if type is set to custom. */
 	CustomType string
 	/** @brief A type path which is prepended for the asset type. */
@@ -24,6 +24,6 @@ type ResourceLoader struct {
 }
 
 type ResourceLoaderInterface interface {
-	Load(name string, params interface{}) (*resources.Resource, error)
-	Unload(resource *resources.Resource) error
+	Load(name string, params interface{}) (*metadata.Resource, error)
+	Unload(resource *metadata.Resource) error
 }

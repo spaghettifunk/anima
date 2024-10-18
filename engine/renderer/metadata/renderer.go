@@ -2,7 +2,6 @@ package metadata
 
 import (
 	"github.com/spaghettifunk/anima/engine/math"
-	"github.com/spaghettifunk/anima/engine/resources"
 )
 
 const (
@@ -18,7 +17,7 @@ type RenderTarget struct {
 	/** @brief The number of attachments */
 	AttachmentCount uint8
 	/** @brief An array of Attachments (pointers to textures). */
-	Attachments []*resources.Texture
+	Attachments []*Texture
 	/** @brief The renderer API internal framebuffer object. */
 	InternalFramebuffer interface{}
 }
@@ -297,23 +296,23 @@ type RenderViewPacket struct {
 
 type GeometryRenderData struct {
 	Model    math.Mat4
-	Geometry *resources.Geometry
+	Geometry *Geometry
 }
 
 type MeshPacketData struct {
 	MeshCount uint32
-	Meshes    []*resources.Mesh
+	Meshes    []*Mesh
 }
 
 // type UIPacketData struct {
 // 	MeshData *MeshPacketData
 // 	// TODO: temp
 // 	TextCount uint32
-// 	Texts     []*resources.UIText
+// 	Texts     []*UIText
 // }
 
 type SkyboxPacketData struct {
-	Skybox *resources.Skybox
+	Skybox *Skybox
 }
 
 /** @brief A range, typically of memory */

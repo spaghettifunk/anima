@@ -3,7 +3,6 @@ package vulkan
 import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 )
 
 /**
@@ -79,7 +78,7 @@ type VulkanShaderConfig struct {
 	Attributes [VULKAN_SHADER_MAX_ATTRIBUTES]vk.VertexInputAttributeDescription
 
 	/** @brief Face culling mode, provided by the front end. */
-	CullMode resources.FaceCullMode
+	CullMode metadata.FaceCullMode
 }
 
 /**
@@ -96,7 +95,7 @@ type VulkanShaderInstanceState struct {
 	 * @brief Instance texture map pointers, which are used during rendering. These
 	 * are set by calls to set_sampler.
 	 */
-	InstanceTextureMaps []resources.TextureMap
+	InstanceTextureMaps []metadata.TextureMap
 }
 
 /**
@@ -155,7 +154,7 @@ func NewShaderModule(context *VulkanContext, name string, typeStr string, shader
 	// fileName := fmt.Sprintf("shaders/%s.%s.spv", name, typeStr)
 
 	// Read the resource.
-	var binaryResource resources.Resource
+	var binaryResource metadata.Resource
 	// if !resource_system_load(fileName, resources.ResourceTypeBinary, 0, &binaryResource) {
 	// 	err := fmt.Errorf("unable to read shader module: %s", fileName)
 	// 	core.LogError(err.Error())

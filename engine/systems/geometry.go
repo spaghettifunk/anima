@@ -1,69 +1,26 @@
 package systems
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
 
-/** @brief The geometry system configuration. */
-type GeometrySystemConfig struct {
-	/**
-	 * @brief NOTE: Should be significantly greater than the number of static meshes because
-	 * the there can and will be more than one of these per mesh.
-	 * Take other systems into account as well.
-	 */
-	MaxGeometryCount uint32
-}
-
-/**
- * @brief Represents the configuration for a geometry.
- */
-type GeometryConfig struct {
-	/** @brief The size of each vertex. */
-	VertexSize uint32
-	/** @brief The number of vertices. */
-	VertexCount uint32
-	/** @brief An array of Vertices. */
-	Vertices []math.Vertex3D
-	/** @brief The size of each index. */
-	IndexSize uint32
-	/** @brief The number of indices. */
-	IndexCount uint32
-	/** @brief An array of Indices. */
-	Indices []uint32
-
-	Center     math.Vec3
-	MinExtents math.Vec3
-	MaxExtents math.Vec3
-
-	/** @brief The Name of the geometry. */
-	Name string
-	/** @brief The name of the material used by the geometry. */
-	MaterialName string
-}
-
-type GeometryReference struct {
-	ReferenceCount uint64
-	Geometry       resources.Geometry
-	AutoRelease    bool
-}
-
-type GeometrySystem struct {
-	Config GeometrySystemConfig
-
-	DefaultGeometry   *resources.Geometry
-	Default2DGeometry *resources.Geometry
-
+type geometrySystemState struct {
+	Config            *metadata.GeometrySystemConfig
+	DefaultGeometry   *metadata.Geometry
+	Default2DGeometry *metadata.Geometry
 	// Array of registered meshes.
-	RegisteredGeometries []GeometryReference
+	RegisteredGeometries []*metadata.GeometryReference
 }
 
-/** @brief The name of the default geometry. */
-const DefaultGeometryName string = "default"
+var onceGeometrySystem sync.Once
+var gsState *geometrySystemState
 
 /**
  * @brief Initializes the geometry system.
@@ -75,8 +32,35 @@ const DefaultGeometryName string = "default"
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewGeometrySystem(config GeometrySystemConfig) (*GeometrySystem, error) {
-	return nil, nil
+func NewGeometrySystem(config *metadata.GeometrySystemConfig) error {
+	if config.MaxGeometryCount == 0 {
+		err := fmt.Errorf("func NewGeometrySystem - config.MaxGeometryCount must be > 0")
+		core.LogWarn(err.Error())
+		return err
+	}
+
+	var err error
+	onceGeometrySystem.Do(func() {
+		gsState = &geometrySystemState{
+			Config:               config,
+			RegisteredGeometries: make([]*metadata.GeometryReference, config.MaxGeometryCount),
+		}
+
+		// Invalidate all geometries in the array.
+		count := gsState.Config.MaxGeometryCount
+		for i := uint32(0); i < count; i++ {
+			gsState.RegisteredGeometries[i].Geometry.ID = loaders.InvalidID
+			gsState.RegisteredGeometries[i].Geometry.InternalID = loaders.InvalidID
+			gsState.RegisteredGeometries[i].Geometry.Generation = loaders.InvalidIDUint16
+		}
+
+		if !gsState.createDefaultGeometries() {
+			err = fmt.Errorf("failed to create default geometries. Application cannot continue")
+			core.LogError(err.Error())
+		}
+	})
+
+	return err
 }
 
 /**
@@ -84,7 +68,7 @@ func NewGeometrySystem(config GeometrySystemConfig) (*GeometrySystem, error) {
  *
  * @param state The state block of memory.
  */
-func (gs *GeometrySystem) Shutdown() {}
+func GeometrySystemShutdown() {}
 
 /**
  * @brief Acquires an existing geometry by id.
@@ -92,8 +76,16 @@ func (gs *GeometrySystem) Shutdown() {}
  * @param id The geometry identifier to acquire by.
  * @return A pointer to the acquired geometry or nullptr if failed.
  */
-func (gs *GeometrySystem) AcquireByID(id uint32) (*resources.Geometry, error) {
-	return nil, nil
+func GeometrySystemAcquireByID(id uint32) (*metadata.Geometry, error) {
+	if id != loaders.InvalidID && gsState.RegisteredGeometries[id].Geometry.ID != loaders.InvalidID {
+		gsState.RegisteredGeometries[id].ReferenceCount++
+		return gsState.RegisteredGeometries[id].Geometry, nil
+	}
+
+	// NOTE: Should return default geometry instead?
+	err := fmt.Errorf("func GeometrySystemAcquireByID cannot load invalid geometry id. Returning nullptr")
+	core.LogError(err.Error())
+	return nil, err
 }
 
 /**
@@ -103,8 +95,32 @@ func (gs *GeometrySystem) AcquireByID(id uint32) (*resources.Geometry, error) {
  * @param auto_release Indicates if the acquired geometry should be unloaded when its reference count reaches 0.
  * @return A pointer to the acquired geometry or nullptr if failed.
  */
-func (gs *GeometrySystem) AcquireFromConfig(config GeometryConfig, autoRelease bool) (*resources.Geometry, error) {
-	return nil, nil
+func GeometrySystemAcquireFromConfig(config *metadata.GeometryConfig, autoRelease bool) (*metadata.Geometry, error) {
+	var geometry *metadata.Geometry
+	for i := uint32(0); i < gsState.Config.MaxGeometryCount; i++ {
+		if gsState.RegisteredGeometries[i].Geometry.ID == loaders.InvalidID {
+			// Found empty slot.
+			gsState.RegisteredGeometries[i].AutoRelease = autoRelease
+			gsState.RegisteredGeometries[i].ReferenceCount = 1
+			geometry = gsState.RegisteredGeometries[i].Geometry
+			geometry.ID = i
+			break
+		}
+	}
+
+	if geometry == nil {
+		err := fmt.Errorf("unable to obtain free slot for geometry. Adjust configuration to allow more space. Returning nullptr")
+		core.LogError(err.Error())
+		return nil, err
+	}
+
+	if !gsState.create_geometry(config, geometry) {
+		err := fmt.Errorf("failed to create geometry. Returning nullptr")
+		core.LogError(err.Error())
+		return nil, err
+	}
+
+	return geometry, nil
 }
 
 /**
@@ -112,7 +128,13 @@ func (gs *GeometrySystem) AcquireFromConfig(config GeometryConfig, autoRelease b
  *
  * @param config A pointer to the configuration to be disposed.
  */
-func (gs *GeometrySystem) ConfigDispose(config *GeometryConfig) error {
+func GeometrySystemConfigDispose(config *metadata.GeometryConfig) error {
+	if len(config.Vertices) > 0 {
+		config.Vertices = nil
+	}
+	if len(config.Indices) > 0 {
+		config.Indices = nil
+	}
 	return nil
 }
 
@@ -121,8 +143,30 @@ func (gs *GeometrySystem) ConfigDispose(config *GeometryConfig) error {
  *
  * @param geometry The geometry to be released.
  */
-func (gs *GeometrySystem) Release(geometry *resources.Geometry) {
+func GeometrySystemRelease(geometry *metadata.Geometry) {
+	if geometry != nil && geometry.ID != loaders.InvalidID {
+		ref := gsState.RegisteredGeometries[geometry.ID]
 
+		// Take a copy of the id;
+		id := geometry.ID
+		if ref.Geometry.ID == id {
+			if ref.ReferenceCount > 0 {
+				ref.ReferenceCount--
+			}
+
+			// Also blanks out the geometry id.
+			if ref.ReferenceCount < 1 && ref.AutoRelease {
+				gsState.destroyGeometry(ref.Geometry)
+				ref.ReferenceCount = 0
+				ref.AutoRelease = false
+			}
+		} else {
+			core.LogError("Geometry id mismatch. Check registration logic, as this should never occur.")
+		}
+		return
+	}
+
+	core.LogWarn("geometry_system_release cannot release invalid geometry id. Nothing was done.")
 }
 
 /**
@@ -130,8 +174,8 @@ func (gs *GeometrySystem) Release(geometry *resources.Geometry) {
  *
  * @return A pointer to the default geometry.
  */
-func (gs *GeometrySystem) GetDefault() *resources.Geometry {
-	return gs.DefaultGeometry
+func GeometrySystemGetDefault() *metadata.Geometry {
+	return gsState.DefaultGeometry
 }
 
 /**
@@ -139,82 +183,8 @@ func (gs *GeometrySystem) GetDefault() *resources.Geometry {
  *
  * @return A pointer to the default geometry.
  */
-func (gs *GeometrySystem) GetDefault2D() *resources.Geometry {
-	return gs.Default2DGeometry
-}
-
-func (gs *GeometrySystem) SetDefaultGeometries() bool {
-	verts := make([]math.Vertex3D, 4)
-
-	f := float32(10.0)
-
-	verts[0].Position.X = -0.5 * f // 0    3
-	verts[0].Position.Y = -0.5 * f //
-	verts[0].Texcoord.X = 0.0      //
-	verts[0].Texcoord.Y = 0.0      // 2    1
-
-	verts[1].Position.X = 0.5 * f
-	verts[1].Position.Y = 0.5 * f
-	verts[1].Texcoord.X = 1.0
-	verts[1].Texcoord.Y = 1.0
-
-	verts[2].Position.X = -0.5 * f
-	verts[2].Position.Y = 0.5 * f
-	verts[2].Texcoord.X = 0.0
-	verts[2].Texcoord.Y = 1.0
-
-	verts[3].Position.X = 0.5 * f
-	verts[3].Position.Y = -0.5 * f
-	verts[3].Texcoord.X = 1.0
-	verts[3].Texcoord.Y = 0.0
-
-	indices := []uint32{0, 1, 2, 0, 3, 1}
-
-	// Send the geometry off to the renderer to be uploaded to the GPU.
-	gs.DefaultGeometry.InternalID = loaders.InvalidID
-	if !renderer.CreateGeometry(gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
-		core.LogFatal("Failed to create default geometry. Application cannot continue.")
-		return false
-	}
-
-	// Acquire the default material.
-	gs.DefaultGeometry.Material = MaterialSystemGetDefault()
-
-	// Create default 2d geometry.
-	verts2d := make([]math.Vertex2D, 4)
-	verts2d[0].Position.X = -0.5 * f // 0    3
-	verts2d[0].Position.Y = -0.5 * f //
-	verts2d[0].Texcoord.X = 0.0      //
-	verts2d[0].Texcoord.Y = 0.0      // 2    1
-
-	verts2d[1].Position.X = 0.5 * f
-	verts2d[1].Position.Y = 0.5 * f
-	verts2d[1].Texcoord.X = 1.0
-	verts2d[1].Texcoord.Y = 1.0
-
-	verts2d[2].Position.X = -0.5 * f
-	verts2d[2].Position.Y = 0.5 * f
-	verts2d[2].Texcoord.X = 0.0
-	verts2d[2].Texcoord.Y = 1.0
-
-	verts2d[3].Position.X = 0.5 * f
-	verts2d[3].Position.Y = -0.5 * f
-	verts2d[3].Texcoord.X = 1.0
-	verts2d[3].Texcoord.Y = 0.0
-
-	// Indices (NOTE: counter-clockwise)
-	indices2d := []uint32{2, 1, 0, 3, 0, 1}
-
-	// Send the geometry off to the renderer to be uploaded to the GPU.
-	if !renderer.CreateGeometry(gs.Default2DGeometry, 0, 4, verts2d, 0, 6, indices2d) {
-		core.LogFatal("Failed to create default 2d geometry. Application cannot continue.")
-		return false
-	}
-
-	// Acquire the default material.
-	gs.Default2DGeometry.Material = MaterialSystemGetDefault()
-
-	return true
+func GeometrySystemGetDefault2D() *metadata.Geometry {
+	return gsState.Default2DGeometry
 }
 
 /**
@@ -232,7 +202,7 @@ func (gs *GeometrySystem) SetDefaultGeometries() bool {
  * @param material_name The name of the material to be used.
  * @return A geometry configuration which can then be fed into geometry_system_acquire_from_config().
  */
-func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCount, ySegmentCount uint32, tileX, tileY float32, name, materialName string) (*GeometryConfig, error) {
+func GeometrySystemGeneratePlaneConfig(width, height float32, xSegmentCount, ySegmentCount uint32, tileX, tileY float32, name, materialName string) (*metadata.GeometryConfig, error) {
 	if width == 0 {
 		core.LogWarn("Width must be nonzero. Defaulting to one.")
 		width = 1.0
@@ -259,7 +229,7 @@ func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCou
 		tileY = 1.0
 	}
 
-	config := &GeometryConfig{
+	config := &metadata.GeometryConfig{
 		VertexSize:  0,
 		VertexCount: xSegmentCount * ySegmentCount * 4, // 4 verts per segment
 		Vertices:    make([]math.Vertex3D, xSegmentCount*ySegmentCount*4),
@@ -325,7 +295,7 @@ func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCou
 	if len(name) > 0 {
 		config.Name = name
 	} else {
-		config.Name = DefaultGeometryName
+		config.Name = metadata.DefaultGeometryName
 	}
 
 	if len(materialName) > 0 {
@@ -337,7 +307,7 @@ func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCou
 	return config, nil
 }
 
-func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY float32, name, materialName string) (*GeometryConfig, error) {
+func GeometrySystemGenerateCubeConfig(width, height, depth, tileX, tileY float32, name, materialName string) (*metadata.GeometryConfig, error) {
 	if width == 0 {
 		core.LogWarn("Width must be nonzero. Defaulting to one.")
 		width = 1.0
@@ -359,7 +329,7 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 		tileY = 1.0
 	}
 
-	config := &GeometryConfig{
+	config := &metadata.GeometryConfig{
 		VertexSize:  0,
 		VertexCount: 4 * 6, // 4 verts per side, 6 side
 		Vertices:    make([]math.Vertex3D, 4*6),
@@ -493,7 +463,7 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 	if len(name) > 0 {
 		config.Name = name
 	} else {
-		config.Name = DefaultGeometryName
+		config.Name = metadata.DefaultGeometryName
 	}
 
 	if len(materialName) > 0 {
@@ -505,4 +475,126 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 	config.Vertices = math.GeometryGenerateTangents(config.VertexCount, config.Vertices, config.IndexCount, config.Indices)
 
 	return config, nil
+}
+
+func (gs *geometrySystemState) createDefaultGeometries() bool {
+	verts := make([]math.Vertex3D, 4)
+
+	f := float32(10.0)
+
+	verts[0].Position.X = -0.5 * f // 0    3
+	verts[0].Position.Y = -0.5 * f //
+	verts[0].Texcoord.X = 0.0      //
+	verts[0].Texcoord.Y = 0.0      // 2    1
+
+	verts[1].Position.X = 0.5 * f
+	verts[1].Position.Y = 0.5 * f
+	verts[1].Texcoord.X = 1.0
+	verts[1].Texcoord.Y = 1.0
+
+	verts[2].Position.X = -0.5 * f
+	verts[2].Position.Y = 0.5 * f
+	verts[2].Texcoord.X = 0.0
+	verts[2].Texcoord.Y = 1.0
+
+	verts[3].Position.X = 0.5 * f
+	verts[3].Position.Y = -0.5 * f
+	verts[3].Texcoord.X = 1.0
+	verts[3].Texcoord.Y = 0.0
+
+	indices := []uint32{0, 1, 2, 0, 3, 1}
+
+	// Send the geometry off to the renderer to be uploaded to the GPU.
+	gs.DefaultGeometry.InternalID = loaders.InvalidID
+	if !renderer.CreateGeometry(gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
+		core.LogFatal("Failed to create default geometry. Application cannot continue.")
+		return false
+	}
+
+	// Acquire the default material.
+	gs.DefaultGeometry.Material = MaterialSystemGetDefault()
+
+	// Create default 2d geometry.
+	verts2d := make([]math.Vertex2D, 4)
+	verts2d[0].Position.X = -0.5 * f // 0    3
+	verts2d[0].Position.Y = -0.5 * f //
+	verts2d[0].Texcoord.X = 0.0      //
+	verts2d[0].Texcoord.Y = 0.0      // 2    1
+
+	verts2d[1].Position.X = 0.5 * f
+	verts2d[1].Position.Y = 0.5 * f
+	verts2d[1].Texcoord.X = 1.0
+	verts2d[1].Texcoord.Y = 1.0
+
+	verts2d[2].Position.X = -0.5 * f
+	verts2d[2].Position.Y = 0.5 * f
+	verts2d[2].Texcoord.X = 0.0
+	verts2d[2].Texcoord.Y = 1.0
+
+	verts2d[3].Position.X = 0.5 * f
+	verts2d[3].Position.Y = -0.5 * f
+	verts2d[3].Texcoord.X = 1.0
+	verts2d[3].Texcoord.Y = 0.0
+
+	// Indices (NOTE: counter-clockwise)
+	indices2d := []uint32{2, 1, 0, 3, 0, 1}
+
+	// Send the geometry off to the renderer to be uploaded to the GPU.
+	if !renderer.CreateGeometry(gs.Default2DGeometry, 0, 4, verts2d, 0, 6, indices2d) {
+		core.LogFatal("Failed to create default 2d geometry. Application cannot continue.")
+		return false
+	}
+
+	// Acquire the default material.
+	gs.Default2DGeometry.Material = MaterialSystemGetDefault()
+
+	return true
+}
+
+func (gs *geometrySystemState) create_geometry(config *metadata.GeometryConfig, geometry *metadata.Geometry) bool {
+	// Send the geometry off to the renderer to be uploaded to the GPU.
+	if !renderer.CreateGeometry(geometry, config.VertexSize, config.VertexCount, config.Vertices, config.IndexSize, config.IndexCount, config.Indices) {
+		// Invalidate the entry.
+		gs.RegisteredGeometries[geometry.ID].ReferenceCount = 0
+		gs.RegisteredGeometries[geometry.ID].AutoRelease = false
+		geometry.ID = loaders.InvalidID
+		geometry.Generation = loaders.InvalidIDUint16
+		geometry.InternalID = loaders.InvalidID
+
+		return false
+	}
+
+	// Copy over extents, center, etc.
+	geometry.Center = config.Center
+	geometry.Extents.Min = config.MinExtents
+	geometry.Extents.Max = config.MaxExtents
+
+	// Acquire the material
+	if len(config.MaterialName) > 0 {
+		mat, err := MaterialSystemAcquire(config.MaterialName)
+		if err != nil {
+			core.LogError(err.Error())
+			return false
+		}
+		geometry.Material = mat
+		if geometry.Material == nil {
+			geometry.Material = MaterialSystemGetDefault()
+		}
+	}
+	return true
+}
+
+func (gs *geometrySystemState) destroyGeometry(geometry *metadata.Geometry) {
+	renderer.DestroyGeometry(geometry)
+	geometry.InternalID = loaders.InvalidID
+	geometry.Generation = loaders.InvalidIDUint16
+	geometry.ID = loaders.InvalidID
+
+	geometry.Name = ""
+
+	// Release the material.
+	if geometry.Material != nil && len(geometry.Material.Name) > 0 {
+		MaterialSystemRelease(geometry.Material.Name)
+		geometry.Material = nil
+	}
 }
