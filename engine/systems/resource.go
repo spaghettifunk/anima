@@ -56,10 +56,10 @@ func NewResourceSystem(config ResourceSystemConfig) error {
 	return nil
 }
 
-func ResourceStateSystemShutdown() {
+func ResourceSystemShutdown() {
 }
 
-func ResourceStateSystemRegisterLoader(loader loaders.ResourceLoader) bool {
+func ResourceSystemRegisterLoader(loader loaders.ResourceLoader) bool {
 	count := rsState.Config.MaxLoaderCount
 	// Ensure no loaders for the given type already exist
 	for i := uint32(0); i < count; i++ {
@@ -86,7 +86,7 @@ func ResourceStateSystemRegisterLoader(loader loaders.ResourceLoader) bool {
 	return false
 }
 
-func ResourceStateSystemLoad(name string, resourceType resources.ResourceType, params interface{}) (*resources.Resource, error) {
+func ResourceSystemLoad(name string, resourceType resources.ResourceType, params interface{}) (*resources.Resource, error) {
 	outResource := &resources.Resource{}
 	if resourceType != resources.ResourceTypeCustom {
 		// Select loader.
@@ -105,7 +105,7 @@ func ResourceStateSystemLoad(name string, resourceType resources.ResourceType, p
 	return outResource, nil
 }
 
-func ResourceStateSystemLoadCustom(name, custom_type string, params interface{}) (*resources.Resource, error) {
+func ResourceSystemLoadCustom(name, custom_type string, params interface{}) (*resources.Resource, error) {
 	outResource := &resources.Resource{}
 	if len(custom_type) > 0 {
 		// Select loader.
@@ -123,7 +123,7 @@ func ResourceStateSystemLoadCustom(name, custom_type string, params interface{})
 	return outResource, nil
 }
 
-func ResourceStateSystemUnload(resource *resources.Resource) error {
+func ResourceSystemUnload(resource *resources.Resource) error {
 	if resource != nil {
 		if resource.LoaderID != loaders.InvalidID {
 			l := rsState.RegisteredLoaders[resource.LoaderID]

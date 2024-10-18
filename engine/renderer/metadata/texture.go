@@ -1,5 +1,7 @@
 package metadata
 
+import "github.com/spaghettifunk/anima/engine/resources"
+
 /** @brief The texture system configuration */
 type TextureSystemConfig struct {
 	/** @brief The maximum number of textures that can be loaded at once. */
@@ -16,3 +18,18 @@ const (
 	/** @brief The default normal texture name. */
 	DEFAULT_NORMAL_TEXTURE_NAME string = "default_NORM"
 )
+
+type TextureReference struct {
+	ReferenceCount uint64
+	Handle         uint32
+	AutoRelease    bool
+}
+
+// Also used as result_data from job.
+type TextureLoadParams struct {
+	ResourceName      string
+	OutTexture        *resources.Texture
+	TempTexture       *resources.Texture
+	CurrentGeneration uint32
+	ImageResource     *resources.Resource
+}

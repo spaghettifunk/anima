@@ -4,6 +4,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/resources"
 	"github.com/spaghettifunk/anima/engine/resources/loaders"
 )
@@ -330,7 +331,7 @@ func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCou
 	if len(materialName) > 0 {
 		config.MaterialName = materialName
 	} else {
-		config.MaterialName = DefaultMaterialName
+		config.MaterialName = metadata.DefaultMaterialName
 	}
 
 	return config, nil
@@ -498,7 +499,7 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 	if len(materialName) > 0 {
 		config.MaterialName = materialName
 	} else {
-		config.MaterialName = DefaultMaterialName
+		config.MaterialName = metadata.DefaultMaterialName
 	}
 
 	config.Vertices = math.GeometryGenerateTangents(config.VertexCount, config.Vertices, config.IndexCount, config.Indices)
