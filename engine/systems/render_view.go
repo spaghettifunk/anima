@@ -1,13 +1,11 @@
 package systems
 
 import (
-	"sync"
-
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/views"
-	"github.com/spaghettifunk/anima/engine/resources/loaders"
+	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief The configuration for the render view system. */
@@ -16,14 +14,13 @@ type RenderViewSystemConfig struct {
 	MaxViewCount uint16
 }
 
-type renderViewSystemState struct {
+type RenderViewSystem struct {
 	Lookup          map[string]uint16
 	MaxViewCount    uint32
 	RegisteredViews []*metadata.RenderView
+	// subsystems
+	renderer *renderer.Renderer
 }
-
-var onceRenderViewSystem sync.Once
-var rvsState *renderViewSystemState
 
 /**
  * @brief Initializes the render view system. Call twice; once to obtain memory
@@ -34,31 +31,31 @@ var rvsState *renderViewSystemState
  * @param config Configuration for the system.
  * @return True on success; otherwise false.
  */
-func NewRenderViewSystem(config RenderViewSystemConfig) bool {
+func NewRenderViewSystem(config RenderViewSystemConfig, r *renderer.Renderer) (*RenderViewSystem, error) {
 	if config.MaxViewCount == 0 {
 		core.LogError("render_view_system_initialize - config.MaxViewCount must be > 0.")
-		return false
+		return nil, nil
 	}
-	onceRenderViewSystem.Do(func() {
-		rvsState = &renderViewSystemState{
-			MaxViewCount:    uint32(config.MaxViewCount),
-			Lookup:          make(map[string]uint16),
-			RegisteredViews: make([]*metadata.RenderView, config.MaxViewCount),
-		}
-		// Fill the array with invalid entries.
-		for i := uint32(0); i < rvsState.MaxViewCount; i++ {
-			rvsState.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
-			rvsState.RegisteredViews[i].ID = loaders.InvalidIDUint16
-		}
-	})
-	return true
+
+	rvs := &RenderViewSystem{
+		MaxViewCount:    uint32(config.MaxViewCount),
+		Lookup:          make(map[string]uint16),
+		RegisteredViews: make([]*metadata.RenderView, config.MaxViewCount),
+		renderer:        r,
+	}
+	// Fill the array with invalid entries.
+	for i := uint32(0); i < rvs.MaxViewCount; i++ {
+		rvs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
+		rvs.RegisteredViews[i].ID = loaders.InvalidIDUint16
+	}
+	return rvs, nil
 }
 
 /**
  * @brief Shuts the render view system down.
  */
-func RenderViewSystemShutdown() {
-	rvsState = nil
+func (rvs *RenderViewSystem) Shutdown() error {
+	return nil
 }
 
 /**
@@ -68,7 +65,7 @@ func RenderViewSystemShutdown() {
  * @param config A constant pointer to the view configuration.
  * @return True on success; otherwise false.
  */
-func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
+func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) bool {
 	if config == nil {
 		core.LogError("render_view_system_create requires a pointer to a valid config.")
 		return false
@@ -85,15 +82,15 @@ func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
 	}
 
 	// Make sure there is not already an entry with this name already registered.
-	id, ok := rvsState.Lookup[config.Name]
+	id, ok := rvs.Lookup[config.Name]
 	if ok && id != loaders.InvalidIDUint16 {
 		core.LogError("render_view_system_create - A view named '%s' already exists. A new one will not be created.", config.Name)
 		return false
 	}
 
 	// Find a new id.
-	for i := uint32(0); i < rvsState.MaxViewCount; i++ {
-		if rvsState.RegisteredViews[i].ID == loaders.InvalidIDUint16 {
+	for i := uint32(0); i < rvs.MaxViewCount; i++ {
+		if rvs.RegisteredViews[i].ID == loaders.InvalidIDUint16 {
 			id = uint16(i)
 			break
 		}
@@ -105,7 +102,7 @@ func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
 		return false
 	}
 
-	view := rvsState.RegisteredViews[id]
+	view := rvs.RegisteredViews[id]
 	view.ID = id
 	view.RenderViewType = config.RenderViewType
 	// TODO: Leaking the name, create a destroy method and kill this.
@@ -115,7 +112,7 @@ func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
 	view.Passes = make([]*metadata.RenderPass, view.RenderpassCount)
 
 	for i := uint8(0); i < view.RenderpassCount; i++ {
-		view.Passes[i] = renderer.RenderPassGet(config.Passes[i].Name)
+		view.Passes[i] = rvs.renderer.RenderPassGet(config.Passes[i].Name)
 		if view.Passes[i] != nil {
 			core.LogError("render_view_system_create - renderpass not found: '%s'.", config.Passes[i].Name)
 			return false
@@ -150,12 +147,12 @@ func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
 	// Call the on create
 	if !view.OnCreate() {
 		core.LogError("Failed to create view.")
-		rvsState.RegisteredViews[id] = nil
+		rvs.RegisteredViews[id] = nil
 		return false
 	}
 
 	// Update the hashtable entry.
-	rvsState.Lookup[config.Name] = id
+	rvs.Lookup[config.Name] = id
 
 	return true
 }
@@ -166,11 +163,11 @@ func RenderViewSystemCreate(config *metadata.RenderViewConfig) bool {
  * @param width The new width in pixels.
  * @param width The new height in pixels.
  */
-func RenderViewSystemOnWindowResize(width, height uint32) {
+func (rvs *RenderViewSystem) OnWindowResize(width, height uint32) {
 	// Send to all views
-	for i := uint32(0); i < rvsState.MaxViewCount; i++ {
-		if rvsState.RegisteredViews[i].ID != loaders.InvalidIDUint16 {
-			rvsState.RegisteredViews[i].OnResize(width, height)
+	for i := uint32(0); i < rvs.MaxViewCount; i++ {
+		if rvs.RegisteredViews[i].ID != loaders.InvalidIDUint16 {
+			rvs.RegisteredViews[i].OnResize(width, height)
 		}
 	}
 }
@@ -181,9 +178,9 @@ func RenderViewSystemOnWindowResize(width, height uint32) {
  * @param name The name of the view.
  * @return A pointer to a view if found; otherwise 0.
  */
-func RenderViewSystemGet(name string) *metadata.RenderView {
-	if id, ok := rvsState.Lookup[name]; ok && id != loaders.InvalidIDUint16 {
-		return rvsState.RegisteredViews[id]
+func (rvs *RenderViewSystem) Get(name string) *metadata.RenderView {
+	if id, ok := rvs.Lookup[name]; ok && id != loaders.InvalidIDUint16 {
+		return rvs.RegisteredViews[id]
 	}
 	return nil
 }
@@ -196,7 +193,7 @@ func RenderViewSystemGet(name string) *metadata.RenderView {
  * @param out_packet A pointer to hold the generated packet.
  * @return True on success; otherwise false.
  */
-func RenderViewSystemBuildPacket(view *metadata.RenderView, data interface{}) *metadata.RenderViewPacket {
+func (rvs *RenderViewSystem) BuildPacket(view *metadata.RenderView, data interface{}) *metadata.RenderViewPacket {
 	if view != nil {
 		op, err := view.OnBuildPacket(data)
 		if err != nil {
@@ -218,7 +215,7 @@ func RenderViewSystemBuildPacket(view *metadata.RenderView, data interface{}) *m
  * @param render_target_index The current render target index for renderers that use multiple render targets at once (i.e. Vulkan).
  * @return True on success; otherwise false.
  */
-func RenderViewSystemOnRender(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) bool {
+func (rvs *RenderViewSystem) OnRender(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) bool {
 	if view != nil && packet != nil {
 		return view.OnRender(packet, frameNumber, renderTargetIndex)
 	}

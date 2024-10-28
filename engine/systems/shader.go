@@ -2,62 +2,73 @@ package systems
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources/loaders"
+	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
+
+/** @brief Configuration for the shader system. */
+type ShaderSystemConfig struct {
+	/** @brief The maximum number of shaders held in the system. NOTE: Should be at least 512. */
+	MaxShaderCount uint16
+	/** @brief The maximum number of uniforms allowed in a single shader. */
+	MaxUniformCount uint8
+	/** @brief The maximum number of global-scope textures allowed in a single shader. */
+	MaxGlobalTextures uint8
+	/** @brief The maximum number of instance-scope textures allowed in a single shader. */
+	MaxInstanceTextures uint8
+}
 
 type ShaderSystem struct {
 	// This system's configuration.
-	Config metadata.ShaderSystemConfig
+	Config *ShaderSystemConfig
 	// A lookup table for shader name->id
 	Lookup map[string]uint32
 	// The identifier for the currently bound shader.
 	CurrentShaderID uint32
 	// A collection of created shaders.
 	Shaders []*metadata.Shader
+	// sub systems
+	textureSystem *TextureSystem
+	renderer      *renderer.Renderer
 }
 
-var onceShaderSystem sync.Once
-var ssState *ShaderSystem
-
-func NewShaderSystem(config metadata.ShaderSystemConfig) error {
+func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *renderer.Renderer) (*ShaderSystem, error) {
 	// Verify configuration.
 	if config.MaxShaderCount < 512 {
 		if config.MaxShaderCount == 0 {
 			err := fmt.Errorf("NewShaderSystem - config.MaxShaderCount must be greater than 0")
 			core.LogError(err.Error())
-			return err
+			return nil, err
 		} else {
 			// This is to help avoid hashtable collisions.
 			core.LogWarn("NewShaderSystem - config.MaxShaderCount is recommended to be at least 512.")
 		}
 	}
 
-	onceShaderSystem.Do(func() {
-		// Setup the state pointer, memory block, shader array, then create the hashtable.
-		ssState = &ShaderSystem{
-			Config:          config,
-			Shaders:         make([]*metadata.Shader, config.MaxShaderCount),
-			CurrentShaderID: loaders.InvalidID,
-			Lookup:          make(map[string]uint32),
-		}
+	// Setup the state pointer, memory block, shader array, then create the hashtable.
+	shaderSystem := &ShaderSystem{
+		Config:          config,
+		Shaders:         make([]*metadata.Shader, config.MaxShaderCount),
+		CurrentShaderID: loaders.InvalidID,
+		Lookup:          make(map[string]uint32),
+		textureSystem:   ts,
+		renderer:        r,
+	}
 
-		// Invalidate all shader ids.
-		for i := uint16(0); i < config.MaxShaderCount; i++ {
-			ssState.Shaders[i].ID = loaders.InvalidID
-			ssState.Shaders[i].RenderFrameNumber = loaders.InvalidIDUint64
-		}
+	// Invalidate all shader ids.
+	for i := uint16(0); i < config.MaxShaderCount; i++ {
+		shaderSystem.Shaders[i].ID = loaders.InvalidID
+		shaderSystem.Shaders[i].RenderFrameNumber = loaders.InvalidIDUint64
+	}
 
-		for i := uint16(0); i < config.MaxShaderCount; i++ {
-			ssState.Shaders[i].ID = loaders.InvalidID
-		}
-	})
+	for i := uint16(0); i < config.MaxShaderCount; i++ {
+		shaderSystem.Shaders[i].ID = loaders.InvalidID
+	}
 
-	return nil
+	return shaderSystem, nil
 }
 
 /**
@@ -65,12 +76,12 @@ func NewShaderSystem(config metadata.ShaderSystemConfig) error {
  *
  * @param state A pointer to the system state.
  */
-func ShaderSystemShutdown() error {
+func (shaderSystem *ShaderSystem) Shutdown() error {
 	// Destroy any shaders still in existence.
-	for i := uint16(0); i < ssState.Config.MaxShaderCount; i++ {
-		sh := ssState.Shaders[i]
+	for i := uint16(0); i < shaderSystem.Config.MaxShaderCount; i++ {
+		sh := shaderSystem.Shaders[i]
 		if sh.ID != loaders.InvalidID {
-			if err := ssState.shaderDestroy(sh); err != nil {
+			if err := shaderSystem.shaderDestroy(sh); err != nil {
 				core.LogError(err.Error())
 				return err
 			}
@@ -85,10 +96,10 @@ func ShaderSystemShutdown() error {
  * @param config The configuration to be used when creating the shader.
  * @return True on success; otherwise false.
  */
-func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, error) {
-	id := ssState.newShaderID()
+func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*metadata.Shader, error) {
+	id := shaderSystem.newShaderID()
 
-	shader := ssState.Shaders[id]
+	shader := shaderSystem.Shaders[id]
 	shader.ID = id
 
 	if shader.ID == loaders.InvalidID {
@@ -120,13 +131,13 @@ func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, 
 	shader.PushConstantStride = 128
 	shader.PushConstantSize = 0
 
-	pass := renderer.RenderPassGet(config.RenderpassName)
+	pass := shaderSystem.renderer.RenderPassGet(config.RenderpassName)
 	if pass == nil {
 		core.LogError("Unable to find renderpass '%s'", config.RenderpassName)
 		return nil, nil
 	}
 
-	if !renderer.ShaderCreate(shader, config, pass, config.StageCount, config.StageFilenames, config.Stages) {
+	if !shaderSystem.renderer.ShaderCreate(shader, config, pass, config.StageCount, config.StageFilenames, config.Stages) {
 		err := fmt.Errorf("shader was not created")
 		core.LogError(err.Error())
 		return nil, err
@@ -137,20 +148,20 @@ func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, 
 
 	// Process attributes
 	for i := uint8(0); i < config.AttributeCount; i++ {
-		ssState.addAttribute(shader, config.Attributes[i])
+		shaderSystem.addAttribute(shader, config.Attributes[i])
 	}
 
 	// Process uniforms
 	for i := uint8(0); i < config.UniformCount; i++ {
 		if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
-			ssState.addSampler(shader, config.Uniforms[i])
+			shaderSystem.addSampler(shader, config.Uniforms[i])
 		} else {
-			ssState.addUniform(shader, config.Uniforms[i])
+			shaderSystem.addUniform(shader, config.Uniforms[i])
 		}
 	}
 
 	// Initialize the shader.
-	if !renderer.ShaderInitialize(shader) {
+	if !shaderSystem.renderer.ShaderInitialize(shader) {
 		err := fmt.Errorf("func ShaderInitialize: initialization failed for shader '%s'", config.Name)
 		core.LogError(err.Error())
 		// NOTE: initialize automatically destroys the shader if it fails.
@@ -159,7 +170,7 @@ func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, 
 
 	// At this point, creation is successful, so store the shader id in the hashtable
 	// so this can be looked up by name later.
-	ssState.Lookup[config.Name] = shader.ID
+	shaderSystem.Lookup[config.Name] = shader.ID
 
 	return shader, nil
 }
@@ -170,8 +181,8 @@ func ShaderSystemCreateShader(config *metadata.ShaderConfig) (*metadata.Shader, 
  * @param shaderName The name of the shader.
  * @return The shader id, if found; otherwise INVALID_ID.
  */
-func ShaderSystemGetShaderID(shaderName string) uint32 {
-	return ssState.getShaderID(shaderName)
+func (shaderSystem *ShaderSystem) GetShaderID(shaderName string) uint32 {
+	return shaderSystem.getShaderID(shaderName)
 }
 
 /**
@@ -180,11 +191,11 @@ func ShaderSystemGetShaderID(shaderName string) uint32 {
  * @param shaderID The shader identifier.
  * @return A pointer to a shader, if found; otherwise 0.
  */
-func ShaderSystemGetShaderByID(shaderID uint32) (*metadata.Shader, error) {
-	if shaderID >= uint32(ssState.Config.MaxShaderCount) || ssState.Shaders[shaderID].ID == loaders.InvalidID {
+func (shaderSystem *ShaderSystem) GetShaderByID(shaderID uint32) (*metadata.Shader, error) {
+	if shaderID >= uint32(shaderSystem.Config.MaxShaderCount) || shaderSystem.Shaders[shaderID].ID == loaders.InvalidID {
 		return nil, fmt.Errorf("shader with ID `%d` not found", shaderID)
 	}
-	return ssState.Shaders[shaderID], nil
+	return shaderSystem.Shaders[shaderID], nil
 }
 
 /**
@@ -193,10 +204,10 @@ func ShaderSystemGetShaderByID(shaderID uint32) (*metadata.Shader, error) {
  * @param shaderName The name to search for. Case sensitive.
  * @return A pointer to a shader, if found; otherwise 0.
  */
-func ShaderSystemGetShader(shaderName string) (*metadata.Shader, error) {
-	shader_id := ssState.getShaderID(shaderName)
+func (shaderSystem *ShaderSystem) GetShader(shaderName string) (*metadata.Shader, error) {
+	shader_id := shaderSystem.getShaderID(shaderName)
 	if shader_id != loaders.InvalidID {
-		return ShaderSystemGetShaderByID(shader_id)
+		return shaderSystem.GetShaderByID(shader_id)
 	}
 	return nil, fmt.Errorf("shader with name `%s` not found", shaderName)
 }
@@ -207,12 +218,12 @@ func ShaderSystemGetShader(shaderName string) (*metadata.Shader, error) {
  * @param shaderName The name of the shader to use. Case sensitive.
  * @return True on success; otherwise false.
  */
-func ShaderSystemUseShader(shaderName string) bool {
-	next_shader_id := ssState.getShaderID(shaderName)
+func (shaderSystem *ShaderSystem) UseShader(shaderName string) bool {
+	next_shader_id := shaderSystem.getShaderID(shaderName)
 	if next_shader_id == loaders.InvalidID {
 		return false
 	}
-	return ssState.useByID(next_shader_id)
+	return shaderSystem.useByID(next_shader_id)
 }
 
 /**
@@ -221,7 +232,7 @@ func ShaderSystemUseShader(shaderName string) bool {
  * @param shaderID The identifier of the shader to be used.
  * @return True on success; otherwise false.
  */
-func ShaderSystemUseShaderByID(shaderID uint32) bool {
+func (shaderSystem *ShaderSystem) UseShaderByID(shaderID uint32) bool {
 	return false
 }
 
@@ -232,13 +243,13 @@ func ShaderSystemUseShaderByID(shaderID uint32) bool {
  * @param uniformName The name of the uniform to search for.
  * @return The uniform index, if found; otherwise INVALID_ID_U16.
  */
-func ShaderSystemGetUniformIndex(shader *metadata.Shader, uniformName string) uint16 {
+func (shaderSystem *ShaderSystem) GetUniformIndex(shader *metadata.Shader, uniformName string) uint16 {
 	if shader.ID == loaders.InvalidID {
 		core.LogError("func GetUniformIndex called with invalid shader.")
 		return loaders.InvalidIDUint16
 	}
 
-	index := ssState.Lookup[uniformName]
+	index := shaderSystem.Lookup[uniformName]
 	if index == uint32(loaders.InvalidIDUint16) {
 		core.LogError("Shader '%s' does not have a registered uniform named '%s'", shader.Name, uniformName)
 		return loaders.InvalidIDUint16
@@ -254,14 +265,14 @@ func ShaderSystemGetUniformIndex(shader *metadata.Shader, uniformName string) ui
  * @param value The value to be set.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetUniform(uniformName string, value interface{}) bool {
-	if ssState.CurrentShaderID == loaders.InvalidID {
+func (shaderSystem *ShaderSystem) SetUniform(uniformName string, value interface{}) bool {
+	if shaderSystem.CurrentShaderID == loaders.InvalidID {
 		core.LogError("func SetUniform called without a shader in use.")
 		return false
 	}
-	shader := ssState.Shaders[ssState.CurrentShaderID]
-	index := ShaderSystemGetUniformIndex(shader, uniformName)
-	return ShaderSystemSetUniformByIndex(index, value)
+	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
+	index := shaderSystem.GetUniformIndex(shader, uniformName)
+	return shaderSystem.SetUniformByIndex(index, value)
 }
 
 /**
@@ -272,8 +283,8 @@ func ShaderSystemSetUniform(uniformName string, value interface{}) bool {
  * @param t A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetTextureSampler(samplerName string, texture *metadata.Texture) bool {
-	return ShaderSystemSetUniform(samplerName, texture)
+func (shaderSystem *ShaderSystem) SetTextureSampler(samplerName string, texture *metadata.Texture) bool {
+	return shaderSystem.SetUniform(samplerName, texture)
 }
 
 /**
@@ -284,24 +295,24 @@ func ShaderSystemSetTextureSampler(samplerName string, texture *metadata.Texture
  * @param value The value of the uniform.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetUniformByIndex(index uint16, value interface{}) bool {
-	shader := ssState.Shaders[index]
+func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interface{}) bool {
+	shader := shaderSystem.Shaders[index]
 	uniform := shader.Uniforms[index]
 	if shader.BoundScope != uniform.Scope {
 		if uniform.Scope == metadata.ShaderScopeGlobal {
-			renderer.ShaderBindGlobals(shader)
+			shaderSystem.renderer.ShaderBindGlobals(shader)
 		} else if uniform.Scope == metadata.ShaderScopeInstance {
-			renderer.ShaderBindInstance(shader, shader.BoundInstanceID)
+			shaderSystem.renderer.ShaderBindInstance(shader, shader.BoundInstanceID)
 		} else {
 			// NOTE: Nothing to do here for locals, just set the uniform.
 		}
 		shader.BoundScope = uniform.Scope
 	}
-	return renderer.SetUniform(shader, uniform, value)
+	return shaderSystem.renderer.SetUniform(shader, uniform, value)
 }
 
-func ShaderSystemSetSampler(samplerName string, texture *metadata.Texture) bool {
-	return ShaderSystemSetUniform(samplerName, texture)
+func (shaderSystem *ShaderSystem) SetSampler(samplerName string, texture *metadata.Texture) bool {
+	return shaderSystem.SetUniform(samplerName, texture)
 }
 
 /**
@@ -312,8 +323,8 @@ func ShaderSystemSetSampler(samplerName string, texture *metadata.Texture) bool 
  * @param value A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func ShaderSystemSetSamplerByIndex(index uint16, texture *metadata.Texture) bool {
-	return ShaderSystemSetUniformByIndex(index, texture)
+func (shaderSystem *ShaderSystem) SetSamplerByIndex(index uint16, texture *metadata.Texture) bool {
+	return shaderSystem.SetUniformByIndex(index, texture)
 }
 
 /**
@@ -322,8 +333,8 @@ func ShaderSystemSetSamplerByIndex(index uint16, texture *metadata.Texture) bool
  *
  * @return True on success; otherwise false.
  */
-func ShaderSystemApplyGlobal() bool {
-	return renderer.ShaderApplyGlobals(ssState.Shaders[ssState.CurrentShaderID])
+func (shaderSystem *ShaderSystem) ApplyGlobal() bool {
+	return shaderSystem.renderer.ShaderApplyGlobals(shaderSystem.Shaders[shaderSystem.CurrentShaderID])
 }
 
 /**
@@ -334,8 +345,8 @@ func ShaderSystemApplyGlobal() bool {
  * @param needsUpdate Indicates if shader internals need to be updated, or just to be bound.
  * @return True on success; otherwise false.
  */
-func ShaderSystemApplyInstance(needsUpdate bool) bool {
-	return renderer.ShaderApplyInstance(ssState.Shaders[ssState.CurrentShaderID], needsUpdate)
+func (shaderSystem *ShaderSystem) ApplyInstance(needsUpdate bool) bool {
+	return shaderSystem.renderer.ShaderApplyInstance(shaderSystem.Shaders[shaderSystem.CurrentShaderID], needsUpdate)
 }
 
 /**
@@ -346,10 +357,10 @@ func ShaderSystemApplyInstance(needsUpdate bool) bool {
  * @param instanceID The identifier of the instance to bind.
  * @return True on success; otherwise false.
  */
-func ShaderSystemBindInstance(instanceID uint32) bool {
-	shader := ssState.Shaders[ssState.CurrentShaderID]
+func (shaderSystem *ShaderSystem) BindInstance(instanceID uint32) bool {
+	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
 	shader.BoundInstanceID = instanceID
-	return renderer.ShaderBindInstance(shader, instanceID)
+	return shaderSystem.renderer.ShaderBindInstance(shader, instanceID)
 }
 
 func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.ShaderAttributeConfig) bool {
@@ -389,7 +400,7 @@ func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.Sh
 	return true
 }
 
-func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
+func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
 	// Samples can't be used for push constants.
 	if config.Scope == metadata.ShaderScopeLocal {
 		core.LogError("add_sampler cannot add a sampler at local scope.")
@@ -397,7 +408,7 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 	}
 
 	// Verify the name is valid and unique.
-	if !s.uniformNameValid(shader, config.Name) || !s.shaderUniformAddStateValid(shader) {
+	if !shaderSystem.uniformNameValid(shader, config.Name) || !shaderSystem.shaderUniformAddStateValid(shader) {
 		return false
 	}
 
@@ -405,8 +416,8 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 	location := uint32(0)
 	if config.Scope == metadata.ShaderScopeGlobal {
 		global_texture_count := len(shader.GlobalTextureMaps)
-		if global_texture_count+1 > int(s.Config.MaxGlobalTextures) {
-			core.LogError("Shader global texture count `%d` exceeds max of `%d`", global_texture_count, s.Config.MaxGlobalTextures)
+		if global_texture_count+1 > int(shaderSystem.Config.MaxGlobalTextures) {
+			core.LogError("Shader global texture count `%d` exceeds max of `%d`", global_texture_count, shaderSystem.Config.MaxGlobalTextures)
 			return false
 		}
 		location = uint32(global_texture_count)
@@ -420,7 +431,7 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 			RepeatW:       metadata.TextureRepeatRepeat,
 			Use:           metadata.TextureUseUnknown,
 		}
-		if !renderer.TextureMapAcquireResources(default_map) {
+		if !shaderSystem.renderer.TextureMapAcquireResources(default_map) {
 			core.LogError("Failed to acquire resources for global texture map during shader creation.")
 			return false
 		}
@@ -428,13 +439,13 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 		// Allocate a pointer assign the texture, and push into global texture maps.
 		// NOTE: This allocation is only done for global texture maps.
 		textureMap := default_map
-		textureMap.Texture = TextureSystemGetDefaultTexture()
+		textureMap.Texture = shaderSystem.textureSystem.GetDefaultTexture()
 
 		shader.GlobalTextureMaps = append(shader.GlobalTextureMaps, textureMap)
 	} else {
 		// Otherwise, it's instance-level, so keep count of how many need to be added during the resource acquisition.
-		if shader.InstanceTextureCount+1 > s.Config.MaxInstanceTextures {
-			core.LogError("Shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, s.Config.MaxInstanceTextures)
+		if shader.InstanceTextureCount+1 > shaderSystem.Config.MaxInstanceTextures {
+			core.LogError("Shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, shaderSystem.Config.MaxInstanceTextures)
 			return false
 		}
 		location = uint32(shader.InstanceTextureCount)
@@ -445,7 +456,7 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 	// hashtable entry's 'location' field value directly, and is then set to the index of the uniform array.
 	// This allows location lookups for samplers as if they were uniforms as well (since technically they are).
 	// TODO: might need to store this elsewhere
-	if !s.uniformAdd(shader, config.Name, 0, config.ShaderUniformType, config.Scope, location, true) {
+	if !shaderSystem.uniformAdd(shader, config.Name, 0, config.ShaderUniformType, config.Scope, location, true) {
 		core.LogError("Unable to add sampler uniform.")
 		return false
 	}
@@ -453,15 +464,15 @@ func (s *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.Shad
 	return true
 }
 
-func (s *ShaderSystem) addUniform(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
-	if !s.shaderUniformAddStateValid(shader) || !s.uniformNameValid(shader, config.Name) {
+func (shaderSystem *ShaderSystem) addUniform(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
+	if !shaderSystem.shaderUniformAddStateValid(shader) || !shaderSystem.uniformNameValid(shader, config.Name) {
 		return false
 	}
-	return s.uniformAdd(shader, config.Name, uint32(config.Size), config.ShaderUniformType, config.Scope, 0, false)
+	return shaderSystem.uniformAdd(shader, config.Name, uint32(config.Size), config.ShaderUniformType, config.Scope, 0, false)
 }
 
-func (s *ShaderSystem) getShaderID(shader_name string) uint32 {
-	id, ok := s.Lookup[shader_name]
+func (shaderSystem *ShaderSystem) getShaderID(shader_name string) uint32 {
+	id, ok := shaderSystem.Lookup[shader_name]
 	if !ok {
 		core.LogError("There is no shader registered named '%s'.", shader_name)
 		return loaders.InvalidID
@@ -478,10 +489,10 @@ func (s *ShaderSystem) newShaderID() uint32 {
 	return loaders.InvalidID
 }
 
-func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, size uint32, shader_uniform_type metadata.ShaderUniformType, scope metadata.ShaderScope, set_location uint32, is_sampler bool) bool {
+func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, size uint32, shader_uniform_type metadata.ShaderUniformType, scope metadata.ShaderScope, set_location uint32, is_sampler bool) bool {
 	uniform_count := len(shader.Uniforms)
-	if uniform_count+1 > int(s.Config.MaxUniformCount) {
-		core.LogError("A shader can only accept a combined maximum of %d uniforms and samplers at global, instance and local scopes.", s.Config.MaxUniformCount)
+	if uniform_count+1 > int(shaderSystem.Config.MaxUniformCount) {
+		core.LogError("A shader can only accept a combined maximum of %d uniforms and samplers at global, instance and local scopes.", shaderSystem.Config.MaxUniformCount)
 		return false
 	}
 	entry := metadata.ShaderUniform{
@@ -545,7 +556,7 @@ func (s *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, 
 	return true
 }
 
-func (s *ShaderSystem) uniformNameValid(shader *metadata.Shader, uniform_name string) bool {
+func (shaderSystem *ShaderSystem) uniformNameValid(shader *metadata.Shader, uniform_name string) bool {
 	if uniform_name == "" {
 		core.LogError("Uniform name must exist.")
 		return false
@@ -557,7 +568,7 @@ func (s *ShaderSystem) uniformNameValid(shader *metadata.Shader, uniform_name st
 	return true
 }
 
-func (s *ShaderSystem) shaderUniformAddStateValid(shader *metadata.Shader) bool {
+func (shaderSystem *ShaderSystem) shaderUniformAddStateValid(shader *metadata.Shader) bool {
 	if shader.State != metadata.SHADER_STATE_UNINITIALIZED {
 		core.LogError("Uniforms may only be added to shaders before initialization.")
 		return false
@@ -565,20 +576,20 @@ func (s *ShaderSystem) shaderUniformAddStateValid(shader *metadata.Shader) bool 
 	return true
 }
 
-func (s *ShaderSystem) useByID(shaderID uint32) bool {
+func (shaderSystem *ShaderSystem) useByID(shaderID uint32) bool {
 	// Only perform the use if the shader id is different.
-	if s.CurrentShaderID != shaderID {
-		nextShader, err := ShaderSystemGetShaderByID(shaderID)
+	if shaderSystem.CurrentShaderID != shaderID {
+		nextShader, err := shaderSystem.GetShaderByID(shaderID)
 		if err != nil {
 			core.LogError(err.Error())
 			return false
 		}
-		s.CurrentShaderID = shaderID
-		if !renderer.ShaderUse(nextShader) {
+		shaderSystem.CurrentShaderID = shaderID
+		if !shaderSystem.renderer.ShaderUse(nextShader) {
 			core.LogError("Failed to use shader '%s'.", nextShader.Name)
 			return false
 		}
-		if !renderer.ShaderBindGlobals(nextShader) {
+		if !shaderSystem.renderer.ShaderBindGlobals(nextShader) {
 			core.LogError("Failed to bind globals for shader '%s'.", nextShader.Name)
 			return false
 		}
@@ -586,8 +597,8 @@ func (s *ShaderSystem) useByID(shaderID uint32) bool {
 	return true
 }
 
-func (s *ShaderSystem) shaderDestroy(shader *metadata.Shader) error {
-	renderer.ShaderDestroy(shader)
+func (shaderSystem *ShaderSystem) shaderDestroy(shader *metadata.Shader) error {
+	shaderSystem.renderer.ShaderDestroy(shader)
 	// Set it to be unusable right away.
 	shader.State = metadata.SHADER_STATE_NOT_CREATED
 	for i := 0; i < len(shader.GlobalTextureMaps); i++ {

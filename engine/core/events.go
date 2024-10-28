@@ -122,7 +122,8 @@ func ProcessEvents() {
 	}
 }
 
-func EventSystemShutdown() {
+func EventSystemShutdown() error {
 	close(eventSystem.eventChan)
 	eventSystem = nil
+	return nil
 }

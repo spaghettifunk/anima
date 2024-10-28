@@ -1,17 +1,5 @@
 package metadata
 
-/** @brief Configuration for the shader system. */
-type ShaderSystemConfig struct {
-	/** @brief The maximum number of shaders held in the system. NOTE: Should be at least 512. */
-	MaxShaderCount uint16
-	/** @brief The maximum number of uniforms allowed in a single shader. */
-	MaxUniformCount uint8
-	/** @brief The maximum number of global-scope textures allowed in a single shader. */
-	MaxGlobalTextures uint8
-	/** @brief The maximum number of instance-scope textures allowed in a single shader. */
-	MaxInstanceTextures uint8
-}
-
 /**
  * @brief Represents the current state of a given shader.
  */

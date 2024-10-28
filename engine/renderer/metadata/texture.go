@@ -1,11 +1,5 @@
 package metadata
 
-/** @brief The texture system configuration */
-type TextureSystemConfig struct {
-	/** @brief The maximum number of textures that can be loaded at once. */
-	MaxTextureCount uint32
-}
-
 const (
 	/** @brief The default texture name. */
 	DEFAULT_TEXTURE_NAME string = "default"

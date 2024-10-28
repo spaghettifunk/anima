@@ -7,11 +7,27 @@ import (
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
-func MeshLoadFromResource(resource_name string, mesh *metadata.Mesh) bool {
+type MeshLoaderSystem struct {
+	geometrySystem *GeometrySystem
+	resourceSystem *ResourceSystem
+}
+
+func NewMeshLoaderSystem(gs *GeometrySystem, rs *ResourceSystem) (*MeshLoaderSystem, error) {
+	return &MeshLoaderSystem{
+		geometrySystem: gs,
+		resourceSystem: rs,
+	}, nil
+}
+
+func (mls *MeshLoaderSystem) Shutdown() error {
+	return nil
+}
+
+func (mls *MeshLoaderSystem) LoadFromResource(resourceName string, mesh *metadata.Mesh) bool {
 	return false
 }
 
-func MeshUnload(mesh *metadata.Mesh) {
+func (mls *MeshLoaderSystem) Unload(mesh *metadata.Mesh) {
 
 }
 
@@ -20,7 +36,7 @@ func MeshUnload(mesh *metadata.Mesh) {
  *
  * @param params The parameters passed from the job after completion.
  */
-func meshLoadJobSuccess(params interface{}) error {
+func (mls *MeshLoaderSystem) meshLoadJobSuccess(params interface{}) error {
 	mesh_params, ok := params.(metadata.MeshLoadParams)
 	if !ok {
 		err := fmt.Errorf("failed to cast params to metadata.MeshLoadParams")
@@ -35,7 +51,7 @@ func meshLoadJobSuccess(params interface{}) error {
 	mesh_params.OutMesh.Geometries = make([]*metadata.Geometry, mesh_params.OutMesh.GeometryCount)
 
 	for i := uint16(0); i < mesh_params.OutMesh.GeometryCount; i++ {
-		g, err := GeometrySystemAcquireFromConfig(configs[i], true)
+		g, err := mls.geometrySystem.AcquireFromConfig(configs[i], true)
 		if err != nil {
 			core.LogError(err.Error())
 			return err
@@ -46,7 +62,7 @@ func meshLoadJobSuccess(params interface{}) error {
 
 	core.LogDebug("Successfully loaded mesh '%s'.", mesh_params.ResourceName)
 
-	return ResourceSystemUnload(mesh_params.MeshResource)
+	return mls.resourceSystem.Unload(mesh_params.MeshResource)
 }
 
 /**
@@ -54,10 +70,10 @@ func meshLoadJobSuccess(params interface{}) error {
  *
  * @param params Parameters passed when a job fails.
  */
-func meshLoadJobFail(params interface{}) {
-	mesh_params := params.(metadata.MeshLoadParams)
-	core.LogError("Failed to load mesh '%s'.", mesh_params.ResourceName)
-	if err := ResourceSystemUnload(mesh_params.MeshResource); err != nil {
+func (mls *MeshLoaderSystem) meshLoadJobFail(params interface{}) {
+	meshParams := params.(metadata.MeshLoadParams)
+	core.LogError("Failed to load mesh '%s'.", meshParams.ResourceName)
+	if err := mls.resourceSystem.Unload(meshParams.MeshResource); err != nil {
 		core.LogError(err.Error())
 	}
 }
@@ -69,14 +85,14 @@ func meshLoadJobFail(params interface{}) {
  * @param result_data Result data passed to the completion callback.
  * @return True on job success; otherwise false.
  */
-func meshLoadJobStart(params interface{}) (*metadata.Resource, error) {
+func (mls *MeshLoaderSystem) meshLoadJobStart(params interface{}) (*metadata.Resource, error) {
 	load_params, ok := params.(*metadata.MeshLoadParams)
 	if !ok {
 		err := fmt.Errorf("failed to cast params to `*metadata.MeshLoadParams`")
 		core.LogError(err.Error())
 		return nil, err
 	}
-	mesh, err := ResourceSystemLoad(load_params.ResourceName, metadata.ResourceTypeMesh, 0)
+	mesh, err := mls.resourceSystem.Load(load_params.ResourceName, metadata.ResourceTypeMesh, 0)
 	if err != nil {
 		core.LogError(err.Error())
 		return nil, err

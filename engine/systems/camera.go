@@ -2,16 +2,15 @@ package systems
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/components"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources/loaders"
+	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
-type cameraSystemState struct {
-	Config  CameraSystemConfig
+type CameraSystem struct {
+	Config  *CameraSystemConfig
 	Lookup  map[string]uint16
 	Cameras []*components.CameraLookup
 	// A default, non-registered camera that always exists as a fallback.
@@ -27,9 +26,6 @@ type CameraSystemConfig struct {
 	MaxCameraCount uint16
 }
 
-var onceCameraSystem sync.Once
-var csState *cameraSystemState
-
 /**
  * @brief Initializes the camera system.
  * Should be called twice; once to get the memory requirement (passing state=0), and a second
@@ -40,27 +36,26 @@ var csState *cameraSystemState
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewCameraSystem(config CameraSystemConfig) bool {
+func NewCameraSystem(config *CameraSystemConfig) (*CameraSystem, error) {
 	if config.MaxCameraCount == 0 {
-		core.LogError("CameraSystem_initialize - config.MaxCameraCount must be > 0.")
-		return false
+		err := fmt.Errorf("func NewCameraSystem - config.MaxCameraCount must be > 0")
+		core.LogError(err.Error())
+		return nil, err
 	}
-	onceCameraSystem.Do(func() {
-		csState = &cameraSystemState{
-			Config:  config,
-			Cameras: make([]*components.CameraLookup, 1),
-			Lookup:  make(map[string]uint16, config.MaxCameraCount),
-		}
-		// Invalidate all cameras in the array.
-		for i := uint16(0); i < csState.Config.MaxCameraCount; i++ {
-			csState.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
-			csState.Cameras[i].ID = loaders.InvalidIDUint16
-			csState.Cameras[i].ReferenceCount = 0
-		}
-		// Setup default camera.
-		csState.DefaultCamera = components.NewCamera()
-	})
-	return true
+	cs := &CameraSystem{
+		Config:  config,
+		Cameras: make([]*components.CameraLookup, 1),
+		Lookup:  make(map[string]uint16, config.MaxCameraCount),
+	}
+	// Invalidate all cameras in the array.
+	for i := uint16(0); i < cs.Config.MaxCameraCount; i++ {
+		cs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
+		cs.Cameras[i].ID = loaders.InvalidIDUint16
+		cs.Cameras[i].ReferenceCount = 0
+	}
+	// Setup default camera.
+	cs.DefaultCamera = components.NewCamera()
+	return cs, nil
 }
 
 /**
@@ -68,8 +63,8 @@ func NewCameraSystem(config CameraSystemConfig) bool {
  *
  * @param state The state block of memory.
  */
-func CameraSystemShutdown() {
-	csState = nil
+func (cs *CameraSystem) Shutdown() error {
+	return nil
 }
 
 /**
@@ -80,41 +75,41 @@ func CameraSystemShutdown() {
  * @param name The name of the camera to acquire.
  * @return A pointer to a camera if successful; 0 if an error occurs.
  */
-func CameraSystemAcquire(name string) (*components.Camera, error) {
+func (cs *CameraSystem) Acquire(name string) (*components.Camera, error) {
 	if name == components.DEFAULT_CAMERA_NAME {
-		return csState.DefaultCamera, nil
+		return cs.DefaultCamera, nil
 	}
-	id, ok := csState.Lookup[name]
+	id, ok := cs.Lookup[name]
 	if !ok {
-		err := fmt.Errorf("CameraSystemAcquire failed lookup. Null returned.")
+		err := fmt.Errorf("func CameraSystemAcquire failed lookup. Null returned")
 		core.LogError(err.Error())
 		return nil, err
 	}
 
 	if id == loaders.InvalidIDUint16 {
 		// Find free slot
-		for i := uint16(0); i < csState.Config.MaxCameraCount; i++ {
+		for i := uint16(0); i < cs.Config.MaxCameraCount; i++ {
 			if i == loaders.InvalidIDUint16 {
 				id = i
 				break
 			}
 		}
 		if id == loaders.InvalidIDUint16 {
-			err := fmt.Errorf("CameraSystemAcquire failed to acquire new slot. Adjust camera system config to allow more. Null returned.")
+			err := fmt.Errorf("func CameraSystemAcquire failed to acquire new slot. Adjust camera system config to allow more. Null returned")
 			core.LogError(err.Error())
 			return nil, err
 		}
 
 		// Create/register the new camera.
 		core.LogDebug("Creating new camera named '%s'...")
-		csState.Cameras[id].Camera = components.NewCamera()
-		csState.Cameras[id].ID = id
+		cs.Cameras[id].Camera = components.NewCamera()
+		cs.Cameras[id].ID = id
 
 		// Update the hashtable.
-		csState.Lookup[name] = id
+		cs.Lookup[name] = id
 	}
-	csState.Cameras[id].ReferenceCount++
-	return csState.Cameras[id].Camera, nil
+	cs.Cameras[id].ReferenceCount++
+	return cs.Cameras[id].Camera, nil
 }
 
 /**
@@ -124,22 +119,22 @@ func CameraSystemAcquire(name string) (*components.Camera, error) {
  *
  * @param name The name of the camera to release.
  */
-func CameraSystemRelease(name string) {
+func (cs *CameraSystem) Release(name string) {
 	if name == components.DEFAULT_CAMERA_NAME {
 		core.LogDebug("Cannot release default camera. Nothing was done.")
 		return
 	}
-	id, ok := csState.Lookup[name]
+	id, ok := cs.Lookup[name]
 	if !ok {
 		core.LogWarn("CameraSystemRelease failed lookup. Nothing was done.")
 	}
 	if id != loaders.InvalidIDUint16 {
 		// Decrement the reference count, and reset the camera if the counter reaches 0.
-		csState.Cameras[id].ReferenceCount--
-		if csState.Cameras[id].ReferenceCount < 1 {
-			csState.Cameras[id].Camera.Reset()
-			csState.Cameras[id].ID = loaders.InvalidIDUint16
-			csState.Lookup[name] = csState.Cameras[id].ID
+		cs.Cameras[id].ReferenceCount--
+		if cs.Cameras[id].ReferenceCount < 1 {
+			cs.Cameras[id].Camera.Reset()
+			cs.Cameras[id].ID = loaders.InvalidIDUint16
+			cs.Lookup[name] = cs.Cameras[id].ID
 		}
 	}
 }
@@ -149,6 +144,6 @@ func CameraSystemRelease(name string) {
  *
  * @return A pointer to the default camera.
  */
-func CameraSystemGetDefault() *components.Camera {
-	return csState.DefaultCamera
+func (cs *CameraSystem) GetDefault() *components.Camera {
+	return cs.DefaultCamera
 }

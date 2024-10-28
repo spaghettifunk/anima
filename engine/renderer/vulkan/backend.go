@@ -11,7 +11,7 @@ import (
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/resources/loaders"
+	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 type VulkanRenderer struct {

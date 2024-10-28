@@ -7,16 +7,6 @@ import (
 /** @brief The name of the default geometry. */
 const DefaultGeometryName string = "default"
 
-/** @brief The geometry system configuration. */
-type GeometrySystemConfig struct {
-	/**
-	 * @brief NOTE: Should be significantly greater than the number of static meshes because
-	 * the there can and will be more than one of these per mesh.
-	 * Take other systems into account as well.
-	 */
-	MaxGeometryCount uint32
-}
-
 /**
  * @brief Represents the configuration for a geometry.
  */

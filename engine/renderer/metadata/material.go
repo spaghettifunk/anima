@@ -27,12 +27,6 @@ type UIShaderUniformLocations struct {
 	Model          uint16
 }
 
-/** @brief The configuration for the material system. */
-type MaterialSystemConfig struct {
-	/** @brief The maximum number of loaded materials. */
-	MaxMaterialCount uint32
-}
-
 type MaterialReference struct {
 	ReferenceCount uint64
 	Handle         uint32
