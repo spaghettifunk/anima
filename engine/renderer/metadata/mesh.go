@@ -15,5 +15,5 @@ type Mesh struct {
 	Generation    uint8
 	GeometryCount uint16
 	Geometries    []*Geometry
-	Transform     math.Transform
+	Transform     *math.Transform
 }

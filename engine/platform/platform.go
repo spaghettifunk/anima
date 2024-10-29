@@ -2,6 +2,7 @@ package platform
 
 import (
 	"runtime"
+	"time"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	"github.com/spaghettifunk/anima/engine/core"
@@ -69,6 +70,11 @@ func GetAbsoluteTime() float64 {
 func (p *Platform) PumpMessages() bool {
 	glfw.PollEvents()
 	return !p.Window.ShouldClose()
+}
+
+// Sleep takes a timeout in milliseconds
+func (p *Platform) Sleep(timeout float64) {
+	time.Sleep(time.Duration(timeout * float64(time.Millisecond)))
 }
 
 func (p *Platform) GetRequiredExtensionNames() []string {

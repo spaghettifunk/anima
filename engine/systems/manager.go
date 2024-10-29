@@ -1,64 +1,82 @@
 package systems
 
 import (
-	"github.com/spaghettifunk/anima/engine/renderer"
+	"fmt"
+	"os"
+	"runtime"
+
+	"github.com/spaghettifunk/anima/engine/platform"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
 type SystemManager struct {
-	cameraSystem     *CameraSystem
-	geometrySystem   *GeometrySystem
-	jobSystem        *JobSystem
-	materialSystem   *MaterialSystem
-	meshLoaderSystem *MeshLoaderSystem
-	renderViewSystem *RenderViewSystem
-	shaderSystem     *ShaderSystem
-	textureSystem    *TextureSystem
-	resourceSystem   *ResourceSystem
+	CameraSystem     *CameraSystem
+	GeometrySystem   *GeometrySystem
+	JobSystem        *JobSystem
+	MaterialSystem   *MaterialSystem
+	MeshLoaderSystem *MeshLoaderSystem
+	RenderViewSystem *RenderViewSystem
+	ShaderSystem     *ShaderSystem
+	TextureSystem    *TextureSystem
+	ResourceSystem   *ResourceSystem
+	RendererSystem   *RendererSystem
 }
 
-func NewSystemManager(renderer *renderer.Renderer) (*SystemManager, error) {
-	// TODO: remake the jobsystem
-	js, err := NewJobSystem(1, nil)
+var (
+	MaxNumberOfWorkers int = runtime.NumCPU()
+)
+
+func NewSystemManager(appName string, width, height uint32, platform *platform.Platform) (*SystemManager, error) {
+	renderer, err := NewRendererSystem(appName, width, height, platform)
+	if err != nil {
+		return nil, err
+	}
+
+	js, err := NewJobSystem(MaxNumberOfWorkers, 25)
 	if err != nil {
 		return nil, err
 	}
 
 	cs, err := NewCameraSystem(&CameraSystemConfig{
-		MaxCameraCount: 100,
+		MaxCameraCount: 61,
 	})
 	if err != nil {
 		return nil, err
 	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
 	rs, err := NewResourceSystem(&ResourceSystemConfig{
-		MaxLoaderCount: 1000,
-		AssetBasePath:  "", // TODO: add correct path here
+		MaxLoaderCount: 32,
+		AssetBasePath:  fmt.Sprintf("%s/assets", wd),
 	})
 	if err != nil {
 		return nil, err
 	}
 	ts, err := NewTextureSystem(&TextureSystemConfig{
-		MaxTextureCount: 1000,
+		MaxTextureCount: 65536,
 	}, js, rs, renderer)
 	if err != nil {
 		return nil, err
 	}
 	ssys, err := NewShaderSystem(&ShaderSystemConfig{
-		MaxShaderCount:      1000,
-		MaxUniformCount:     uint8(255),
-		MaxGlobalTextures:   uint8(255),
-		MaxInstanceTextures: uint8(255),
+		MaxShaderCount:      1024,
+		MaxUniformCount:     uint8(128),
+		MaxGlobalTextures:   uint8(31),
+		MaxInstanceTextures: uint8(31),
 	}, ts, renderer)
 	if err != nil {
 		return nil, err
 	}
 	ms, err := NewMaterialSystem(&MaterialSystemConfig{
-		MaxMaterialCount: 1000,
+		MaxMaterialCount: 4096,
 	}, ssys, ts, rs, renderer)
 	if err != nil {
 		return nil, err
 	}
 	gs, err := NewGeometrySystem(&GeometrySystemConfig{
-		MaxGeometryCount: 1000,
+		MaxGeometryCount: 4096,
 	}, ms, renderer)
 	if err != nil {
 		return nil, err
@@ -68,50 +86,80 @@ func NewSystemManager(renderer *renderer.Renderer) (*SystemManager, error) {
 		return nil, err
 	}
 	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
-		MaxViewCount: 1000,
+		MaxViewCount: 251,
 	}, renderer)
 	if err != nil {
 		return nil, err
 	}
 	return &SystemManager{
-		cameraSystem:     cs,
-		jobSystem:        js,
-		textureSystem:    ts,
-		shaderSystem:     ssys,
-		materialSystem:   ms,
-		geometrySystem:   gs,
-		meshLoaderSystem: mls,
-		resourceSystem:   rs,
-		renderViewSystem: rvs,
+		RendererSystem:   renderer,
+		CameraSystem:     cs,
+		JobSystem:        js,
+		TextureSystem:    ts,
+		ShaderSystem:     ssys,
+		MaterialSystem:   ms,
+		GeometrySystem:   gs,
+		MeshLoaderSystem: mls,
+		ResourceSystem:   rs,
+		RenderViewSystem: rvs,
 	}, nil
 }
 
+func (sm *SystemManager) Initialize() error {
+	if err := sm.RendererSystem.Initialize(sm.ResourceSystem, sm.ShaderSystem); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sm *SystemManager) DrawFrame(renderPacket *metadata.RenderPacket) error {
+	if err := sm.RendererSystem.DrawFrame(renderPacket, sm.RenderViewSystem); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sm *SystemManager) OnResize(width, height uint16) error {
+	if err := sm.RendererSystem.OnResize(width, height); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (sm *SystemManager) RenderViewCreate(config *metadata.RenderViewConfig) error {
+	if !sm.RenderViewSystem.Create(config) {
+		err := fmt.Errorf("failed to create the renderview with name `%s`", config.Name)
+		return err
+	}
+	return nil
+}
+
 func (sm *SystemManager) Shutdown() error {
-	if err := sm.renderViewSystem.Shutdown(); err != nil {
+	if err := sm.RenderViewSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.meshLoaderSystem.Shutdown(); err != nil {
+	if err := sm.MeshLoaderSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.geometrySystem.Shutdown(); err != nil {
+	if err := sm.GeometrySystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.materialSystem.Shutdown(); err != nil {
+	if err := sm.MaterialSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.shaderSystem.Shutdown(); err != nil {
+	if err := sm.ShaderSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.textureSystem.Shutdown(); err != nil {
+	if err := sm.TextureSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.resourceSystem.Shutdown(); err != nil {
+	if err := sm.ResourceSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.cameraSystem.Shutdown(); err != nil {
+	if err := sm.CameraSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.jobSystem.Shutdown(); err != nil {
+	if err := sm.JobSystem.Shutdown(); err != nil {
 		return err
 	}
 	return nil

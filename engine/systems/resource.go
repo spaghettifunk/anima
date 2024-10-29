@@ -35,7 +35,9 @@ func NewResourceSystem(config *ResourceSystemConfig) (*ResourceSystem, error) {
 
 	// Invalidate all loaders
 	for i := uint32(0); i < config.MaxLoaderCount; i++ {
-		rs.RegisteredLoaders[i].ID = loaders.InvalidID
+		rs.RegisteredLoaders[i] = loaders.ResourceLoader{
+			ID: loaders.InvalidID,
+		}
 	}
 
 	// NOTE: Auto-register known loader types here.

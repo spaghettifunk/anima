@@ -5,7 +5,6 @@ import (
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
@@ -33,7 +32,7 @@ type MaterialSystem struct {
 	shaderSystem   *ShaderSystem
 	textureSystem  *TextureSystem
 	resourceSystem *ResourceSystem
-	renderer       *renderer.Renderer
+	renderer       *RendererSystem
 }
 
 /**
@@ -46,7 +45,7 @@ type MaterialSystem struct {
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, ts *TextureSystem, rs *ResourceSystem, r *renderer.Renderer) (*MaterialSystem, error) {
+func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, ts *TextureSystem, rs *ResourceSystem, r *RendererSystem) (*MaterialSystem, error) {
 	if config.MaxMaterialCount == 0 {
 		core.LogError("func NewMaterialSystem - config.MaxMaterialCount must be > 0.")
 		return nil, nil
@@ -54,6 +53,18 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 
 	ms := &MaterialSystem{
 		MaterialShaderID: loaders.InvalidID,
+		DefaultMaterial: &metadata.Material{
+			DiffuseMap: &metadata.TextureMap{
+				Texture: &metadata.Texture{},
+			},
+			SpecularMap: &metadata.TextureMap{
+				Texture: &metadata.Texture{},
+			},
+			NormalMap: &metadata.TextureMap{
+				Texture: &metadata.Texture{},
+			},
+			DiffuseColour: math.NewVec4One(),
+		},
 		MaterialLocations: &metadata.MaterialShaderUniformLocations{
 			View:            loaders.InvalidIDUint16,
 			Projection:      loaders.InvalidIDUint16,
@@ -92,10 +103,12 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 	// Invalidate all materials in the array.
 	for i := uint32(0); i < config.MaxMaterialCount; i++ {
 		ms.RegisteredMaterialTable[metadata.GenerateNewHash()] = invalid_ref
-		ms.RegisteredMaterials[i].ID = loaders.InvalidID
-		ms.RegisteredMaterials[i].Generation = loaders.InvalidID
-		ms.RegisteredMaterials[i].InternalID = loaders.InvalidID
-		ms.RegisteredMaterials[i].RenderFrameNumber = loaders.InvalidID
+		ms.RegisteredMaterials[i] = &metadata.Material{
+			ID:                loaders.InvalidID,
+			Generation:        loaders.InvalidID,
+			InternalID:        loaders.InvalidID,
+			RenderFrameNumber: loaders.InvalidID,
+		}
 	}
 
 	if !ms.createDefaultMaterial() {

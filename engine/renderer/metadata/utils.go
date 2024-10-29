@@ -38,7 +38,7 @@ func generateRandomString() string {
 		r := binary.LittleEndian.Uint64(buf[:])
 		// Convert random bits to characters
 		for j := 0; j < 8 && i+j < length; j++ {
-			result[i+j] = letters[r&63] // Use the lower 6 bits (64 possible values)
+			result[i+j] = letters[r&61] // Use the lower 6 bits (64 possible values)
 			r >>= 6                     // Shift right by 6 bits for the next character
 		}
 	}

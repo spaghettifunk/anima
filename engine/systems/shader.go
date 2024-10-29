@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spaghettifunk/anima/engine/core"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
@@ -32,10 +31,10 @@ type ShaderSystem struct {
 	Shaders []*metadata.Shader
 	// sub systems
 	textureSystem *TextureSystem
-	renderer      *renderer.Renderer
+	renderer      *RendererSystem
 }
 
-func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *renderer.Renderer) (*ShaderSystem, error) {
+func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *RendererSystem) (*ShaderSystem, error) {
 	// Verify configuration.
 	if config.MaxShaderCount < 512 {
 		if config.MaxShaderCount == 0 {
@@ -60,12 +59,10 @@ func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *renderer.
 
 	// Invalidate all shader ids.
 	for i := uint16(0); i < config.MaxShaderCount; i++ {
-		shaderSystem.Shaders[i].ID = loaders.InvalidID
-		shaderSystem.Shaders[i].RenderFrameNumber = loaders.InvalidIDUint64
-	}
-
-	for i := uint16(0); i < config.MaxShaderCount; i++ {
-		shaderSystem.Shaders[i].ID = loaders.InvalidID
+		shaderSystem.Shaders[i] = &metadata.Shader{
+			ID:                loaders.InvalidID,
+			RenderFrameNumber: loaders.InvalidIDUint64,
+		}
 	}
 
 	return shaderSystem, nil
@@ -308,7 +305,7 @@ func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interfac
 		}
 		shader.BoundScope = uniform.Scope
 	}
-	return shaderSystem.renderer.SetUniform(shader, uniform, value)
+	return shaderSystem.renderer.ShaderSetUniform(shader, uniform, value)
 }
 
 func (shaderSystem *ShaderSystem) SetSampler(samplerName string, texture *metadata.Texture) bool {

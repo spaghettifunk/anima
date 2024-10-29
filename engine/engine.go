@@ -4,10 +4,11 @@ import (
 	"fmt"
 
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems"
+	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 type Stage uint8
@@ -35,23 +36,24 @@ type Engine struct {
 	isRunning     bool
 	isSuspended   bool
 	platform      *platform.Platform
-	renderer      *renderer.Renderer
 	systemManager *systems.SystemManager
 	width         uint32
 	height        uint32
 	clock         *core.Clock
 	lastTime      float64
+
+	// Temporary for testing
+	skybox       *metadata.Skybox
+	meshes       []*metadata.Mesh
+	carMesh      *metadata.Mesh
+	sponzaMesh   *metadata.Mesh
+	modelsLoaded bool
 }
 
 func New(g *Game) (*Engine, error) {
 	p := platform.New()
-	r, err := renderer.NewRenderer(g.ApplicationConfig.Name, g.ApplicationConfig.StartWidth, g.ApplicationConfig.StartHeight, p)
-	if err != nil {
-		core.LogError(err.Error())
-		return nil, err
-	}
 
-	sm, err := systems.NewSystemManager(r)
+	sm, err := systems.NewSystemManager(g.ApplicationConfig.Name, g.ApplicationConfig.StartWidth, g.ApplicationConfig.StartHeight, p)
 	if err != nil {
 		core.LogError(err.Error())
 		return nil, err
@@ -62,13 +64,14 @@ func New(g *Game) (*Engine, error) {
 		gameInstance:  g,
 		clock:         core.NewClock(),
 		platform:      p,
-		renderer:      r,
 		systemManager: sm,
 		isRunning:     true,
 		isSuspended:   false,
 		width:         g.ApplicationConfig.StartWidth,
 		height:        g.ApplicationConfig.StartHeight,
 		lastTime:      0,
+		// temp stuff
+		modelsLoaded: false,
 	}, nil
 }
 
@@ -97,10 +100,159 @@ func (e *Engine) Initialize() error {
 		return err
 	}
 
-	// initialize renderer
-	if err := e.renderer.Initialize(); err != nil {
+	// initialize subsystems
+	if err := e.systemManager.Initialize(); err != nil {
 		return err
 	}
+
+	// START: temporary stuff
+	skyboxConfig := &metadata.RenderViewConfig{
+		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
+		Width:          0,
+		Height:         0,
+		Name:           "skybox",
+		PassCount:      1,
+		Passes: []metadata.RenderViewPassConfig{
+			{
+				Name: "Renderpass.Builtin.Skybox",
+			},
+		},
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	}
+	if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
+		core.LogFatal(err.Error())
+		return err
+	}
+
+	opaqueWorldConfig := &metadata.RenderViewConfig{
+		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
+		Width:          0,
+		Height:         0,
+		Name:           "world_opaque",
+		PassCount:      1,
+		Passes: []metadata.RenderViewPassConfig{
+			{
+				Name: "Renderpass.Builtin.World",
+			},
+		},
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	}
+	if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
+		core.LogFatal(err.Error())
+		return err
+	}
+
+	// Skybox
+	e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
+	e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
+	e.skybox.Cubemap.RepeatU = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
+	if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
+		err := fmt.Errorf("unable to acquire resources for cube map texture")
+		return err
+	}
+
+	t, err := e.systemManager.TextureSystem.AcquireCube("skybox", true)
+	if err != nil {
+		return err
+	}
+	e.skybox.Cubemap.Texture = t
+	skyboxCubeConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "skybox_cube", "")
+	if err != nil {
+		return err
+	}
+
+	// Clear out the material name.
+	skyboxCubeConfig.MaterialName = ""
+	g, err := e.systemManager.GeometrySystem.AcquireFromConfig(skyboxCubeConfig, true)
+	if err != nil {
+		return err
+	}
+	e.skybox.Geometry = g
+	e.skybox.RenderFrameNumber = loaders.InvalidIDUint64
+	skyboxShader, err := e.systemManager.ShaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_SKYBOX)
+	if err != nil {
+		return err
+	}
+	maps := []*metadata.TextureMap{e.skybox.Cubemap}
+	e.skybox.InstanceID = e.systemManager.RendererSystem.ShaderAcquireInstanceResources(skyboxShader, maps)
+
+	// Invalidate all meshes.
+	for i := 0; i < 10; i++ {
+		e.meshes[i].Generation = loaders.InvalidIDUint8
+	}
+
+	meshCount := 0
+
+	// Load up a cube configuration, and load geometry from it.
+	e.meshes[meshCount].GeometryCount = 1
+	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	gConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "test_cube", "test_material")
+	if err != nil {
+		return err
+	}
+	c, err := e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	if err != nil {
+		return err
+	}
+	e.meshes[meshCount].Geometries[0] = c
+	e.meshes[meshCount].Transform = math.TransformCreate()
+	meshCount++
+	e.meshes[meshCount].Generation = 0
+	// Clean up the allocations for the geometry config.
+	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+
+	// A second cube
+	e.meshes[meshCount].GeometryCount = 1
+	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(5.0, 5.0, 5.0, 1.0, 1.0, "test_cube_2", "test_material")
+	if err != nil {
+		return err
+	}
+	c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	if err != nil {
+		return err
+	}
+	e.meshes[meshCount].Geometries[0] = c
+	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(10.0, 0.0, 1.0))
+	// Set the first cube as the parent to the second.
+	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	meshCount++
+	e.meshes[meshCount].Generation = 0
+	// Clean up the allocations for the geometry config.
+	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+
+	// A third cube!
+	e.meshes[meshCount].GeometryCount = 1
+	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_2", "test_material")
+	if err != nil {
+		return err
+	}
+	c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	if err != nil {
+		return err
+	}
+	e.meshes[meshCount].Geometries[0] = c
+	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(5.0, 0.0, 1.0))
+	// Set the second cube as the parent to the third.
+	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	meshCount++
+	e.meshes[meshCount].Generation = 0
+	// Clean up the allocations for the geometry config.
+	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+
+	e.carMesh = e.meshes[meshCount]
+	e.carMesh.Transform = math.TransformFromPosition(math.NewVec3(15.0, 0.0, 1.0))
+	meshCount++
+
+	e.sponzaMesh = e.meshes[meshCount]
+	e.sponzaMesh.Transform = math.TransformFromPositionRotationScale(math.NewVec3(15.0, 0.0, 1.0), math.NewQuatIdentity(), math.NewVec3(0.05, 0.05, 0.05))
+	meshCount++
+
+	// END: temporary stuff
 
 	if err := e.gameInstance.FnInitialize(); err != nil {
 		return err
@@ -135,9 +287,9 @@ func (e *Engine) Run() error {
 			// Update clock and get delta time.
 			e.clock.Update()
 
-			var current_time float64 = e.clock.Elapsed()
-			var delta float64 = (current_time - e.lastTime)
-			var frame_start_time float64 = platform.GetAbsoluteTime()
+			var currentTime float64 = e.clock.Elapsed()
+			var delta float64 = (currentTime - e.lastTime)
+			var frameStartTime float64 = platform.GetAbsoluteTime()
 
 			if err := e.gameInstance.FnUpdate(delta); err != nil {
 				core.LogFatal("Game update failed, shutting down.")
@@ -152,24 +304,61 @@ func (e *Engine) Run() error {
 				break
 			}
 
-			// TODO: refactor packet creation
+			// Perform a small rotation on the first mesh.
+			rotation := math.NewQuatFromAxisAngle(math.NewVec3(0, 1, 0), float32(0.5*delta), false)
+			e.meshes[0].Transform.Rotate(rotation)
+			// Perform a similar rotation on the second mesh, if it exists.
+			e.meshes[1].Transform.Rotate(rotation)
+			// Perform a similar rotation on the third mesh, if it exists.
+			e.meshes[2].Transform.Rotate(rotation)
+
 			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
+				ViewCount: 3,
+				Views:     make([]*metadata.RenderViewPacket, 3),
 			}
-			e.renderer.DrawFrame(packet)
+
+			// skybox
+			skyboxPacketData := &metadata.SkyboxPacketData{
+				Skybox: e.skybox,
+			}
+			packet.Views[0] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
+
+			// World
+			meshes := []*metadata.Mesh{}
+			for _, m := range e.meshes {
+				if m.Generation != loaders.InvalidIDUint8 {
+					meshes = append(meshes, m)
+				}
+			}
+			worldMeshData := &metadata.MeshPacketData{
+				MeshCount: uint32(len(meshes)),
+				Meshes:    meshes,
+			}
+			packet.Views[1] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world_opaque"), worldMeshData)
+
+			// Update the bitmap text with camera position. NOTE: just using the default camera for now.
+			worldCamera := e.systemManager.CameraSystem.GetDefault()
+			pos := worldCamera.GetPosition()
+			rot := worldCamera.GetEulerRotation()
+
+			core.LogInfo(fmt.Sprintf("Camera Pos: [%.3f, %.3f, %.3f]\nCamera Rot: [%.3f, %.3f, %.3f]", pos.X, pos.Y, pos.Z, math.RadToDeg(rot.X), math.RadToDeg(rot.Y), math.RadToDeg(rot.Z)))
+
+			// Draw freame
+			e.systemManager.DrawFrame(packet)
 
 			// Figure out how long the frame took and, if below
-			var frame_end_time float64 = platform.GetAbsoluteTime()
-			var frame_elapsed_time float64 = frame_end_time - frame_start_time
-			runningTime += frame_elapsed_time
-			var remaining_seconds float64 = targetFrameSeconds - frame_elapsed_time
+			var frameEndTime float64 = platform.GetAbsoluteTime()
+			var frameElapsedTime float64 = frameEndTime - frameStartTime
+			runningTime += frameElapsedTime
+			var remainingSeconds float64 = targetFrameSeconds - frameElapsedTime
 
-			if remaining_seconds > 0 {
-				remaining_ms := (remaining_seconds * 1000)
+			if remainingSeconds > 0 {
+				remainingMS := (remainingSeconds * 1000)
 				// If there is time left, give it back to the OS.
-				limit_frames := false
-				if remaining_ms > 0 && limit_frames {
-					//    platform_sleep(remaining_ms - 1);
+				limitFrames := false
+				if remainingMS > 0 && limitFrames {
+					e.platform.Sleep(remainingMS - 1)
 				}
 				frameCount++
 			}
@@ -181,7 +370,7 @@ func (e *Engine) Run() error {
 			core.InputUpdate(delta)
 
 			// Update last time
-			e.lastTime = current_time
+			e.lastTime = currentTime
 		}
 	}
 
@@ -198,9 +387,6 @@ func (e *Engine) Shutdown() error {
 	if err := e.systemManager.Shutdown(); err != nil {
 		return err
 	}
-	if err := e.renderer.Shutdown(); err != nil {
-		return err
-	}
 	if err := e.platform.Shutdown(); err != nil {
 		return err
 	}
@@ -210,7 +396,7 @@ func (e *Engine) Shutdown() error {
 // ApplicationGetFramebufferSize returns the width and height (in this order)
 // of the application Framebuffer
 func (e *Engine) GetFramebufferSize() (uint32, uint32) {
-	return 0, 0
+	return e.width, e.height
 }
 
 func (e *Engine) onEvent(context core.EventContext) {
@@ -230,10 +416,10 @@ func (e *Engine) onKey(context core.EventContext) {
 		return
 	}
 
-	key_code := ke.KeyCode
+	keyCode := ke.KeyCode
 
 	if context.Type == core.EVENT_CODE_KEY_PRESSED {
-		if key_code == core.KEY_ESCAPE {
+		if keyCode == core.KEY_ESCAPE {
 			// NOTE: Technically firing an event to itself, but there may be other listeners.
 			data := core.EventContext{
 				Type: core.EVENT_CODE_APPLICATION_QUIT,
@@ -241,18 +427,18 @@ func (e *Engine) onKey(context core.EventContext) {
 			core.EventFire(data)
 			// Block anything else from processing this.
 			return
-		} else if key_code == core.KEY_A {
+		} else if keyCode == core.KEY_A {
 			// Example on checking for a key
-			core.LogDebug("Explicit - A key pressed!")
+			core.LogInfo("Explicit - A key pressed!")
 		} else {
-			core.LogDebug("'%c' key pressed in window.", key_code)
+			core.LogInfo("'%c' key pressed in window.", keyCode)
 		}
 	} else if context.Type == core.EVENT_CODE_KEY_RELEASED {
-		if key_code == core.KEY_B {
+		if keyCode == core.KEY_B {
 			// Example on checking for a key
-			core.LogDebug("Explicit - B key released!")
+			core.LogInfo("Explicit - B key released!")
 		} else {
-			core.LogDebug("'%c' key released in window.", key_code)
+			core.LogInfo("'%c' key released in window.", keyCode)
 		}
 	}
 }
@@ -286,7 +472,9 @@ func (e *Engine) onResized(context core.EventContext) {
 					e.isSuspended = false
 				}
 				e.gameInstance.FnOnResize(uint32(width), uint32(height))
-				e.renderer.OnResize(uint16(width), uint16(height))
+				if err := e.systemManager.OnResize(uint16(width), uint16(height)); err != nil {
+					core.LogError(err.Error())
+				}
 			}
 		}
 	}

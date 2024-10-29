@@ -2,7 +2,6 @@ package systems
 
 import (
 	"github.com/spaghettifunk/anima/engine/core"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/views"
 	"github.com/spaghettifunk/anima/engine/systems/loaders"
@@ -19,7 +18,7 @@ type RenderViewSystem struct {
 	MaxViewCount    uint32
 	RegisteredViews []*metadata.RenderView
 	// subsystems
-	renderer *renderer.Renderer
+	renderer *RendererSystem
 }
 
 /**
@@ -31,7 +30,7 @@ type RenderViewSystem struct {
  * @param config Configuration for the system.
  * @return True on success; otherwise false.
  */
-func NewRenderViewSystem(config RenderViewSystemConfig, r *renderer.Renderer) (*RenderViewSystem, error) {
+func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem) (*RenderViewSystem, error) {
 	if config.MaxViewCount == 0 {
 		core.LogError("render_view_system_initialize - config.MaxViewCount must be > 0.")
 		return nil, nil
@@ -46,7 +45,9 @@ func NewRenderViewSystem(config RenderViewSystemConfig, r *renderer.Renderer) (*
 	// Fill the array with invalid entries.
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
 		rvs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
-		rvs.RegisteredViews[i].ID = loaders.InvalidIDUint16
+		rvs.RegisteredViews[i] = &metadata.RenderView{
+			ID: loaders.InvalidIDUint16,
+		}
 	}
 	return rvs, nil
 }

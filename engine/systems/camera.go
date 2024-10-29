@@ -44,14 +44,16 @@ func NewCameraSystem(config *CameraSystemConfig) (*CameraSystem, error) {
 	}
 	cs := &CameraSystem{
 		Config:  config,
-		Cameras: make([]*components.CameraLookup, 1),
+		Cameras: make([]*components.CameraLookup, config.MaxCameraCount),
 		Lookup:  make(map[string]uint16, config.MaxCameraCount),
 	}
 	// Invalidate all cameras in the array.
 	for i := uint16(0); i < cs.Config.MaxCameraCount; i++ {
 		cs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
-		cs.Cameras[i].ID = loaders.InvalidIDUint16
-		cs.Cameras[i].ReferenceCount = 0
+		cs.Cameras[i] = &components.CameraLookup{
+			ID:             loaders.InvalidIDUint16,
+			ReferenceCount: 0,
+		}
 	}
 	// Setup default camera.
 	cs.DefaultCamera = components.NewCamera()

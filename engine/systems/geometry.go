@@ -5,7 +5,6 @@ import (
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
@@ -28,7 +27,7 @@ type GeometrySystem struct {
 	RegisteredGeometries []*metadata.GeometryReference
 	// sub-systems
 	materialSystem *MaterialSystem
-	renderer       *renderer.Renderer
+	renderer       *RendererSystem
 }
 
 /**
@@ -41,7 +40,7 @@ type GeometrySystem struct {
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *renderer.Renderer) (*GeometrySystem, error) {
+func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *RendererSystem) (*GeometrySystem, error) {
 	if config.MaxGeometryCount == 0 {
 		err := fmt.Errorf("func NewGeometrySystem - config.MaxGeometryCount must be > 0")
 		core.LogWarn(err.Error())
@@ -50,6 +49,8 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *rend
 
 	gs := &GeometrySystem{
 		Config:               config,
+		DefaultGeometry:      &metadata.Geometry{},
+		Default2DGeometry:    &metadata.Geometry{},
 		RegisteredGeometries: make([]*metadata.GeometryReference, config.MaxGeometryCount),
 		materialSystem:       ms,
 		renderer:             r,
@@ -58,9 +59,13 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *rend
 	// Invalidate all geometries in the array.
 	count := gs.Config.MaxGeometryCount
 	for i := uint32(0); i < count; i++ {
-		gs.RegisteredGeometries[i].Geometry.ID = loaders.InvalidID
-		gs.RegisteredGeometries[i].Geometry.InternalID = loaders.InvalidID
-		gs.RegisteredGeometries[i].Geometry.Generation = loaders.InvalidIDUint16
+		gs.RegisteredGeometries[i] = &metadata.GeometryReference{
+			Geometry: &metadata.Geometry{
+				ID:         loaders.InvalidID,
+				InternalID: loaders.InvalidID,
+				Generation: loaders.InvalidIDUint16,
+			},
+		}
 	}
 
 	if !gs.createDefaultGeometries() {
@@ -318,7 +323,7 @@ func (gs *GeometrySystem) GeneratePlaneConfig(width, height float32, xSegmentCou
 	return config, nil
 }
 
-func GeometrySystemGenerateCubeConfig(width, height, depth, tileX, tileY float32, name, materialName string) (*metadata.GeometryConfig, error) {
+func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY float32, name, materialName string) (*metadata.GeometryConfig, error) {
 	if width == 0 {
 		core.LogWarn("Width must be nonzero. Defaulting to one.")
 		width = 1.0

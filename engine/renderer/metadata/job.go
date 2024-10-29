@@ -1,13 +1,5 @@
 package metadata
 
-import "sync"
-
-/** Definition for jobs. */
-type JobStart func(interface{}, interface{}) bool
-
-/** Definition for completion of a job. */
-type JobOnComplete func(interface{})
-
 /** @brief Describes a type of job */
 type JobType int
 
@@ -49,41 +41,16 @@ const (
 /**
  * @brief Describes a job to be run.
  */
-type JobInfo struct {
+type JobTask struct {
 	/** @brief The type of job. Used to determine which thread the job executes on. */
 	JobType JobType
 	/** @brief The priority of this job. Higher priority jobs obviously run sooner. */
-	Priority JobPriority
-	/** @brief A function pointer to be invoked when the job starts. Required. */
-	EntryPoint JobStart
-	/** @brief A function pointer to be invoked when the job successfully completes. Optional. */
-	OnSuccess JobOnComplete
-	/** @brief A function pointer to be invoked when the job successfully fails. Optional. */
-	OnFail JobOnComplete
-	/** @brief Data to be passed to the entry point upon execution. */
-	ParamData interface{}
-	/** @brief The size of the data passed to the job. */
-	ParamDataSize uint32
-	/** @brief Data to be passed to the success/fail function upon execution, if exists. */
-	ResultData interface{}
-	/** @brief The size of the data passed to the success/fail function. */
-	ResultDataSize uint32
-}
-
-type JobThread struct {
-	Index uint8
-	Info  JobInfo
-	// A mutex to guard access to this thread's info.
-	InfoMutex sync.Mutex
-	// The types of jobs this thread can handle.
-	TypeMask uint32
-}
-
-type JobResultEntry struct {
-	ID        uint16
-	Callback  JobOnComplete
-	ParamSize uint32
-	Params    interface{}
+	InputParams          interface{}
+	Priority             JobPriority
+	OnStart              func(params interface{}, output chan<- interface{}) error // Called when job starts
+	OnComplete           func(paramsChan <-chan interface{})                       // Called when job completes successfully
+	OnFailure            func(paramsChan <-chan interface{})                       // Called when job fails
+	OnCompletionCallback func()                                                    // Optional callback after job completion
 }
 
 // The max number of job results that can be stored at once.

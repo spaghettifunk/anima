@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spaghettifunk/anima/engine/core"
-	"github.com/spaghettifunk/anima/engine/renderer"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
@@ -28,7 +27,7 @@ type TextureSystem struct {
 	// sub systems
 	jobSystem      *JobSystem
 	resourceSystem *ResourceSystem
-	renderer       *renderer.Renderer
+	renderer       *RendererSystem
 }
 
 /**
@@ -40,7 +39,7 @@ type TextureSystem struct {
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSystem, r *renderer.Renderer) (*TextureSystem, error) {
+func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSystem, r *RendererSystem) (*TextureSystem, error) {
 	if config.MaxTextureCount == 0 {
 		err := fmt.Errorf("func NewTextureSystem - config.MaxTextureCount must be > 0")
 		core.LogFatal(err.Error())
@@ -51,6 +50,10 @@ func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSy
 		Config:                 config,
 		RegisteredTextures:     make([]*metadata.Texture, config.MaxTextureCount),
 		RegisteredTextureTable: make(map[string]*metadata.TextureReference),
+		DefaultTexture:         &metadata.Texture{},
+		DefaultDiffuseTexture:  &metadata.Texture{},
+		DefaultSpecularTexture: &metadata.Texture{},
+		DefaultNormalTexture:   &metadata.Texture{},
 		jobSystem:              js,
 		resourceSystem:         rs,
 		renderer:               r,
@@ -63,8 +66,10 @@ func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSy
 			Handle:         loaders.InvalidID, // Primary reason for needing default values.
 			ReferenceCount: 0,
 		}
-		ts.RegisteredTextures[i].ID = loaders.InvalidID
-		ts.RegisteredTextures[i].Generation = loaders.InvalidID
+		ts.RegisteredTextures[i] = &metadata.Texture{
+			ID:         loaders.InvalidID,
+			Generation: loaders.InvalidID,
+		}
 	}
 
 	// Create default textures for use in the system.
@@ -495,22 +500,24 @@ func (ts *TextureSystem) DestroyDefaultTextures() {
 }
 
 func (ts *TextureSystem) LoadTexture(textureName string, texture *metadata.Texture) bool {
-	// Kick off a texture loading job. Only handles loading from disk
-	// to CPU. GPU upload is handled after completion of this job.
-	params := &metadata.TextureLoadParams{
-		ResourceName:      textureName,
-		OutTexture:        texture,
-		ImageResource:     &metadata.Resource{},
-		CurrentGeneration: texture.Generation,
-		TempTexture:       &metadata.Texture{},
-	}
-
-	job, err := ts.jobSystem.JobCreate(ts.TextureLoadJobStart, ts.TextureLoadJobSuccess, ts.TextureLoadJobFail, params)
-	if err != nil {
-		core.LogError("failed to create the job")
-		return false
-	}
-	ts.jobSystem.Submit(job)
+	ts.jobSystem.Submit(metadata.JobTask{
+		JobType:  metadata.JOB_TYPE_GENERAL,
+		Priority: metadata.JOB_PRIORITY_NORMAL,
+		InputParams: []interface{}{
+			// Kick off a texture loading job. Only handles loading from disk
+			// to CPU. GPU upload is handled after completion of this job.
+			&metadata.TextureLoadParams{
+				ResourceName:      textureName,
+				OutTexture:        texture,
+				ImageResource:     &metadata.Resource{},
+				CurrentGeneration: texture.Generation,
+				TempTexture:       &metadata.Texture{},
+			},
+		},
+		OnStart:    ts.TextureLoadJobStart,
+		OnComplete: ts.TextureLoadJobSuccess,
+		OnFailure:  ts.TextureLoadJobFail,
+	})
 
 	return true
 }
@@ -696,91 +703,98 @@ func (ts *TextureSystem) ProcessTextureReference(name string, textureType metada
 	return 0, false
 }
 
-func (ts *TextureSystem) TextureLoadJobSuccess(params interface{}) {
-	texture_params, ok := params.(*metadata.TextureLoadParams)
-	if !ok {
-		core.LogError("params are not of type *TextureLoadParams")
-		return
-	}
+func (ts *TextureSystem) TextureLoadJobSuccess(paramsChan <-chan interface{}) {
+	if params, ok := <-paramsChan; ok {
+		textureParams, ok := params.(*metadata.TextureLoadParams)
+		if !ok {
+			core.LogError("params are not of type *TextureLoadParams")
+			return
+		}
 
-	// This also handles the GPU upload. Can't be jobified until the renderer is multithreaded.
-	resource_data := texture_params.ImageResource.Data.(*metadata.ImageResourceData)
+		// This also handles the GPU upload. Can't be jobified until the renderer is multithreaded.
+		resourceData := textureParams.ImageResource.Data.(*metadata.ImageResourceData)
 
-	// Acquire internal texture resources and upload to GPU. Can't be jobified until the renderer is multithreaded.
-	ts.renderer.TextureCreate(resource_data.Pixels, texture_params.TempTexture)
+		// Acquire internal texture resources and upload to GPU. Can't be jobified until the renderer is multithreaded.
+		ts.renderer.TextureCreate(resourceData.Pixels, textureParams.TempTexture)
 
-	// Take a copy of the old texture.
-	old := texture_params.OutTexture
+		// Take a copy of the old texture.
+		old := textureParams.OutTexture
 
-	// Assign the temp texture to the pointer.
-	texture_params.OutTexture = texture_params.TempTexture
+		// Assign the temp texture to the pointer.
+		textureParams.OutTexture = textureParams.TempTexture
 
-	// Destroy the old texture.
-	ts.renderer.TextureDestroy(old)
+		// Destroy the old texture.
+		ts.renderer.TextureDestroy(old)
 
-	if texture_params.CurrentGeneration == loaders.InvalidID {
-		texture_params.OutTexture.Generation = 0
-	} else {
-		texture_params.OutTexture.Generation = texture_params.CurrentGeneration + 1
-	}
+		if textureParams.CurrentGeneration == loaders.InvalidID {
+			textureParams.OutTexture.Generation = 0
+		} else {
+			textureParams.OutTexture.Generation = textureParams.CurrentGeneration + 1
+		}
 
-	core.LogDebug("Successfully loaded texture '%s'.", texture_params.ResourceName)
+		core.LogDebug("Successfully loaded texture '%s'.", textureParams.ResourceName)
 
-	// Clean up data.
-	ts.resourceSystem.Unload(texture_params.ImageResource)
-	if texture_params.ResourceName != "" {
-		texture_params.ResourceName = ""
+		// Clean up data.
+		ts.resourceSystem.Unload(textureParams.ImageResource)
+		if textureParams.ResourceName != "" {
+			textureParams.ResourceName = ""
+		}
 	}
 }
 
-func (ts *TextureSystem) TextureLoadJobFail(params interface{}) {
-	texture_params := params.(*metadata.TextureLoadParams)
-	core.LogError("Failed to load texture '%s'.", texture_params.ResourceName)
-	ts.resourceSystem.Unload(texture_params.ImageResource)
+func (ts *TextureSystem) TextureLoadJobFail(paramsChan <-chan interface{}) {
+	if params, ok := <-paramsChan; ok {
+		textureParams := params.(*metadata.TextureLoadParams)
+		core.LogError("Failed to load texture '%s'.", textureParams.ResourceName)
+		ts.resourceSystem.Unload(textureParams.ImageResource)
+	}
 }
 
-func (ts *TextureSystem) TextureLoadJobStart(params, result_data interface{}) bool {
-	load_params := params.(*metadata.TextureLoadParams)
+func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan<- interface{}) error {
+	loadParams := params.(*metadata.TextureLoadParams)
 
 	resource_params := &metadata.ImageResourceParams{
 		FlipY: true,
 	}
 
-	result, err := ts.resourceSystem.Load(load_params.ResourceName, metadata.ResourceTypeImage, resource_params)
+	result, err := ts.resourceSystem.Load(loadParams.ResourceName, metadata.ResourceTypeImage, resource_params)
 	if err != nil {
 		core.LogError(err.Error())
-		return false
+		resultChan <- loadParams
+		return err
 	}
-	load_params.ImageResource = result
+	loadParams.ImageResource = result
 
-	resource_data := load_params.ImageResource.Data.(*metadata.ImageResourceData)
+	resourceData := loadParams.ImageResource.Data.(*metadata.ImageResourceData)
 
 	// Use a temporary texture to load into.
-	load_params.TempTexture.Width = resource_data.Width
-	load_params.TempTexture.Height = resource_data.Height
-	load_params.TempTexture.ChannelCount = resource_data.ChannelCount
+	loadParams.TempTexture.Width = resourceData.Width
+	loadParams.TempTexture.Height = resourceData.Height
+	loadParams.TempTexture.ChannelCount = resourceData.ChannelCount
 
-	load_params.CurrentGeneration = load_params.OutTexture.Generation
-	load_params.OutTexture.Generation = loaders.InvalidID
+	loadParams.CurrentGeneration = loadParams.OutTexture.Generation
+	loadParams.OutTexture.Generation = loaders.InvalidID
 
-	total_size := load_params.TempTexture.Width * load_params.TempTexture.Height * uint32(load_params.TempTexture.ChannelCount)
+	total_size := loadParams.TempTexture.Width * loadParams.TempTexture.Height * uint32(loadParams.TempTexture.ChannelCount)
 	// Check for transparency
-	has_transparency := false
-	for i := uint32(0); i < total_size; i += uint32(load_params.TempTexture.ChannelCount) {
-		a := resource_data.Pixels[i+3]
+	hasTransparency := false
+	for i := uint32(0); i < total_size; i += uint32(loadParams.TempTexture.ChannelCount) {
+		a := resourceData.Pixels[i+3]
 		if a < 255 {
-			has_transparency = true
+			hasTransparency = true
 			break
 		}
 	}
 
 	// Take a copy of the name.
-	load_params.TempTexture.Name = load_params.ResourceName
-	load_params.TempTexture.Generation = loaders.InvalidID
-	load_params.TempTexture.Flags |= 0
-	if has_transparency {
-		load_params.TempTexture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
+	loadParams.TempTexture.Name = loadParams.ResourceName
+	loadParams.TempTexture.Generation = loaders.InvalidID
+	loadParams.TempTexture.Flags |= 0
+	if hasTransparency {
+		loadParams.TempTexture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
 	}
 
-	return true
+	resultChan <- loadParams
+
+	return nil
 }

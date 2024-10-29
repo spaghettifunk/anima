@@ -10,6 +10,15 @@ const (
 	BUILTIN_SHADER_NAME_UI       string = "Shader.Builtin.UI"
 )
 
+type RendererBackendConfig struct {
+	/** @brief The name of the application */
+	ApplicationName string
+	/** @brief An array configurations for renderpasses. Will be initialized on the backend automatically. */
+	PassConfigs []RenderPassConfig
+	/** @brief A callback that will be made when the backend requires a refresh/regeneration of the render targets. */
+	// func on_rendertarget_refresh_required()
+}
+
 /** @brief Represents a render target, which is used for rendering to a texture or set of textures. */
 type RenderTarget struct {
 	/** @brief Indicates if this render target should be updated on window resize. */
@@ -51,7 +60,7 @@ type RenderPassConfig struct {
 	/** @brief The clear colour used for this renderpass. */
 	ClearColour math.Vec4
 	/** @brief The clear flags for this renderpass. */
-	ClearFlags uint8
+	ClearFlags RenderpassClearFlag
 }
 
 /**
@@ -69,7 +78,7 @@ type RenderPass struct {
 	/** @brief The number of render targets for this renderpass. */
 	RenderTargetCount uint8
 	/** @brief An array of render Targets used by this renderpass. */
-	Targets *RenderTarget
+	Targets []*RenderTarget
 	/** @brief Internal renderpass data */
 	InternalData interface{}
 }
@@ -98,14 +107,10 @@ type RenderBuffer struct {
 	RenderBufferType RenderBufferType
 	/** @brief The total size of the buffer in bytes. */
 	TotalSize uint64
-	/** @brief The amount of memory required to store the freelist. 0 if not used. */
-	// freelist_memory_requirement uint64
 	/** @brief The buffer freelist, if used. */
-	// buffer_freelist freelist
-	/** @brief The freelist memory block, if needed. */
-	// freelist_block interface{}
+	Buffer []interface{}
 	/** @brief Contains internal data for the renderer-API-specific buffer. */
-	internal_data interface{}
+	InternalData interface{}
 }
 
 /**
@@ -118,7 +123,7 @@ type RenderPacket struct {
 	/** The number of views to be rendered. */
 	ViewCount uint16
 	/** An array of Views to be rendered. */
-	Views []RenderViewPacket
+	Views []*RenderViewPacket
 }
 
 /** @brief Known render view types, which have logic associated with them. */
@@ -307,8 +312,7 @@ type MeshPacketData struct {
 // type UIPacketData struct {
 // 	MeshData *MeshPacketData
 // 	// TODO: temp
-// 	TextCount uint32
-// 	Texts     []*UIText
+// 	Texts []*UIText
 // }
 
 type SkyboxPacketData struct {
