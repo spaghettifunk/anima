@@ -95,9 +95,10 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
 			},
 		},
+		OnRenderTargetRefreshRequired: r.regenerateRenderTargets,
 	}
 
-	if err := r.backend.Initialize(rbc); err != nil {
+	if err := r.backend.Initialize(rbc, &r.WindowRenderTargetCount); err != nil {
 		return err
 	}
 
@@ -321,7 +322,7 @@ func (r *RendererSystem) RenderPassCreate(depth float32, stencil uint32, has_pre
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {
-	r.backend.RenderpassDestroy(pass)
+	r.backend.RenderPassDestroy(pass)
 }
 
 func (r *RendererSystem) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {

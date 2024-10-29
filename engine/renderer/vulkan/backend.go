@@ -2,6 +2,7 @@ package vulkan
 
 import (
 	"fmt"
+	"math"
 	m "math"
 	"runtime"
 	"unsafe"
@@ -29,9 +30,13 @@ func New(p *platform.Platform) *VulkanRenderer {
 		platform:    p,
 		FrameNumber: 0,
 		context: &VulkanContext{
-			FramebufferWidth:  0,
-			FramebufferHeight: 0,
-			Allocator:         nil,
+			Geometries:                    make([]*VulkanGeometryData, VULKAN_MAX_GEOMETRY_COUNT),
+			FramebufferWidth:              0,
+			FramebufferHeight:             0,
+			Allocator:                     nil,
+			FramebufferSizeGeneration:     0,
+			FramebufferSizeLastGeneration: 0,
+			RegisteredPasses:              make([]*metadata.RenderPass, VULKAN_MAX_REGISTERED_RENDERPASSES),
 		},
 		FramebufferWidth:  0,
 		FramebufferHeight: 0,
@@ -39,7 +44,7 @@ func New(p *platform.Platform) *VulkanRenderer {
 	}
 }
 
-func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) error {
+func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, windowRenderTargetCount *uint8) error {
 	procAddr := glfw.GetVulkanGetInstanceProcAddress()
 	if procAddr == nil {
 		core.LogFatal("GetInstanceProcAddress is nil")
@@ -55,15 +60,17 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 	// TODO: custom allocator.
 	vr.context.Allocator = nil
 
-	vr.FramebufferWidth = 0
-	vr.FramebufferHeight = 0
+	vr.context.OnRenderTargetRefreshRequired = config.OnRenderTargetRefreshRequired
+
+	vr.FramebufferWidth = 800
+	vr.FramebufferHeight = 600
 
 	// Setup Vulkan instance.
 	appInfo := &vk.ApplicationInfo{
 		SType:              vk.StructureTypeApplicationInfo,
 		ApiVersion:         uint32(vk.MakeVersion(1, 0, 0)),
 		ApplicationVersion: uint32(vk.MakeVersion(1, 0, 0)),
-		PApplicationName:   VulkanSafeString(""),
+		PApplicationName:   VulkanSafeString(config.ApplicationName),
 		PEngineName:        VulkanSafeString("Anima Engine"),
 	}
 
@@ -109,7 +116,7 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 		// required_validation_layer_count = uint32(len(required_validation_layer_names))
 
 		if runtime.GOOS == "darwin" {
-			createInfo.Flags |= 1
+			createInfo.Flags |= vk.InstanceCreateFlags(vk.InstanceCreateEnumeratePortabilityBit)
 		}
 
 		// Obtain a list of available validation layers
@@ -209,21 +216,47 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 	}
 	vr.context.Swapchain = sc
 
-	rp, err := RenderpassCreate(
-		vr.context,
-		0, 0, float32(vr.context.FramebufferWidth), float32(vr.context.FramebufferHeight),
-		0.0, 0.0, 0.2, 1.0,
-		1.0,
-		0)
-	if err != nil {
-		return nil
-	}
-	vr.context.MainRenderpass = rp
+	*windowRenderTargetCount = uint8(vr.context.Swapchain.ImageCount)
 
-	// Swapchain framebuffers.
-	vr.context.Swapchain.Framebuffers = make([]*VulkanFramebuffer, vr.context.Swapchain.ImageCount)
-	if err := vr.regenerateFramebuffers(vr.context.Swapchain, vr.context.MainRenderpass); err != nil {
-		return err
+	// Hold registered renderpasses.
+	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
+		vr.context.RegisteredPasses[i].ID = loaders.InvalidIDUint16
+	}
+
+	// Renderpasses
+	vr.context.RenderPassTable = make(map[string]interface{}, len(config.PassConfigs))
+	for i := 0; i < len(config.PassConfigs); i++ {
+		id := loaders.InvalidID
+		// Snip up a new id.
+		for j := uint32(0); j < VULKAN_MAX_REGISTERED_RENDERPASSES; j++ {
+			if vr.context.RegisteredPasses[j].ID == loaders.InvalidIDUint16 {
+				// Found one.
+				vr.context.RegisteredPasses[j].ID = uint16(j)
+				id = j
+				break
+			}
+		}
+
+		// Verify we got an id
+		if id == loaders.InvalidID {
+			err := fmt.Errorf("no space was found for a new renderpass. Increase VULKAN_MAX_REGISTERED_RENDERPASSES. Initialization failed")
+			core.LogError(err.Error())
+			return err
+		}
+
+		// Setup the renderpass.
+		vr.context.RegisteredPasses[id].ClearFlags = uint8(config.PassConfigs[i].ClearFlags)
+		vr.context.RegisteredPasses[id].ClearColour = config.PassConfigs[i].ClearColour
+		vr.context.RegisteredPasses[id].RenderArea = config.PassConfigs[i].RenderArea
+
+		rp, err := RenderpassCreate(vr.context, vr.context.RegisteredPasses[id], 1.0, 0, config.PassConfigs[i].PrevName != "", config.PassConfigs[i].NextName != "")
+		if err != nil {
+			return err
+		}
+		vr.context.RegisteredPasses[id] = rp
+
+		// Update the table with the new id.
+		vr.context.RenderPassTable[config.PassConfigs[i].Name] = id
 	}
 
 	// Create command buffers.
@@ -232,13 +265,13 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 	// Create sync objects.
 	vr.context.ImageAvailableSemaphores = make([]vk.Semaphore, vr.context.Swapchain.MaxFramesInFlight)
 	vr.context.QueueCompleteSemaphores = make([]vk.Semaphore, vr.context.Swapchain.MaxFramesInFlight)
-	vr.context.InFlightFences = make([]*VulkanFence, vr.context.Swapchain.MaxFramesInFlight)
+	vr.context.InFlightFences = make([]vk.Fence, vr.context.Swapchain.MaxFramesInFlight)
 
 	for i := 0; i < int(vr.context.Swapchain.MaxFramesInFlight); i++ {
 		semaphoreCreateInfo := vk.SemaphoreCreateInfo{
 			SType: vk.StructureTypeSemaphoreCreateInfo,
 		}
-		// semaphoreCreateInfo.Deref()
+		semaphoreCreateInfo.Deref()
 
 		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); res != vk.Success {
 			err := fmt.Errorf("failed to create semaphore on image available")
@@ -255,20 +288,53 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 		// Create the fence in a signaled state, indicating that the first frame has already been "rendered".
 		// This will prevent the application from waiting indefinitely for the first frame to render since it
 		// cannot be rendered until a frame is "rendered" before it.
-		f, err := NewFence(vr.context, true)
-		if err != nil {
-			core.LogError(err.Error())
+		fence_create_info := vk.FenceCreateInfo{
+			SType: vk.StructureTypeFenceCreateInfo,
+			Flags: vk.FenceCreateFlags(vk.FenceCreateSignaledBit),
+		}
+		if res := vk.CreateFence(vr.context.Device.LogicalDevice, &fence_create_info, vr.context.Allocator, &vr.context.InFlightFences[i]); res != vk.Success {
+			err := fmt.Errorf("failed to create fence")
 			return err
 		}
-		vr.context.InFlightFences[i] = f
 	}
 
 	// In flight fences should not yet exist at this point, so clear the list. These are stored in pointers
 	// because the initial state should be 0, and will be 0 when not in use. Acutal fences are not owned
 	// by this list.
-	vr.context.ImagesInFlight = make([]*VulkanFence, vr.context.Swapchain.ImageCount)
+	vr.context.ImagesInFlight = make([]vk.Fence, vr.context.Swapchain.ImageCount)
 	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
 		vr.context.ImagesInFlight[i] = nil
+	}
+
+	// Create buffers
+
+	// Geometry vertex buffer
+	vertex_buffer_size := 2 * 1024 * 1024
+	vr.context.ObjectVertexBuffer, err = vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_VERTEX, uint64(vertex_buffer_size), true)
+	if err != nil {
+		err := fmt.Errorf("error creating vertex buffer")
+		return err
+	}
+	if !vr.RenderBufferBind(vr.context.ObjectVertexBuffer, 0) {
+		err := fmt.Errorf("error binding vertex buffer")
+		return err
+	}
+
+	// Geometry index buffer
+	index_buffer_size := 2 * 1024 * 1024
+	vr.context.ObjectIndexBuffer, err = vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_INDEX, uint64(index_buffer_size), true)
+	if err != nil {
+		err := fmt.Errorf("error creating index buffer")
+		return err
+	}
+	if !vr.RenderBufferBind(vr.context.ObjectIndexBuffer, 0) {
+		err := fmt.Errorf("error binding index buffer")
+		return err
+	}
+
+	// Mark all geometries as invalid
+	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
+		vr.context.Geometries[i].ID = loaders.InvalidID
 	}
 
 	core.LogInfo("Vulkan renderer initialized successfully.")
@@ -276,10 +342,13 @@ func (vr VulkanRenderer) Initialize(config *metadata.RendererBackendConfig) erro
 	return nil
 }
 
-func (vr VulkanRenderer) Shutdow() error {
+func (vr *VulkanRenderer) Shutdow() error {
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
 
 	// Destroy in the opposite order of creation.
+	// Destroy buffers
+	vr.RenderBufferDestroy(vr.context.ObjectVertexBuffer)
+	vr.RenderBufferDestroy(vr.context.ObjectIndexBuffer)
 
 	// Sync objects
 	for i := 0; i < int(vr.context.Swapchain.MaxFramesInFlight); i++ {
@@ -297,13 +366,11 @@ func (vr VulkanRenderer) Shutdow() error {
 				vr.context.Allocator)
 			vr.context.QueueCompleteSemaphores[i] = vk.NullSemaphore
 		}
-		vr.context.InFlightFences[i].FenceDestroy(vr.context)
+		vk.DestroyFence(vr.context.Device.LogicalDevice, vr.context.InFlightFences[i], vr.context.Allocator)
 	}
 
 	vr.context.ImageAvailableSemaphores = nil
 	vr.context.QueueCompleteSemaphores = nil
-	vr.context.InFlightFences = nil
-	vr.context.ImagesInFlight = nil
 
 	// Command buffers
 	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
@@ -314,13 +381,12 @@ func (vr VulkanRenderer) Shutdow() error {
 	}
 	vr.context.GraphicsCommandBuffers = nil
 
-	// Destroy framebuffers
-	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
-		vr.context.Swapchain.Framebuffers[i].Destroy(vr.context)
+	// Renderpasses
+	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
+		if vr.context.RegisteredPasses[i].ID != loaders.InvalidIDUint16 {
+			vr.RenderPassDestroy(vr.context.RegisteredPasses[i])
+		}
 	}
-
-	// Renderpass
-	vr.context.MainRenderpass.RenderpassDestroy(vr.context)
 
 	// Swapchain
 	vr.context.Swapchain.SwapchainDestroy(vr.context)
@@ -344,10 +410,15 @@ func (vr VulkanRenderer) Shutdow() error {
 	core.LogDebug("Destroying Vulkan instance...")
 	vk.DestroyInstance(vr.context.Instance, vr.context.Allocator)
 
+	// Destroy the allocator callbacks if set.
+	if vr.context.Allocator != nil {
+		vr.context.Allocator = nil
+	}
+
 	return nil
 }
 
-func (vr VulkanRenderer) Resized(width, height uint32) error {
+func (vr *VulkanRenderer) Resized(width, height uint32) error {
 	// Update the "framebuffer size generation", a counter which indicates when the
 	// framebuffer size has been updated.
 	vr.FramebufferWidth = width
@@ -358,17 +429,18 @@ func (vr VulkanRenderer) Resized(width, height uint32) error {
 	return nil
 }
 
-func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
+func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
+	vr.context.FrameDeltaTime = float32(deltaTime)
 	device := vr.context.Device
+
 	// Check if recreating swap chain and boot out.
 	if vr.context.RecreatingSwapchain {
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
 		if !VulkanResultIsSuccess(result) {
-			err := fmt.Errorf("vulkan_renderer_backend_begin_frame vkDeviceWaitIdle (1) failed: '%s'", VulkanResultString(result, true))
-			core.LogError(err.Error())
+			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (1) failed: '%s'", VulkanResultString(result, true))
 			return err
 		}
-		core.LogInfo("Recreating swapchain, booting.")
+		core.LogInfo("recreating swapchain, booting")
 		return nil
 	}
 
@@ -376,27 +448,25 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 	if vr.context.FramebufferSizeGeneration != vr.context.FramebufferSizeLastGeneration {
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
 		if !VulkanResultIsSuccess(result) {
-			err := fmt.Errorf("vulkan_renderer_backend_begin_frame vkDeviceWaitIdle (2) failed: '%s'", VulkanResultString(result, true))
-			core.LogError(err.Error())
+			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (2) failed: '%s'", VulkanResultString(result, true))
 			return err
 		}
 
 		// If the swapchain recreation failed (because, for example, the window was minimized),
 		// boot out before unsetting the flag.
 		if !vr.recreateSwapchain() {
-			err := fmt.Errorf("failed to recreate the swapchain")
-			core.LogError(err.Error())
+			err := fmt.Errorf("func BeginFrame failed to recreate the swapchain")
 			return err
 		}
 
-		core.LogInfo("Resized, booting.")
+		core.LogInfo("resized, booting.")
 		return nil
 	}
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
-	if !vr.context.InFlightFences[vr.context.CurrentFrame].FenceWait(vr.context, m.MaxUint32) {
-		err := fmt.Errorf("in-flight fence wait failure")
-		core.LogWarn(err.Error())
+	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}, vk.True, math.MaxUint64)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("func BeginFram In-flight fence wait failure! error: %s", VulkanResultString(result, true))
 		return err
 	}
 
@@ -405,7 +475,6 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, m.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok {
 		err := fmt.Errorf("failed to swapchain aquire next image index")
-		core.LogError(err.Error())
 		return err
 	}
 	vr.context.ImageIndex = imageIndex
@@ -420,7 +489,7 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 		X:        0.0,
 		Y:        float32(vr.context.FramebufferHeight),
 		Width:    float32(vr.context.FramebufferWidth),
-		Height:   float32(vr.context.FramebufferHeight), // TODO: it was a negative value before
+		Height:   -float32(vr.context.FramebufferHeight),
 		MinDepth: 0.0,
 		MaxDepth: 1.0,
 	}
@@ -440,29 +509,19 @@ func (vr VulkanRenderer) BeginFrame(deltaTime float64) error {
 	vk.CmdSetViewport(command_buffer.Handle, 0, 1, []vk.Viewport{viewport})
 	vk.CmdSetScissor(command_buffer.Handle, 0, 1, []vk.Rect2D{scissor})
 
-	vr.context.MainRenderpass.W = float32(vr.context.FramebufferWidth)
-	vr.context.MainRenderpass.H = float32(vr.context.FramebufferHeight)
-
-	// Begin the render pass.
-	vr.context.MainRenderpass.RenderpassBegin(command_buffer, vr.context.Swapchain.Framebuffers[vr.context.ImageIndex].Handle)
-
 	return nil
 }
 
-func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
+func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	commandBuffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
-
-	// End renderpass
-	vr.context.MainRenderpass.RenderpassEnd(commandBuffer)
 
 	commandBuffer.End()
 
 	// Make sure the previous frame is not using this image (i.e. its fence is being waited on)
-	if vr.context.ImagesInFlight[vr.context.ImageIndex] != (*VulkanFence)(vk.NullHandle) { // was frame
-		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.ImagesInFlight[vr.context.ImageIndex].Handle}, vk.True, m.MaxUint64)
+	if vr.context.ImagesInFlight[vr.context.ImageIndex] != vk.NullFence { // was frame
+		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.ImagesInFlight[vr.context.ImageIndex]}, vk.True, m.MaxUint64)
 		if !VulkanResultIsSuccess(result) {
-			err := fmt.Errorf("vkWaitForFences error: %s", VulkanResultString(result, true))
-			core.LogFatal(err.Error())
+			err := fmt.Errorf("func EndFrame vkWaitForFences error: %s", VulkanResultString(result, true))
 			return err
 		}
 	}
@@ -471,9 +530,8 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 	vr.context.ImagesInFlight[vr.context.ImageIndex] = vr.context.InFlightFences[vr.context.CurrentFrame]
 
 	// Reset the fence for use on the next frame
-	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame].Handle}); res != vk.Success {
-		err := fmt.Errorf("failed to reset fences")
-		core.LogError(err.Error())
+	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}); res != vk.Success {
+		err := fmt.Errorf("func EndFrame failed to reset fences")
 		return err
 	}
 
@@ -481,19 +539,16 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 	// Begin queue submission
 	submit_info := vk.SubmitInfo{
 		SType: vk.StructureTypeSubmitInfo,
+		// Command buffer(s) to be executed.
+		CommandBufferCount: 1,
+		PCommandBuffers:    []vk.CommandBuffer{commandBuffer.Handle},
+		// The semaphore(s) to be signaled when the queue is complete.
+		SignalSemaphoreCount: 1,
+		PSignalSemaphores:    []vk.Semaphore{vr.context.QueueCompleteSemaphores[vr.context.CurrentFrame]},
+		// Wait semaphore ensures that the operation cannot begin until the image is available.
+		WaitSemaphoreCount: 1,
+		PWaitSemaphores:    []vk.Semaphore{vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame]},
 	}
-
-	// Command buffer(s) to be executed.
-	submit_info.CommandBufferCount = 1
-	submit_info.PCommandBuffers = []vk.CommandBuffer{commandBuffer.Handle}
-
-	// The semaphore(s) to be signaled when the queue is complete.
-	submit_info.SignalSemaphoreCount = 1
-	submit_info.PSignalSemaphores = []vk.Semaphore{vr.context.QueueCompleteSemaphores[vr.context.CurrentFrame]}
-
-	// Wait semaphore ensures that the operation cannot begin until the image is available.
-	submit_info.WaitSemaphoreCount = 1
-	submit_info.PWaitSemaphores = []vk.Semaphore{vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame]}
 
 	// Each semaphore waits on the corresponding pipeline stage to complete. 1:1 ratio.
 	// VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT prevents subsequent colour attachment
@@ -507,7 +562,7 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 		core.LogError(err.Error())
 		return err
 	}
-	vr.context.InFlightFences[vr.context.CurrentFrame].Handle = fence
+	vr.context.InFlightFences[vr.context.CurrentFrame] = fence
 
 	commandBuffer.UpdateSubmitted()
 	// End queue submission
@@ -523,7 +578,7 @@ func (vr VulkanRenderer) EndFrame(deltaTime float64) error {
 	return nil
 }
 
-func (vr VulkanRenderer) createCommandBuffers() error {
+func (vr *VulkanRenderer) createCommandBuffers() error {
 	if len(vr.context.GraphicsCommandBuffers) == 0 {
 		vr.context.GraphicsCommandBuffers = make([]*VulkanCommandBuffer, vr.context.Swapchain.ImageCount)
 	}
@@ -543,7 +598,7 @@ func (vr VulkanRenderer) createCommandBuffers() error {
 	return nil
 }
 
-func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, renderpass *VulkanRenderpass) error {
+func (vr *VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, renderpass *VulkanRenderPass) error {
 	for i := 0; i < int(swapchain.ImageCount); i++ {
 		// TODO: make this dynamic based on the currently configured attachments
 		var attachment_count uint32 = 2
@@ -561,7 +616,7 @@ func (vr VulkanRenderer) regenerateFramebuffers(swapchain *VulkanSwapchain, rend
 	return nil
 }
 
-func (vr VulkanRenderer) recreateSwapchain() bool {
+func (vr *VulkanRenderer) recreateSwapchain() bool {
 	// If already being recreated, do not try again.
 	if vr.context.RecreatingSwapchain {
 		core.LogDebug("recreate_swapchain called when already recreating. Booting.")
@@ -598,8 +653,8 @@ func (vr VulkanRenderer) recreateSwapchain() bool {
 	// Sync the framebuffer size with the cached sizes.
 	vr.context.FramebufferWidth = vr.FramebufferWidth
 	vr.context.FramebufferHeight = vr.FramebufferHeight
-	vr.context.MainRenderpass.W = float32(vr.context.FramebufferWidth)
-	vr.context.MainRenderpass.H = float32(vr.context.FramebufferHeight)
+	// vr.Context.MainRenderpass.W = float32(vr.Context.FramebufferWidth)
+	// vr.Context.MainRenderpass.H = float32(vr.Context.FramebufferHeight)
 	vr.FramebufferWidth = 0
 	vr.FramebufferHeight = 0
 
@@ -617,12 +672,12 @@ func (vr VulkanRenderer) recreateSwapchain() bool {
 	// 	vr.context.Swapchain.Framebuffers[i].Destroy(vr.context)
 	// }
 
-	vr.context.MainRenderpass.X = 0
-	vr.context.MainRenderpass.Y = 0
-	vr.context.MainRenderpass.W = float32(vr.context.FramebufferWidth)
-	vr.context.MainRenderpass.H = float32(vr.context.FramebufferHeight)
+	// vr.Context.MainRenderpass.X = 0
+	// vr.Context.MainRenderpass.Y = 0
+	// vr.Context.MainRenderpass.W = float32(vr.Context.FramebufferWidth)
+	// vr.Context.MainRenderpass.H = float32(vr.Context.FramebufferHeight)
 
-	vr.regenerateFramebuffers(vr.context.Swapchain, vr.context.MainRenderpass)
+	// vr.regenerateFramebuffers(vr.context.Swapchain, vr.context.MainRenderpass)
 
 	vr.createCommandBuffers()
 
@@ -632,7 +687,7 @@ func (vr VulkanRenderer) recreateSwapchain() bool {
 	return true
 }
 
-func (vr VulkanRenderer) createVulkanSurface() uintptr {
+func (vr *VulkanRenderer) createVulkanSurface() uintptr {
 	surface, err := vr.platform.Window.CreateWindowSurface(vr.context.Instance, nil)
 	if err != nil {
 		core.LogFatal("Vulkan surface creation failed.")
@@ -641,7 +696,7 @@ func (vr VulkanRenderer) createVulkanSurface() uintptr {
 	return surface
 }
 
-func (vr VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_size, vertexCount uint32, vertices interface{}, index_size uint32, indexCount uint32, indices []uint32) bool {
+func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_size, vertexCount uint32, vertices interface{}, index_size uint32, indexCount uint32, indices []uint32) bool {
 	if vertexCount == 0 || vertices == nil {
 		core.LogError("vulkan_renderer_create_geometry requires vertex data, and none was supplied. VertexCount=%d, vertices=%p", vertexCount, vertices)
 		return false
@@ -651,72 +706,72 @@ func (vr VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_size
 	isReupload := geometry.InternalID != loaders.InvalidID
 	oldRange := &VulkanGeometryData{}
 
-	var internal_data *VulkanGeometryData
+	var internalData *VulkanGeometryData
 	if isReupload {
-		internal_data = &vr.context.Geometries[geometry.InternalID]
+		internalData = vr.context.Geometries[geometry.InternalID]
 
 		// Take a copy of the old range.
-		oldRange.IndexBufferOffset = internal_data.IndexBufferOffset
-		oldRange.IndexCount = internal_data.IndexCount
-		oldRange.IndexElementSize = internal_data.IndexElementSize
-		oldRange.VertexBufferOffset = internal_data.VertexBufferOffset
-		oldRange.VertexCount = internal_data.VertexCount
-		oldRange.VertexElementSize = internal_data.VertexElementSize
+		oldRange.IndexBufferOffset = internalData.IndexBufferOffset
+		oldRange.IndexCount = internalData.IndexCount
+		oldRange.IndexElementSize = internalData.IndexElementSize
+		oldRange.VertexBufferOffset = internalData.VertexBufferOffset
+		oldRange.VertexCount = internalData.VertexCount
+		oldRange.VertexElementSize = internalData.VertexElementSize
 	} else {
 		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
 			if vr.context.Geometries[i].ID == loaders.InvalidID {
 				// Found a free index.
 				geometry.InternalID = i
 				vr.context.Geometries[i].ID = i
-				internal_data = &vr.context.Geometries[i]
+				internalData = vr.context.Geometries[i]
 				break
 			}
 		}
 	}
-	if internal_data == nil {
+	if internalData == nil {
 		core.LogFatal("vulkan_renderer_create_geometry failed to find a free index for a new geometry upload. Adjust config to allow for more.")
 		return false
 	}
 
 	// Vertex data.
-	internal_data.VertexCount = vertexCount
-	internal_data.VertexElementSize = 0 //sizeof(vertex_3d);
+	internalData.VertexCount = vertexCount
+	internalData.VertexElementSize = 0 //sizeof(vertex_3d);
 	total_size := uint64(vertexCount * vertex_size)
 
 	// Load the data.
-	if !vr.RenderBufferLoadRange(&vr.context.ObjectVertexBuffer, internal_data.VertexBufferOffset, total_size, vertices) {
+	if !vr.RenderBufferLoadRange(vr.context.ObjectVertexBuffer, internalData.VertexBufferOffset, total_size, vertices) {
 		core.LogError("vulkan_renderer_create_geometry failed to upload to the vertex buffer!")
 		return false
 	}
 
 	// Index data, if applicable
 	if indexCount > 0 && len(indices) > 0 {
-		internal_data.IndexCount = indexCount
-		internal_data.IndexElementSize = 0 //sizeof(u32)
+		internalData.IndexCount = indexCount
+		internalData.IndexElementSize = 0 //sizeof(u32)
 		total_size = uint64(indexCount * index_size)
 
-		if !vr.RenderBufferLoadRange(&vr.context.ObjectIndexBuffer, internal_data.IndexBufferOffset, total_size, indices) {
+		if !vr.RenderBufferLoadRange(vr.context.ObjectIndexBuffer, internalData.IndexBufferOffset, total_size, indices) {
 			core.LogError("vulkan_renderer_create_geometry failed to upload to the index buffer!")
 			return false
 		}
 	}
 
-	if internal_data.Generation == loaders.InvalidID {
-		internal_data.Generation = 0
+	if internalData.Generation == loaders.InvalidID {
+		internalData.Generation = 0
 	} else {
-		internal_data.Generation++
+		internalData.Generation++
 	}
 
 	if isReupload {
 		// Free vertex data
-		if !vr.RenderBufferFree(&vr.context.ObjectVertexBuffer, uint64(oldRange.VertexElementSize*oldRange.VertexCount), oldRange.VertexBufferOffset) {
+		if !vr.RenderBufferFree(vr.context.ObjectVertexBuffer, uint64(oldRange.VertexElementSize*oldRange.VertexCount), oldRange.VertexBufferOffset) {
 			core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of vertex data.")
 			return false
 		}
 
 		// Free index data, if applicable
 		if oldRange.IndexElementSize > 0 {
-			if !vr.RenderBufferFree(&vr.context.ObjectIndexBuffer, uint64(oldRange.IndexElementSize*oldRange.IndexCount), oldRange.IndexBufferOffset) {
+			if !vr.RenderBufferFree(vr.context.ObjectIndexBuffer, uint64(oldRange.IndexElementSize*oldRange.IndexCount), oldRange.IndexBufferOffset) {
 				core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of index data.")
 				return false
 			}
@@ -726,154 +781,154 @@ func (vr VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_size
 	return true
 }
 
-func (vr VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Texture) {}
+func (vr *VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureDestroy(texture *metadata.Texture) {}
+func (vr *VulkanRenderer) TextureDestroy(texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureCreateWriteable(texture *metadata.Texture) {}
+func (vr *VulkanRenderer) TextureCreateWriteable(texture *metadata.Texture) {}
 
-func (vr VulkanRenderer) TextureResize(texture *metadata.Texture, new_width, new_height uint32) {}
+func (vr *VulkanRenderer) TextureResize(texture *metadata.Texture, new_width, new_height uint32) {}
 
-func (vr VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, size uint32, pixels []uint8) {
+func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, size uint32, pixels []uint8) {
 }
 
-func (vr VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) {}
+func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) {}
 
-func (vr VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) {}
+func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) {}
 
-func (vr VulkanRenderer) RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
+func (vr *VulkanRenderer) RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
 	return nil, nil
 }
 
-func (vr VulkanRenderer) RenderpassDestroy(pass *metadata.RenderPass) {}
+func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {}
 
-func (vr VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {
+func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool { return false }
+func (vr *VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool { return false }
 
-func (vr VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass { return nil }
+func (vr *VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass { return nil }
 
-func (vr VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
+func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
 	return false
 }
 
-func (vr VulkanRenderer) ShaderDestroy(shader *metadata.Shader) {}
+func (vr *VulkanRenderer) ShaderDestroy(shader *metadata.Shader) {}
 
-func (vr VulkanRenderer) ShaderInitialize(shader *metadata.Shader) bool { return false }
+func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) bool { return false }
 
-func (vr VulkanRenderer) ShaderUse(shader *metadata.Shader) bool { return false }
+func (vr *VulkanRenderer) ShaderUse(shader *metadata.Shader) bool { return false }
 
-func (vr VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) bool { return false }
+func (vr *VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) bool { return false }
 
-func (vr VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
+func (vr *VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
 	return false
 }
 
-func (vr VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
+func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
 
-func (vr VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool {
+func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool {
 	return false
 }
 
-func (vr VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
+func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
 	return 0
 }
 
-func (vr VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
+func (vr *VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
 	return false
 }
 
-func (vr VulkanRenderer) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
+func (vr *VulkanRenderer) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
 	return false
 }
 
-func (vr VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {
+func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {
 	return false
 }
 
-func (vr VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {}
+func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {}
 
-func (vr VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
+func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
 	return nil
 }
 
-func (vr VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, free_internal_memory bool) {
+func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, free_internal_memory bool) {
 }
 
-func (vr VulkanRenderer) IsMultithreaded() bool { return false }
+func (vr *VulkanRenderer) IsMultithreaded() bool { return false }
 
-func (vr VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) *metadata.RenderBuffer {
-	return nil
+func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) (*metadata.RenderBuffer, error) {
+	return nil, nil
 }
 
 // vulkan_buffer_create_internal
-func (vr VulkanRenderer) RenderBufferCreateInternal(buffer metadata.RenderBuffer) (*metadata.RenderBuffer, error) {
+func (vr *VulkanRenderer) RenderBufferCreateInternal(buffer metadata.RenderBuffer) (*metadata.RenderBuffer, error) {
 	return nil, nil
 }
 
 // vulkan_buffer_destroy_internal
-func (vr VulkanRenderer) RenderBufferDestroyInternal(buffer *metadata.RenderBuffer) error {
+func (vr *VulkanRenderer) RenderBufferDestroyInternal(buffer *metadata.RenderBuffer) error {
 	return nil
 }
 
-func (vr VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {}
+func (vr *VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {}
 
-func (vr VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
+func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool { return false }
+func (vr *VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool { return false }
 
-func (vr VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
+func (vr *VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
 	return nil
 }
 
-func (vr VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) {
+func (vr *VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) {
 }
 
-func (vr VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool {
+func (vr *VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (out_memory []interface{}) {
+func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (out_memory []interface{}) {
 	return nil
 }
 
-func (vr VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool {
+func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
+func (vr *VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
 	return 0
 }
 
-func (vr VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool {
+func (vr *VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
+func (vr *VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
+func (vr *VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
 	return false
 }
 
-func (vr VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
+func (vr *VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
 	return false
 }
 
-func (vr VulkanRenderer) WindowAttachmentGet(index uint8) *metadata.Texture {
+func (vr *VulkanRenderer) WindowAttachmentGet(index uint8) *metadata.Texture {
 	return nil
 }
 
-func (vr VulkanRenderer) WindowAttachmentIndexGet() uint64 {
+func (vr *VulkanRenderer) WindowAttachmentIndexGet() uint64 {
 	return 0
 }
 
-func (vr VulkanRenderer) DepthAttachmentGet() *metadata.Texture {
+func (vr *VulkanRenderer) DepthAttachmentGet() *metadata.Texture {
 	return nil
 }
 

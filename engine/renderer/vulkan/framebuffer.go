@@ -11,10 +11,10 @@ type VulkanFramebuffer struct {
 	Handle          vk.Framebuffer
 	AttachmentCount uint32
 	Attachments     []vk.ImageView
-	Renderpass      *VulkanRenderpass
+	Renderpass      *VulkanRenderPass
 }
 
-func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderpass, width uint32, height uint32, attachment_count uint32, attachments []vk.ImageView) (*VulkanFramebuffer, error) {
+func FramebufferCreate(context *VulkanContext, renderpass *VulkanRenderPass, width uint32, height uint32, attachment_count uint32, attachments []vk.ImageView) (*VulkanFramebuffer, error) {
 	outFramebuffer := &VulkanFramebuffer{
 		Attachments:     make([]vk.ImageView, attachment_count),
 		Renderpass:      renderpass,

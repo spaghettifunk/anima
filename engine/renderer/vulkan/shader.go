@@ -114,7 +114,7 @@ type VulkanShader struct {
 	Config *VulkanShaderConfig
 
 	/** @brief A pointer to the Renderpass to be used with this shader. */
-	Renderpass *VulkanRenderpass
+	Renderpass *VulkanRenderPass
 
 	/** @brief An array of Stages (such as vertex and fragment) for this shader. Count is located in config.*/
 	Stages [VULKAN_SHADER_MAX_STAGES]VulkanShaderStage

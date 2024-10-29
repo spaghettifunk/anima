@@ -53,6 +53,8 @@ type VulkanGeometryData struct {
 }
 
 type VulkanContext struct {
+	/** @brief The time in seconds since the last frame. */
+	FrameDeltaTime float32
 	// The framebuffer's current width.
 	FramebufferWidth uint32
 	// The framebuffer's current height.
@@ -79,23 +81,21 @@ type VulkanContext struct {
 	RenderPassTableBlock interface{}
 	RenderPassTable      map[string]interface{}
 	/** @brief Registered renderpasses. */
-	RegisteredPasses [VULKAN_MAX_REGISTERED_RENDERPASSES]metadata.RenderPass
+	RegisteredPasses []*metadata.RenderPass
 	/** @brief The object vertex buffer, used to hold geometry vertices. */
-	ObjectVertexBuffer metadata.RenderBuffer
+	ObjectVertexBuffer *metadata.RenderBuffer
 	/** @brief The object index buffer, used to hold geometry indices. */
-	ObjectIndexBuffer metadata.RenderBuffer
-
-	MainRenderpass *VulkanRenderpass
+	ObjectIndexBuffer *metadata.RenderBuffer
 
 	GraphicsCommandBuffers   []*VulkanCommandBuffer
 	ImageAvailableSemaphores []vk.Semaphore
 	QueueCompleteSemaphores  []vk.Semaphore
 
 	InFlightFenceCount uint32
-	InFlightFences     []*VulkanFence
+	InFlightFences     []vk.Fence
 
 	// Holds pointers to fences which exist and are owned elsewhere.
-	ImagesInFlight []*VulkanFence
+	ImagesInFlight []vk.Fence
 
 	ImageIndex   uint32
 	CurrentFrame uint32
@@ -103,13 +103,15 @@ type VulkanContext struct {
 	RecreatingSwapchain bool
 
 	/** @brief The A collection of loaded Geometries. @todo TODO: make dynamic */
-	Geometries [VULKAN_MAX_GEOMETRY_COUNT]VulkanGeometryData
+	Geometries []*VulkanGeometryData
 
 	/** @brief Render targets used for world rendering. @note One per frame. */
 	WorldRenderTargets [3]metadata.RenderTarget
 
 	/** @brief Indicates if multi-threading is supported by this device. */
 	MultithreadingEnabled bool
+
+	OnRenderTargetRefreshRequired metadata.OnRenderTargetRefreshRequired
 }
 
 func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 {
@@ -127,5 +129,3 @@ func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32
 	core.LogWarn("Unable to find suitable memory type!")
 	return -1
 }
-
-func (vc *VulkanContext) OnRenderTargetRefreshRequired() {}

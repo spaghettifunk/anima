@@ -10,13 +10,15 @@ const (
 	BUILTIN_SHADER_NAME_UI       string = "Shader.Builtin.UI"
 )
 
+type OnRenderTargetRefreshRequired func()
+
 type RendererBackendConfig struct {
 	/** @brief The name of the application */
 	ApplicationName string
 	/** @brief An array configurations for renderpasses. Will be initialized on the backend automatically. */
 	PassConfigs []RenderPassConfig
 	/** @brief A callback that will be made when the backend requires a refresh/regeneration of the render targets. */
-	// func on_rendertarget_refresh_required()
+	OnRenderTargetRefreshRequired OnRenderTargetRefreshRequired
 }
 
 /** @brief Represents a render target, which is used for rendering to a texture or set of textures. */
