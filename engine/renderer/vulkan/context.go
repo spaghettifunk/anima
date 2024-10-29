@@ -79,7 +79,7 @@ type VulkanContext struct {
 
 	// TODO: not sure about the type here
 	RenderPassTableBlock interface{}
-	RenderPassTable      map[string]interface{}
+	RenderPassTable      map[string]uint32
 	/** @brief Registered renderpasses. */
 	RegisteredPasses []*metadata.RenderPass
 	/** @brief The object vertex buffer, used to hold geometry vertices. */

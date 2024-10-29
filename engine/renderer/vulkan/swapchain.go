@@ -265,7 +265,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) {
 	vk.DeviceWaitIdle(context.Device.LogicalDevice)
-	vs.DepthAttachment.ImageDestroy(context)
+	vs.DepthAttachment.Destroy(context)
 
 	// Only destroy the views, not the images, since those are owned by the swapchain and are thus
 	// destroyed when it is.
