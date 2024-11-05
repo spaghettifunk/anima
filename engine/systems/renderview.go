@@ -1,10 +1,10 @@
 package systems
 
 import (
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/views"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief The configuration for the render view system. */

@@ -3,10 +3,11 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets"
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief The configuration for the material system. */
@@ -29,10 +30,10 @@ type MaterialSystem struct {
 	UILocations *metadata.UIShaderUniformLocations
 	UIShaderID  uint32
 	// sub systems
-	shaderSystem   *ShaderSystem
-	textureSystem  *TextureSystem
-	resourceSystem *ResourceSystem
-	renderer       *RendererSystem
+	shaderSystem  *ShaderSystem
+	textureSystem *TextureSystem
+	renderer      *RendererSystem
+	assetManager  *assets.AssetManager
 }
 
 /**
@@ -45,7 +46,7 @@ type MaterialSystem struct {
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, ts *TextureSystem, rs *ResourceSystem, r *RendererSystem) (*MaterialSystem, error) {
+func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, ts *TextureSystem, am *assets.AssetManager, r *RendererSystem) (*MaterialSystem, error) {
 	if config.MaxMaterialCount == 0 {
 		core.LogError("func NewMaterialSystem - config.MaxMaterialCount must be > 0.")
 		return nil, nil
@@ -89,7 +90,7 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 		RegisteredMaterialTable: make(map[string]*metadata.MaterialReference),
 		shaderSystem:            shaderSytem,
 		textureSystem:           ts,
-		resourceSystem:          rs,
+		assetManager:            am,
 		renderer:                r,
 	}
 
@@ -146,7 +147,7 @@ func (ms *MaterialSystem) Shutdown() error {
  */
 func (ms *MaterialSystem) Acquire(name string) (*metadata.Material, error) {
 	// Load material configuration from resource;
-	materialResource, err := ms.resourceSystem.Load(name, metadata.ResourceTypeMaterial, 0)
+	materialResource, err := ms.assetManager.LoadAsset(name, metadata.ResourceTypeMaterial, nil)
 	if err != nil {
 		err := fmt.Errorf("failed to load material resource, returning nullptr")
 		core.LogError(err.Error())
@@ -170,7 +171,9 @@ func (ms *MaterialSystem) Acquire(name string) (*metadata.Material, error) {
 	}
 
 	// Clean up
-	ms.resourceSystem.Unload(materialResource)
+	if err := ms.assetManager.UnloadAsset(materialResource); err != nil {
+		return nil, err
+	}
 
 	if m != nil {
 		err := fmt.Errorf("failed to load material resource, returning nullptr")

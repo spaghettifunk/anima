@@ -9,14 +9,23 @@ import (
 
 	"github.com/go-gl/glfw/v3.3/glfw"
 	vk "github.com/goki/vulkan"
+	"github.com/spaghettifunk/anima/engine/assets"
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
+)
+
+const (
+	// The index of the global descriptor set.
+	DESC_SET_INDEX_GLOBAL uint32 = 0
+	// The index of the instance descriptor set.
+	DESC_SET_INDEX_INSTANCE uint32 = 1
 )
 
 type VulkanRenderer struct {
 	platform          *platform.Platform
+	assetManager      *assets.AssetManager
 	FrameNumber       uint64
 	context           *VulkanContext
 	FramebufferWidth  uint32
@@ -25,10 +34,11 @@ type VulkanRenderer struct {
 	debug bool
 }
 
-func New(p *platform.Platform) *VulkanRenderer {
+func New(p *platform.Platform, am *assets.AssetManager) *VulkanRenderer {
 	return &VulkanRenderer{
-		platform:    p,
-		FrameNumber: 0,
+		platform:     p,
+		assetManager: am,
+		FrameNumber:  0,
 		context: &VulkanContext{
 			Geometries:                    make([]*VulkanGeometryData, VULKAN_MAX_GEOMETRY_COUNT),
 			FramebufferWidth:              0,
@@ -872,6 +882,7 @@ func (vr *VulkanRenderer) TextureResize(texture *metadata.Texture, new_width, ne
 			return err
 		}
 		texture.Generation++
+		texture.InternalData = image
 	}
 	return nil
 }
@@ -894,36 +905,40 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 	pool := vr.context.Device.GraphicsCommandPool
 	queue := vr.context.Device.GraphicsQueue
 
-	temp_buffer, err := AllocateAndBeginSingleUse(vr.context, pool)
+	tempBuffer, err := AllocateAndBeginSingleUse(vr.context, pool)
 	if err != nil {
 		return err
 	}
 
 	// Transition the layout from whatever it is currently to optimal for recieving data.
-	vulkan_image_transition_layout(
+	if err := image.ImageTransitionLayout(
 		vr.context,
 		texture.TextureType,
-		temp_buffer,
-		image,
+		tempBuffer,
 		image_format,
 		vk.ImageLayoutUndefined,
-		vk.ImageLayoutTransferDstOptimal)
+		vk.ImageLayoutTransferDstOptimal); err != nil {
+		return err
+	}
 
 	// Copy the data from the buffer.
-	vulkan_image_copy_from_buffer(vr.context, texture.TextureType, image, (staging.InternalData.(*VulkanBuffer)).Handle, temp_buffer)
+	if err := image.ImageCopyFromBuffer(vr.context, texture.TextureType, (staging.InternalData.(*VulkanBuffer)).Handle, tempBuffer); err != nil {
+		return err
+	}
 
 	// Transition from optimal for data reciept to shader-read-only optimal layout.
-	vulkan_image_transition_layout(
+	if err := image.ImageTransitionLayout(
 		vr.context,
 		texture.TextureType,
-		temp_buffer,
-		image,
+		tempBuffer,
 		image_format,
 		vk.ImageLayoutTransferDstOptimal,
 		vk.ImageLayoutShaderReadOnlyOptimal,
-	)
+	); err != nil {
+		return err
+	}
 
-	if err := temp_buffer.EndSingleUse(vr.context, pool, queue); err != nil {
+	if err := tempBuffer.EndSingleUse(vr.context, pool, queue); err != nil {
 		return err
 	}
 
@@ -935,17 +950,205 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 	vr.RenderBufferDestroy(staging)
 
 	texture.Generation++
+
+	return nil
 }
 
-func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) {}
+func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) error {
+	if geometry != nil && geometry.InternalID != loaders.InvalidID {
+		if !VulkanResultIsSuccess(vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)) {
+			err := fmt.Errorf("failed to wait for device")
+			return err
+		}
+		internal_data := vr.context.Geometries[geometry.InternalID]
 
-func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) {}
+		// Free vertex data
+		if !vr.RenderBufferFree(vr.context.ObjectVertexBuffer, uint64(internal_data.VertexElementSize*internal_data.VertexCount), internal_data.VertexBufferOffset) {
+			err := fmt.Errorf("vulkan_renderer_destroy_geometry failed to free vertex buffer range")
+			return err
+		}
 
-func (vr *VulkanRenderer) RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
-	return nil, nil
+		// Free index data, if applicable
+		if internal_data.IndexElementSize > 0 {
+			if !vr.RenderBufferFree(vr.context.ObjectIndexBuffer, uint64(internal_data.IndexElementSize*internal_data.IndexCount), internal_data.IndexBufferOffset) {
+				err := fmt.Errorf("vulkan_renderer_destroy_geometry failed to free index buffer range")
+				return err
+			}
+		}
+
+		// Clean up data.
+		internal_data.ID = loaders.InvalidID
+		internal_data.Generation = loaders.InvalidID
+	}
+	return nil
 }
 
-func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {}
+func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) error {
+	// Ignore non-uploaded geometries.
+	if data.Geometry != nil && data.Geometry.InternalID == loaders.InvalidID {
+		return nil
+	}
+
+	buffer_data := vr.context.Geometries[data.Geometry.InternalID]
+	includes_index_data := buffer_data.IndexCount > 0
+	if !vr.RenderBufferDraw(vr.context.ObjectVertexBuffer, buffer_data.VertexBufferOffset, buffer_data.VertexCount, includes_index_data) {
+		err := fmt.Errorf("vulkan_renderer_draw_geometry failed to draw vertex buffer")
+		return err
+	}
+
+	if includes_index_data {
+		if !vr.RenderBufferDraw(vr.context.ObjectIndexBuffer, buffer_data.IndexBufferOffset, buffer_data.IndexCount, !includes_index_data) {
+			err := fmt.Errorf("vulkan_renderer_draw_geometry failed to draw index buffer")
+			return err
+		}
+	}
+	return nil
+}
+
+func (vr *VulkanRenderer) RenderPassCreate(depth float32, stencil uint32, hasPrevPass, hasNextPass bool) (*metadata.RenderPass, error) {
+	outRenderpass := &metadata.RenderPass{
+		InternalData: &VulkanRenderPass{
+			HasPrevPass: hasPrevPass,
+			HasNextPass: hasNextPass,
+			Depth:       depth,
+			Stencil:     stencil,
+		},
+	}
+
+	// Main subpass
+	subpass := vk.SubpassDescription{
+		PipelineBindPoint: vk.PipelineBindPointGraphics,
+	}
+
+	// Attachments TODO: make this configurable.
+	attachmentDescriptionCount := uint32(0)
+	attachmentDescriptions := []vk.AttachmentDescription{}
+
+	// Color attachment
+	doClearColour := (outRenderpass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG)) != 0
+	colorAttachment := vk.AttachmentDescription{
+		Format:         vr.context.Swapchain.ImageFormat.Format, // TODO: configurable,
+		Samples:        vk.SampleCount1Bit,
+		StoreOp:        vk.AttachmentStoreOpStore,
+		StencilLoadOp:  vk.AttachmentLoadOpDontCare,
+		StencilStoreOp: vk.AttachmentStoreOpDontCare,
+		// If coming from a previous pass, should already be VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise undefined.
+		LoadOp:        vk.AttachmentLoadOpClear,
+		InitialLayout: vk.ImageLayoutColorAttachmentOptimal,
+		// If going to another pass, use VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise VK_IMAGE_LAYOUT_PRESENT_SRC_KHR.
+		FinalLayout: vk.ImageLayoutColorAttachmentOptimal, // Transitioned to after the render pas,
+		Flags:       0,
+	}
+	if !doClearColour {
+		colorAttachment.LoadOp = vk.AttachmentLoadOpLoad
+	}
+	if !hasPrevPass {
+		colorAttachment.InitialLayout = vk.ImageLayoutUndefined
+	}
+	if !hasNextPass {
+		colorAttachment.FinalLayout = vk.ImageLayoutPresentSrc
+	}
+
+	attachmentDescriptions[attachmentDescriptionCount] = colorAttachment
+	attachmentDescriptionCount++
+
+	colorAttachmentReference := []vk.AttachmentReference{{
+		Attachment: 0, // Attachment description array index
+		Layout:     vk.ImageLayoutColorAttachmentOptimal},
+	}
+
+	subpass.ColorAttachmentCount = 1
+	subpass.PColorAttachments = colorAttachmentReference
+
+	// Depth attachment, if there is one
+	doClearDepth := (outRenderpass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG)) != 0
+	if doClearDepth {
+		depthAttachment := vk.AttachmentDescription{
+			Format:         vr.context.Device.DepthFormat,
+			Samples:        vk.SampleCount1Bit,
+			LoadOp:         vk.AttachmentLoadOpClear,
+			StoreOp:        vk.AttachmentStoreOpDontCare,
+			StencilLoadOp:  vk.AttachmentLoadOpDontCare,
+			StencilStoreOp: vk.AttachmentStoreOpDontCare,
+			InitialLayout:  vk.ImageLayoutUndefined,
+			FinalLayout:    vk.ImageLayoutDepthStencilAttachmentOptimal,
+		}
+		if !hasPrevPass {
+			depthAttachment.LoadOp = vk.AttachmentLoadOpLoad
+		} else {
+			depthAttachment.LoadOp = vk.AttachmentLoadOpDontCare
+		}
+
+		attachmentDescriptions[attachmentDescriptionCount] = depthAttachment
+		attachmentDescriptionCount++
+
+		// Depth attachment reference
+		depthAttachmentReference := &vk.AttachmentReference{
+			Attachment: 1,
+			Layout:     vk.ImageLayoutDepthStencilAttachmentOptimal,
+		}
+
+		// TODO: other attachment types (input, resolve, preserve)
+
+		// Depth stencil data.
+		subpass.PDepthStencilAttachment = depthAttachmentReference
+	} else {
+		attachmentDescriptions[attachmentDescriptionCount] = vk.AttachmentDescription{}
+		subpass.PDepthStencilAttachment = nil
+	}
+
+	// Input from a shader
+	subpass.InputAttachmentCount = 0
+	subpass.PInputAttachments = nil
+
+	// Attachments used for multisampling colour attachments
+	subpass.PResolveAttachments = nil
+
+	// Attachments not used in this subpass, but must be preserved for the next.
+	subpass.PreserveAttachmentCount = 0
+	subpass.PPreserveAttachments = nil
+
+	// Render pass dependencies. TODO: make this configurable.
+	dependency := vk.SubpassDependency{
+		SrcSubpass:      vk.SubpassExternal,
+		DstSubpass:      0,
+		SrcStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit),
+		SrcAccessMask:   0,
+		DstStageMask:    vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit),
+		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentReadBit) | vk.AccessFlags(vk.AccessColorAttachmentWriteBit),
+		DependencyFlags: 0,
+	}
+
+	// Render pass create.
+	renderPassCreateInfo := vk.RenderPassCreateInfo{
+		SType:           vk.StructureTypeRenderPassCreateInfo,
+		AttachmentCount: attachmentDescriptionCount,
+		PAttachments:    attachmentDescriptions,
+		SubpassCount:    1,
+		PSubpasses:      []vk.SubpassDescription{subpass},
+		DependencyCount: 1,
+		PDependencies:   []vk.SubpassDependency{dependency},
+		PNext:           nil,
+		Flags:           0,
+	}
+
+	result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &renderPassCreateInfo, vr.context.Allocator, &(outRenderpass.InternalData.(*VulkanRenderPass)).Handle)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("func EndFrame vkWaitForFences error: %s", VulkanResultString(result, true))
+		return nil, err
+	}
+
+	return outRenderpass, nil
+}
+
+func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {
+	if pass != nil && pass.InternalData != nil {
+		internalData := pass.InternalData.(*VulkanRenderPass)
+		vk.DestroyRenderPass(vr.context.Device.LogicalDevice, internalData.Handle, vr.context.Allocator)
+		internalData.Handle = nil
+		pass.InternalData = nil
+	}
+}
 
 func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {
 	command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
@@ -1023,13 +1226,276 @@ func (vr *VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass {
 	return vr.context.RegisteredPasses[id]
 }
 
-func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
-	return false
+func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stageCount uint8, stageFilenames []string, stages []metadata.ShaderStage) bool {
+	// shader := &metadata.Shader{
+	// 	// GlobalTextureMaps:  []*metadata.TextureMap{},
+	// 	// Uniforms:           []metadata.ShaderUniform{},
+	// 	// Attributes:         []metadata.ShaderAttribute{},
+	// 	// PushConstantRanges: [32]*metadata.MemoryRange{},
+	// 	// UniformLookup:      make(map[string]uint16),
+	// 	InternalData: &VulkanShader{},
+	// }
+	shader.InternalData = &VulkanShader{}
+
+	// Translate stages
+	vkStages := make([]vk.ShaderStageFlags, VULKAN_SHADER_MAX_STAGES)
+	for i := uint8(0); i < stageCount; i++ {
+		switch stages[i] {
+		case metadata.ShaderStageFragment:
+			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+		case metadata.ShaderStageVertex:
+			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageVertexBit)
+		case metadata.ShaderStageGeometry:
+			core.LogWarn("vulkan_renderer_shader_create: VK_SHADER_STAGE_GEOMETRY_BIT is set but not yet supported.")
+			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageGeometryBit)
+		case metadata.ShaderStageCompute:
+			core.LogWarn("vulkan_renderer_shader_create: SHADER_STAGE_COMPUTE is set but not yet supported.")
+			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageComputeBit)
+		default:
+			core.LogError("Unsupported stage type: %d", stages[i])
+		}
+	}
+
+	// TODO: configurable max descriptor allocate count.
+
+	maxDescriptorAllocateCount := uint16(1024)
+
+	// Take a copy of the pointer to the context.
+	outShader := shader.InternalData.(*VulkanShader)
+
+	outShader.Renderpass = pass.InternalData.(*VulkanRenderPass)
+
+	// Build out the configuration.
+	outShader.Config.MaxDescriptorSetCount = maxDescriptorAllocateCount
+
+	// Shader stages. Parse out the flags.
+	outShader.Config.StageCount = 0
+	// Iterate provided stages.
+	for i := uint8(0); i < stageCount; i++ {
+		// Make sure there is room enough to add the stage.
+		if outShader.Config.StageCount+1 > uint8(VULKAN_SHADER_MAX_STAGES) {
+			core.LogError("Shaders may have a maximum of %d stages", VULKAN_SHADER_MAX_STAGES)
+			return false
+		}
+
+		// Make sure the stage is a supported one.
+		var stageFlag vk.ShaderStageFlagBits
+		switch stages[i] {
+		case metadata.ShaderStageVertex:
+			stageFlag = vk.ShaderStageVertexBit
+		case metadata.ShaderStageFragment:
+			stageFlag = vk.ShaderStageFragmentBit
+		default:
+			// Go to the next type.
+			core.LogError("vulkan_shader_create: Unsupported shader stage flagged: %d. Stage ignored.", stages[i])
+			continue
+		}
+
+		// Set the stage and bump the counter.
+		outShader.Config.Stages[outShader.Config.StageCount].Stage = stageFlag
+		outShader.Config.Stages[outShader.Config.StageCount].FileName = stageFilenames[i]
+		outShader.Config.StageCount++
+	}
+
+	// Zero out arrays and counts.
+	outShader.Config.DescriptorSets[0].SamplerBindingIndex = loaders.InvalidIDUint8
+	outShader.Config.DescriptorSets[1].SamplerBindingIndex = loaders.InvalidIDUint8
+
+	// Get the uniform counts.
+	outShader.GlobalUniformCount = 0
+	outShader.GlobalUniformSamplerCount = 0
+	outShader.InstanceUniformCount = 0
+	outShader.InstanceUniformSamplerCount = 0
+	outShader.LocalUniformCount = 0
+	totalCount := len(config.Uniforms)
+	for i := 0; i < totalCount; i++ {
+		switch config.Uniforms[i].Scope {
+		case metadata.ShaderScopeGlobal:
+			if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
+				outShader.GlobalUniformSamplerCount++
+			} else {
+				outShader.GlobalUniformCount++
+			}
+		case metadata.ShaderScopeInstance:
+			if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
+				outShader.InstanceUniformSamplerCount++
+			} else {
+				outShader.InstanceUniformCount++
+			}
+		case metadata.ShaderScopeLocal:
+			outShader.LocalUniformCount++
+		}
+	}
+
+	// For now, shaders will only ever have these 2 types of descriptor pools.
+	outShader.Config.PoolSizes[0] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeUniformBuffer, DescriptorCount: 1024}        // HACK: max number of ubo descriptor sets.
+	outShader.Config.PoolSizes[1] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeCombinedImageSampler, DescriptorCount: 4096} // HACK: max number of image sampler descriptor sets.
+
+	// Global descriptor set Config.
+	if outShader.GlobalUniformCount > 0 || outShader.GlobalUniformSamplerCount > 0 {
+		// Global descriptor set Config.
+		setConfig := outShader.Config.DescriptorSets[outShader.Config.DescriptorSetCount]
+
+		// Global UBO binding is first, if present.
+		if outShader.GlobalUniformCount > 0 {
+			binding_index := setConfig.BindingCount
+			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
+			setConfig.Bindings[binding_index].DescriptorCount = 1
+			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeUniformBuffer
+			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.BindingCount++
+		}
+
+		// Add a binding for Samplers if used.
+		if outShader.GlobalUniformSamplerCount > 0 {
+			binding_index := setConfig.BindingCount
+			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
+			setConfig.Bindings[binding_index].DescriptorCount = uint32(outShader.GlobalUniformSamplerCount) // One descriptor per sampler.
+			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeCombinedImageSampler
+			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.SamplerBindingIndex = binding_index
+			setConfig.BindingCount++
+		}
+
+		// Increment the set counter.
+		outShader.Config.DescriptorSetCount++
+	}
+
+	// If using instance uniforms, add a UBO descriptor set.
+	if outShader.InstanceUniformCount > 0 || outShader.InstanceUniformSamplerCount > 0 {
+		// In that set, add a binding for UBO if used.
+		setConfig := outShader.Config.DescriptorSets[outShader.Config.DescriptorSetCount]
+
+		if outShader.InstanceUniformCount > 0 {
+			binding_index := setConfig.BindingCount
+			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
+			setConfig.Bindings[binding_index].DescriptorCount = 1
+			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeUniformBuffer
+			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.BindingCount++
+		}
+
+		// Add a binding for Samplers if used.
+		if outShader.InstanceUniformSamplerCount > 0 {
+			binding_index := setConfig.BindingCount
+			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
+			setConfig.Bindings[binding_index].DescriptorCount = uint32(outShader.InstanceUniformSamplerCount) // One descriptor per sampler.
+			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeCombinedImageSampler
+			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.SamplerBindingIndex = binding_index
+			setConfig.BindingCount++
+		}
+
+		// Increment the set counter.
+		outShader.Config.DescriptorSetCount++
+	}
+
+	// Invalidate all instance states.
+	// TODO: dynamic
+	for i := 0; i < 1024; i++ {
+		outShader.InstanceStates[i].ID = loaders.InvalidID
+	}
+
+	// Keep a copy of the cull mode.
+	outShader.Config.CullMode = config.CullMode
+
+	return true
 }
 
-func (vr *VulkanRenderer) ShaderDestroy(shader *metadata.Shader) {}
+func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) {
+	if s != nil && s.InternalData != nil {
+		shader := s.InternalData.(*VulkanShader)
+		if shader != nil {
+			core.LogError("vulkan_renderer_shader_destroy requires a valid pointer to a shader.")
+			return
+		}
 
-func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) bool { return false }
+		logical_device := vr.context.Device.LogicalDevice
+		vk_allocator := vr.context.Allocator
+
+		// Descriptor set layouts.
+		for i := uint32(0); i < uint32(shader.Config.DescriptorSetCount); i++ {
+			if shader.DescriptorSetLayouts[i] != vk.NullDescriptorSetLayout {
+				vk.DestroyDescriptorSetLayout(logical_device, shader.DescriptorSetLayouts[i], vk_allocator)
+				shader.DescriptorSetLayouts[i] = nil
+			}
+		}
+
+		// Descriptor pool
+		if shader.DescriptorPool != nil {
+			vk.DestroyDescriptorPool(logical_device, shader.DescriptorPool, vk_allocator)
+		}
+
+		// Uniform buffer.
+		vr.RenderBufferUnmapMemory(shader.UniformBuffer, 0, vk.WholeSize)
+		shader.MappedUniformBufferBlock = 0
+		vr.RenderBufferDestroy(shader.UniformBuffer)
+
+		// Pipeline
+		shader.Pipeline.Destroy(vr.context)
+
+		// Shader modules
+		for i := 0; i < int(shader.Config.StageCount); i++ {
+			vk.DestroyShaderModule(vr.context.Device.LogicalDevice, shader.Stages[i].Handle, vr.context.Allocator)
+		}
+
+		// Destroy the configuration.
+		shader.Config = nil
+
+		// Free the internal data memory.
+		s.InternalData = nil
+	}
+}
+
+func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
+	logical_device := vr.context.Device.LogicalDevice
+	vk_allocator := vr.context.Allocator
+	s := shader.InternalData.(*VulkanShader)
+
+	// Create a module for each stage.
+	s.Stages = make([]*VulkanShaderStage, VULKAN_SHADER_MAX_STAGES)
+
+	for i := 0; i < len(s.Stages); i++ {
+		if err := vr.createModule(s, s.Config.Stages[i], s.Stages[i]); err != nil {
+			core.LogError("Unable to create %s shader module for '%s'. Shader will be destroyed", s.Config.Stages[i].FileName, shader.Name)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShaderStageConfig, shader_stage *VulkanShaderStage) error {
+	// Read the resource.
+	binary_resource, err := vr.assetManager.LoadAsset(config.FileName, metadata.ResourceTypeBinary, nil)
+	if err != nil {
+		return err
+	}
+
+	// kzero_memory(&shader_stage->create_info, sizeof(VkShaderModuleCreateInfo));
+	// shader_stage->create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	// // Use the resource's size and data directly.
+	// shader_stage->create_info.codeSize = binary_resource.data_size;
+	// shader_stage->create_info.pCode = (u32*)binary_resource.data;
+
+	// VK_CHECK(vkCreateShaderModule(
+	//     context.device.logical_device,
+	//     &shader_stage->create_info,
+	//     context.allocator,
+	//     &shader_stage->handle));
+
+	// // Release the resource.
+	// resource_system_unload(&binary_resource);
+
+	// // Shader stage info
+	// kzero_memory(&shader_stage->shader_stage_create_info, sizeof(VkPipelineShaderStageCreateInfo));
+	// shader_stage->shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+	// shader_stage->shader_stage_create_info.stage = config.stage;
+	// shader_stage->shader_stage_create_info.module = shader_stage->handle;
+	// shader_stage->shader_stage_create_info.pName = "main";
+
+	return nil
+}
 
 func (vr *VulkanRenderer) ShaderUse(shader *metadata.Shader) bool { return false }
 
@@ -1113,9 +1579,9 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	return false
 }
 
-func (vr *VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
-	return 0
-}
+// func (vr *VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
+// 	return 0
+// }
 
 func (vr *VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool {
 	return false

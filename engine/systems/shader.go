@@ -3,9 +3,9 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief Configuration for the shader system. */
@@ -158,9 +158,8 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	}
 
 	// Initialize the shader.
-	if !shaderSystem.renderer.ShaderInitialize(shader) {
-		err := fmt.Errorf("func ShaderInitialize: initialization failed for shader '%s'", config.Name)
-		core.LogError(err.Error())
+	if err := shaderSystem.renderer.ShaderInitialize(shader); err != nil {
+		core.LogError("func ShaderInitialize: initialization failed for shader '%s'", config.Name)
 		// NOTE: initialize automatically destroys the shader if it fails.
 		return nil, err
 	}

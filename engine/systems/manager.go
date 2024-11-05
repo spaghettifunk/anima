@@ -2,9 +2,9 @@ package systems
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 
+	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
@@ -18,20 +18,19 @@ type SystemManager struct {
 	RenderViewSystem *RenderViewSystem
 	ShaderSystem     *ShaderSystem
 	TextureSystem    *TextureSystem
-	ResourceSystem   *ResourceSystem
 	RendererSystem   *RendererSystem
+	AssetManager     *assets.AssetManager
 }
 
 var (
 	MaxNumberOfWorkers int = runtime.NumCPU()
 )
 
-func NewSystemManager(appName string, width, height uint32, platform *platform.Platform) (*SystemManager, error) {
-	renderer, err := NewRendererSystem(appName, width, height, platform)
+func NewSystemManager(appName string, width, height uint32, platform *platform.Platform, am *assets.AssetManager) (*SystemManager, error) {
+	renderer, err := NewRendererSystem(appName, width, height, platform, am)
 	if err != nil {
 		return nil, err
 	}
-
 	js, err := NewJobSystem(MaxNumberOfWorkers, 25)
 	if err != nil {
 		return nil, err
@@ -43,20 +42,12 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	rs, err := NewResourceSystem(&ResourceSystemConfig{
-		MaxLoaderCount: 32,
-		AssetBasePath:  fmt.Sprintf("%s/assets", wd),
-	})
 	if err != nil {
 		return nil, err
 	}
 	ts, err := NewTextureSystem(&TextureSystemConfig{
 		MaxTextureCount: 65536,
-	}, js, rs, renderer)
+	}, js, am, renderer)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +62,7 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	}
 	ms, err := NewMaterialSystem(&MaterialSystemConfig{
 		MaxMaterialCount: 4096,
-	}, ssys, ts, rs, renderer)
+	}, ssys, ts, am, renderer)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +72,7 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
-	mls, err := NewMeshLoaderSystem(gs, rs)
+	mls, err := NewMeshLoaderSystem(gs, am)
 	if err != nil {
 		return nil, err
 	}
@@ -100,13 +91,13 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		MaterialSystem:   ms,
 		GeometrySystem:   gs,
 		MeshLoaderSystem: mls,
-		ResourceSystem:   rs,
 		RenderViewSystem: rvs,
+		AssetManager:     am,
 	}, nil
 }
 
 func (sm *SystemManager) Initialize() error {
-	if err := sm.RendererSystem.Initialize(sm.ResourceSystem, sm.ShaderSystem); err != nil {
+	if err := sm.RendererSystem.Initialize(sm.ShaderSystem); err != nil {
 		return err
 	}
 	return nil
@@ -151,9 +142,6 @@ func (sm *SystemManager) Shutdown() error {
 		return err
 	}
 	if err := sm.TextureSystem.Shutdown(); err != nil {
-		return err
-	}
-	if err := sm.ResourceSystem.Shutdown(); err != nil {
 		return err
 	}
 	if err := sm.CameraSystem.Shutdown(); err != nil {

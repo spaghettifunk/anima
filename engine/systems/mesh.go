@@ -3,19 +3,20 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
 type MeshLoaderSystem struct {
 	geometrySystem *GeometrySystem
-	resourceSystem *ResourceSystem
+	assetManager   *assets.AssetManager
 }
 
-func NewMeshLoaderSystem(gs *GeometrySystem, rs *ResourceSystem) (*MeshLoaderSystem, error) {
+func NewMeshLoaderSystem(gs *GeometrySystem, am *assets.AssetManager) (*MeshLoaderSystem, error) {
 	return &MeshLoaderSystem{
 		geometrySystem: gs,
-		resourceSystem: rs,
+		assetManager:   am,
 	}, nil
 }
 
@@ -62,7 +63,7 @@ func (mls *MeshLoaderSystem) meshLoadJobSuccess(params interface{}) error {
 
 	core.LogDebug("Successfully loaded mesh '%s'.", mesh_params.ResourceName)
 
-	return mls.resourceSystem.Unload(mesh_params.MeshResource)
+	return mls.assetManager.UnloadAsset(mesh_params.MeshResource)
 }
 
 /**
@@ -73,7 +74,7 @@ func (mls *MeshLoaderSystem) meshLoadJobSuccess(params interface{}) error {
 func (mls *MeshLoaderSystem) meshLoadJobFail(params interface{}) {
 	meshParams := params.(metadata.MeshLoadParams)
 	core.LogError("Failed to load mesh '%s'.", meshParams.ResourceName)
-	if err := mls.resourceSystem.Unload(meshParams.MeshResource); err != nil {
+	if err := mls.assetManager.UnloadAsset(meshParams.MeshResource); err != nil {
 		core.LogError(err.Error())
 	}
 }
@@ -92,7 +93,7 @@ func (mls *MeshLoaderSystem) meshLoadJobStart(params interface{}) (*metadata.Res
 		core.LogError(err.Error())
 		return nil, err
 	}
-	mesh, err := mls.resourceSystem.Load(load_params.ResourceName, metadata.ResourceTypeMesh, 0)
+	mesh, err := mls.assetManager.LoadAsset(load_params.ResourceName, metadata.ResourceTypeMesh, 0)
 	if err != nil {
 		core.LogError(err.Error())
 		return nil, err

@@ -3,9 +3,10 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets"
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief The texture system configuration */
@@ -25,9 +26,9 @@ type TextureSystem struct {
 	// Hashtable for texture lookups.
 	RegisteredTextureTable map[string]*metadata.TextureReference
 	// sub systems
-	jobSystem      *JobSystem
-	resourceSystem *ResourceSystem
-	renderer       *RendererSystem
+	jobSystem    *JobSystem
+	assetManager *assets.AssetManager
+	renderer     *RendererSystem
 }
 
 /**
@@ -39,7 +40,7 @@ type TextureSystem struct {
  * @param config The configuration for this system.
  * @return True on success; otherwise false.
  */
-func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSystem, r *RendererSystem) (*TextureSystem, error) {
+func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, am *assets.AssetManager, r *RendererSystem) (*TextureSystem, error) {
 	if config.MaxTextureCount == 0 {
 		err := fmt.Errorf("func NewTextureSystem - config.MaxTextureCount must be > 0")
 		core.LogFatal(err.Error())
@@ -55,7 +56,7 @@ func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, rs *ResourceSy
 		DefaultSpecularTexture: &metadata.Texture{},
 		DefaultNormalTexture:   &metadata.Texture{},
 		jobSystem:              js,
-		resourceSystem:         rs,
+		assetManager:           am,
 		renderer:               r,
 	}
 
@@ -530,7 +531,7 @@ func (ts *TextureSystem) LoadCubeTextures(name string, textureNames []string, te
 			FlipY: false,
 		}
 
-		imgResource, err := ts.resourceSystem.Load(textureNames[i], metadata.ResourceTypeImage, params)
+		imgResource, err := ts.assetManager.LoadAsset(textureNames[i], metadata.ResourceTypeImage, params)
 		if err != nil {
 			core.LogError("func LoadCubeTextures - Failed to load image resource for texture '%s'", textureNames[i])
 			return false
@@ -567,7 +568,7 @@ func (ts *TextureSystem) LoadCubeTextures(name string, textureNames []string, te
 		// kcopy_memory(pixels+image_size*i, resource_data.pixels, image_size)
 
 		// Clean up data.
-		ts.resourceSystem.Unload(imgResource)
+		ts.assetManager.UnloadAsset(imgResource)
 	}
 
 	// Acquire internal texture resources and upload to GPU.
@@ -735,7 +736,7 @@ func (ts *TextureSystem) TextureLoadJobSuccess(paramsChan <-chan interface{}) {
 		core.LogDebug("Successfully loaded texture '%s'.", textureParams.ResourceName)
 
 		// Clean up data.
-		ts.resourceSystem.Unload(textureParams.ImageResource)
+		ts.assetManager.UnloadAsset(textureParams.ImageResource)
 		if textureParams.ResourceName != "" {
 			textureParams.ResourceName = ""
 		}
@@ -746,7 +747,7 @@ func (ts *TextureSystem) TextureLoadJobFail(paramsChan <-chan interface{}) {
 	if params, ok := <-paramsChan; ok {
 		textureParams := params.(*metadata.TextureLoadParams)
 		core.LogError("Failed to load texture '%s'.", textureParams.ResourceName)
-		ts.resourceSystem.Unload(textureParams.ImageResource)
+		ts.assetManager.UnloadAsset(textureParams.ImageResource)
 	}
 }
 
@@ -757,7 +758,7 @@ func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan
 		FlipY: true,
 	}
 
-	result, err := ts.resourceSystem.Load(loadParams.ResourceName, metadata.ResourceTypeImage, resource_params)
+	result, err := ts.assetManager.LoadAsset(loadParams.ResourceName, metadata.ResourceTypeImage, resource_params)
 	if err != nil {
 		core.LogError(err.Error())
 		resultChan <- loadParams

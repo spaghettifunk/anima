@@ -2,13 +2,15 @@ package engine
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/spaghettifunk/anima/engine/assets"
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/systems"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 type Stage uint8
@@ -36,6 +38,7 @@ type Engine struct {
 	isRunning     bool
 	isSuspended   bool
 	platform      *platform.Platform
+	assetManager  *assets.AssetManager
 	systemManager *systems.SystemManager
 	width         uint32
 	height        uint32
@@ -53,7 +56,9 @@ type Engine struct {
 func New(g *Game) (*Engine, error) {
 	p := platform.New()
 
-	sm, err := systems.NewSystemManager(g.ApplicationConfig.Name, g.ApplicationConfig.StartWidth, g.ApplicationConfig.StartHeight, p)
+	am := assets.NewAssetManager()
+
+	sm, err := systems.NewSystemManager(g.ApplicationConfig.Name, g.ApplicationConfig.StartWidth, g.ApplicationConfig.StartHeight, p, am)
 	if err != nil {
 		core.LogError(err.Error())
 		return nil, err
@@ -64,6 +69,7 @@ func New(g *Game) (*Engine, error) {
 		gameInstance:  g,
 		clock:         core.NewClock(),
 		platform:      p,
+		assetManager:  am,
 		systemManager: sm,
 		isRunning:     true,
 		isSuspended:   false,
@@ -101,6 +107,14 @@ func (e *Engine) Initialize() error {
 	}
 
 	// initialize subsystems
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if err := e.assetManager.Initialize(wd); err != nil {
+		return err
+	}
+
 	if err := e.systemManager.Initialize(); err != nil {
 		return err
 	}
@@ -261,7 +275,6 @@ func (e *Engine) Initialize() error {
 	if err := e.gameInstance.FnOnResize(e.width, e.height); err != nil {
 		return err
 	}
-
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
 type VulkanImage struct {
@@ -118,80 +119,95 @@ func ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.Im
 	return &view, nil
 }
 
-func ImageTransitionLayout(vulkan_context* context, texture_type type, vulkan_command_buffer* command_buffer, vulkan_image* image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
-    VkImageMemoryBarrier barrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    barrier.oldLayout = old_layout;
-    barrier.newLayout = new_layout;
-    barrier.srcQueueFamilyIndex = context->device.graphics_queue_index;
-    barrier.dstQueueFamilyIndex = context->device.graphics_queue_index;
-    barrier.image = image->handle;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    barrier.subresourceRange.baseMipLevel = 0;
-    barrier.subresourceRange.levelCount = 1;
-    barrier.subresourceRange.baseArrayLayer = 0;
-    barrier.subresourceRange.layerCount = type == TEXTURE_TYPE_CUBE ? 6 : 1;
+func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureType metadata.TextureType,
+	commandBuffer *VulkanCommandBuffer, format vk.Format, oldLayout, newLayout vk.ImageLayout,
+) error {
+	cubeVal := uint32(1)
+	if textureType == metadata.TextureTypeCube {
+		cubeVal = 6
+	}
+	barrier := vk.ImageMemoryBarrier{
+		SType:               vk.StructureTypeImageMemoryBarrier,
+		OldLayout:           oldLayout,
+		NewLayout:           newLayout,
+		SrcQueueFamilyIndex: uint32(context.Device.GraphicsQueueIndex),
+		DstQueueFamilyIndex: uint32(context.Device.GraphicsQueueIndex),
+		Image:               image.Handle,
+		SubresourceRange: vk.ImageSubresourceRange{
+			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			BaseMipLevel:   0,
+			LevelCount:     1,
+			BaseArrayLayer: 0,
+			LayerCount:     cubeVal,
+		},
+	}
 
-    VkPipelineStageFlags source_stage;
-    VkPipelineStageFlags dest_stage;
+	sourceStage := vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
+	destStage := vk.PipelineStageFlags(vk.PipelineStageTransferBit)
 
-    // Don't care about the old layout - transition to optimal layout (for the underlying implementation).
-    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
-        barrier.srcAccessMask = 0;
-        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	// Don't care about the old layout - transition to optimal layout (for the underlying implementation).
+	if oldLayout == vk.ImageLayoutUndefined && newLayout == vk.ImageLayoutTransferDstOptimal {
+		barrier.SrcAccessMask = 0
+		barrier.DstAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
+		// Don't care what stage the pipeline is in at the start.
+		sourceStage = vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
+		// Used for copying
+		destStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
+	} else if oldLayout == vk.ImageLayoutTransferDstOptimal && newLayout == vk.ImageLayoutReadOnlyOptimal {
+		// Transitioning from a transfer destination layout to a shader-readonly layout.
+		barrier.SrcAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
+		barrier.DstAccessMask = vk.AccessFlags(vk.AccessShaderReadBit)
+		// From a copying stage to...
+		sourceStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
+		// The fragment stage.
+		destStage = vk.PipelineStageFlags(vk.PipelineStageFragmentShaderBit)
+	} else {
+		err := fmt.Errorf("unsupported layout transition!")
+		return err
+	}
 
-        // Don't care what stage the pipeline is in at the start.
-        source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	vk.CmdPipelineBarrier(commandBuffer.Handle, sourceStage, destStage,
+		0,
+		0, nil,
+		0, nil,
+		1, []vk.ImageMemoryBarrier{barrier},
+	)
 
-        // Used for copying
-        dest_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
-        // Transitioning from a transfer destination layout to a shader-readonly layout.
-        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        // From a copying stage to...
-        source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-
-        // The fragment stage.
-        dest_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    } else {
-        KFATAL("unsupported layout transition!");
-        return;
-    }
-
-    vkCmdPipelineBarrier(
-        command_buffer->handle,
-        source_stage, dest_stage,
-        0,
-        0, 0,
-        0, 0,
-        1, &barrier);
+	return nil
 }
 
-func ImageCopyFromBuffer(vulkan_context* context,texture_type type,vulkan_image* image,VkBuffer buffer,vulkan_command_buffer* command_buffer) {
-    // Region to copy
-    VkBufferImageCopy region;
-    kzero_memory(&region, sizeof(VkBufferImageCopy));
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
+func (image *VulkanImage) ImageCopyFromBuffer(context *VulkanContext, textureType metadata.TextureType, buffer vk.Buffer, commandBuffer *VulkanCommandBuffer) error {
+	cubeVal := uint32(1)
+	if textureType == metadata.TextureTypeCube {
+		cubeVal = 6
+	}
+	// Region to copy
+	region := vk.BufferImageCopy{
+		BufferOffset:      0,
+		BufferRowLength:   0,
+		BufferImageHeight: 0,
+		ImageSubresource: vk.ImageSubresourceLayers{
+			AspectMask:     vk.ImageAspectFlags(vk.ImageAspectColorBit),
+			MipLevel:       0,
+			BaseArrayLayer: 0,
+			LayerCount:     cubeVal,
+		},
+		ImageExtent: vk.Extent3D{
+			Width:  image.Width,
+			Height: image.Height,
+			Depth:  1,
+		},
+	}
 
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = type == TEXTURE_TYPE_CUBE ? 6 : 1;
-
-    region.imageExtent.width = image->width;
-    region.imageExtent.height = image->height;
-    region.imageExtent.depth = 1;
-
-    vkCmdCopyBufferToImage(
-        command_buffer->handle,
-        buffer,
-        image->handle,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &region);
+	vk.CmdCopyBufferToImage(
+		commandBuffer.Handle,
+		buffer,
+		image.Handle,
+		vk.ImageLayoutTransferDstOptimal,
+		1,
+		[]vk.BufferImageCopy{region},
+	)
+	return nil
 }
 
 func (vi *VulkanImage) Destroy(context *VulkanContext) {

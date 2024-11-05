@@ -3,6 +3,7 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
@@ -11,7 +12,8 @@ import (
 )
 
 type RendererSystem struct {
-	backend *vulkan.VulkanRenderer
+	backend      *vulkan.VulkanRenderer
+	assetManager *assets.AssetManager
 
 	// application
 	AppName   string
@@ -45,17 +47,18 @@ type RendererSystem struct {
 	FramesSinceResize uint8
 }
 
-func NewRendererSystem(appName string, appWidth, appHeight uint32, platform *platform.Platform) (*RendererSystem, error) {
+func NewRendererSystem(appName string, appWidth, appHeight uint32, platform *platform.Platform, am *assets.AssetManager) (*RendererSystem, error) {
 	renderer := &RendererSystem{
-		backend:   vulkan.New(platform),
-		AppName:   appName,
-		AppWidth:  appWidth,
-		AppHeight: appHeight,
+		backend:      vulkan.New(platform, am),
+		assetManager: am,
+		AppName:      appName,
+		AppWidth:     appWidth,
+		AppHeight:    appHeight,
 	}
 	return renderer, nil
 }
 
-func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem *ShaderSystem) error {
+func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 	// Default framebuffer size. Overridden when window is created.
 	r.FramebufferWidth = 1280
 	r.FramebufferHeight = 720
@@ -138,7 +141,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 	// Shaders
 
 	// Builtin skybox shader.
-	config_resource, err := resourceSystem.Load(metadata.BUILTIN_SHADER_NAME_SKYBOX, metadata.ResourceTypeShader, nil)
+	config_resource, err := r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_SKYBOX, metadata.ResourceTypeShader, nil)
 	if err != nil {
 		core.LogError("Failed to load builtin skybox shader.")
 		return err
@@ -150,7 +153,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 		core.LogError("Failed to load builtin skybox shader.")
 		return err
 	}
-	resourceSystem.Unload(config_resource)
+	r.assetManager.UnloadAsset(config_resource)
 	r.SkyboxShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_SKYBOX)
 
 	if r.SkyboxShaderID != skyboxShader.ID {
@@ -160,7 +163,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 	}
 
 	// Builtin material shader.
-	config_resource, err = resourceSystem.Load(metadata.BUILTIN_SHADER_NAME_MATERIAL, metadata.ResourceTypeShader, nil)
+	config_resource, err = r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_MATERIAL, metadata.ResourceTypeShader, nil)
 	if err != nil {
 		core.LogError("Failed to load builtin material shader.")
 		return err
@@ -172,7 +175,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 		core.LogError("Failed to load builtin material shader.")
 		return err
 	}
-	resourceSystem.Unload(config_resource)
+	r.assetManager.UnloadAsset(config_resource)
 	r.MaterialShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_MATERIAL)
 
 	if r.MaterialShaderID != materialShader.ID {
@@ -182,7 +185,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 	}
 
 	// Builtin UI shader.
-	config_resource, err = resourceSystem.Load(metadata.BUILTIN_SHADER_NAME_UI, metadata.ResourceTypeShader, nil)
+	config_resource, err = r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_UI, metadata.ResourceTypeShader, nil)
 	if err != nil {
 		core.LogError("Failed to load builtin UI shader.")
 		return err
@@ -194,7 +197,7 @@ func (r *RendererSystem) Initialize(resourceSystem *ResourceSystem, shaderSystem
 		core.LogError("Failed to load builtin UI shader.")
 		return err
 	}
-	resourceSystem.Unload(config_resource)
+	r.assetManager.UnloadAsset(config_resource)
 	r.UIShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_UI)
 
 	if r.UIShaderID != uiShader.ID {
@@ -345,7 +348,7 @@ func (r *RendererSystem) ShaderDestroy(shader *metadata.Shader) {
 	r.backend.ShaderDestroy(shader)
 }
 
-func (r *RendererSystem) ShaderInitialize(shader *metadata.Shader) bool {
+func (r *RendererSystem) ShaderInitialize(shader *metadata.Shader) error {
 	return r.backend.ShaderInitialize(shader)
 }
 

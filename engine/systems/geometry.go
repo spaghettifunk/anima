@@ -3,10 +3,10 @@ package systems
 import (
 	"fmt"
 
+	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
-	"github.com/spaghettifunk/anima/engine/systems/loaders"
 )
 
 /** @brief The geometry system configuration. */
