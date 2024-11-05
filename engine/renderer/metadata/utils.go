@@ -8,13 +8,13 @@ import (
 
 func GetAlignedRange(offset, size, granularity uint64) *MemoryRange {
 	m := &MemoryRange{
-		Offset: getAligned(offset, granularity),
-		Size:   getAligned(size, granularity),
+		Offset: GetAligned(offset, granularity),
+		Size:   GetAligned(size, granularity),
 	}
 	return m
 }
 
-func getAligned(operand, granularity uint64) uint64 {
+func GetAligned(operand, granularity uint64) uint64 {
 	return (operand + (granularity - 1)) & ^(granularity - 1)
 }
 

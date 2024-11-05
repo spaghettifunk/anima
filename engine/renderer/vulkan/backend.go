@@ -1447,6 +1447,20 @@ func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) {
 	}
 }
 
+// Define the lookup table for Vulkan formats.
+var shaderAttributeFormats = []vk.Format{
+	metadata.ShaderAttribTypeFloat32:   vk.FormatR32Sfloat,
+	metadata.ShaderAttribTypeFloat32_2: vk.FormatR32g32Sfloat,
+	metadata.ShaderAttribTypeFloat32_3: vk.FormatR32g32b32Sfloat,
+	metadata.ShaderAttribTypeFloat32_4: vk.FormatR32g32b32a32Sfloat,
+	metadata.ShaderAttribTypeInt8:      vk.FormatR8Sint,
+	metadata.ShaderAttribTypeUint8:     vk.FormatR8Uint,
+	metadata.ShaderAttribTypeInt16:     vk.FormatR16Sint,
+	metadata.ShaderAttribTypeUint16:    vk.FormatR16Uint,
+	metadata.ShaderAttribTypeInt32:     vk.FormatR32Sint,
+	metadata.ShaderAttribTypeUint32:    vk.FormatR32Uint,
+}
+
 func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	logical_device := vr.context.Device.LogicalDevice
 	vk_allocator := vr.context.Allocator
@@ -1462,6 +1476,156 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		}
 	}
 
+	// Process attributes
+	offset := uint32(0)
+	for i := uint32(0); i < uint32(len(shader.Attributes)); i++ {
+		// Setup the new attribute.
+		attribute := vk.VertexInputAttributeDescription{
+			Location: i,
+			Binding:  0,
+			Offset:   offset,
+			Format:   shaderAttributeFormats[shader.Attributes[i].ShaderUniformAttributeType],
+		}
+
+		// Push into the config's attribute collection and add to the stride.
+		s.Config.Attributes[i] = attribute
+
+		offset += shader.Attributes[i].Size
+	}
+
+	// Descriptor pool.
+	pool_info := vk.DescriptorPoolCreateInfo{
+		SType:         vk.StructureTypeDescriptorPoolCreateInfo,
+		PoolSizeCount: 2,
+		PPoolSizes:    s.Config.PoolSizes,
+		MaxSets:       uint32(s.Config.MaxDescriptorSetCount),
+		Flags:         vk.DescriptorPoolCreateFlags(vk.DescriptorPoolCreateFreeDescriptorSetBit),
+	}
+
+	// Create descriptor pool.
+	result := vk.CreateDescriptorPool(logical_device, &pool_info, vk_allocator, &s.DescriptorPool)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
+		return err
+	}
+
+	// Create descriptor set layouts.
+	s.DescriptorSetLayouts = make([]vk.DescriptorSetLayout, 2)
+	for i := uint32(0); i < uint32(s.Config.DescriptorSetCount); i++ {
+		layout_info := vk.DescriptorSetLayoutCreateInfo{
+			SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
+			BindingCount: uint32(s.Config.DescriptorSets[i].BindingCount),
+			PBindings:    s.Config.DescriptorSets[i].Bindings,
+		}
+		result = vk.CreateDescriptorSetLayout(logical_device, &layout_info, vk_allocator, &s.DescriptorSetLayouts[i])
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
+			return err
+		}
+	}
+
+	// TODO: This feels wrong to have these here, at least in this fashion. Should probably
+	// Be configured to pull from someplace instead.
+	// Viewport.
+	viewport := vk.Viewport{
+		X:        0.0,
+		Y:        float32(vr.context.FramebufferHeight),
+		Width:    float32(vr.context.FramebufferWidth),
+		Height:   -float32(vr.context.FramebufferHeight),
+		MinDepth: 0.0,
+		MaxDepth: 1.0,
+	}
+
+	// Scissor
+	scissor := vk.Rect2D{
+		Offset: vk.Offset2D{
+			X: 0,
+			Y: 0,
+		},
+		Extent: vk.Extent2D{
+			Width:  vr.context.FramebufferWidth,
+			Height: vr.context.FramebufferHeight,
+		},
+	}
+
+	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, VULKAN_SHADER_MAX_STAGES)
+	for i := uint32(0); i < uint32(s.Config.StageCount); i++ {
+		stage_create_infos[i] = s.Stages[i].ShaderStageCreateInfo
+	}
+
+	pipeline, err := NewGraphicsPipeline(
+		vr.context,
+		s.Renderpass,
+		uint32(shader.AttributeStride),
+		uint32(len(shader.Attributes)),
+		s.Config.Attributes, // shader.attributes,
+		uint32(s.Config.DescriptorSetCount),
+		s.DescriptorSetLayouts,
+		uint32(len(s.Config.Stages)),
+		stage_create_infos,
+		viewport,
+		scissor,
+		s.Config.CullMode,
+		false,
+		true,
+		uint32(shader.PushConstantRangeCount),
+		shader.PushConstantRanges[:],
+	)
+	s.Pipeline = pipeline
+
+	if err != nil {
+		core.LogError("failed to load graphics pipeline for object shader")
+		return err
+	}
+
+	// Grab the UBO alignment requirement from the device.
+	shader.RequiredUboAlignment = uint64(vr.context.Device.Properties.Limits.MinUniformBufferOffsetAlignment)
+
+	// Make sure the UBO is aligned according to device requirements.
+	shader.GlobalUboStride = metadata.GetAligned(shader.GlobalUboSize, shader.RequiredUboAlignment)
+	shader.UboStride = metadata.GetAligned(shader.UboSize, shader.RequiredUboAlignment)
+
+	// Uniform  buffer.
+	// TODO: max count should be configurable, or perhaps long term support of buffer resizing.
+	total_buffer_size := shader.GlobalUboStride + (shader.UboStride * uint64(VULKAN_MAX_MATERIAL_COUNT)) // global + (locals)
+	s.UniformBuffer, err = vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_UNIFORM, total_buffer_size, true)
+	if err != nil {
+		core.LogError("Vulkan buffer creation failed for object shader.")
+		return err
+	}
+	vr.RenderBufferBind(s.UniformBuffer, 0)
+
+	// Allocate space for the global UBO, which should occupy the _stride_ space, _not_ the actual size used.
+	s.UniformBuffer = &metadata.RenderBuffer{
+		TotalSize: shader.GlobalUboStride + shader.GlobalUboOffset,
+	}
+
+	// Map the entire buffer's memory.
+	s.MappedUniformBufferBlock = vr.RenderBufferMapMemory(s.UniformBuffer, 0, vk.WholeSize)
+
+	// Allocate global descriptor sets, one per frame. Global is always the first set.
+	global_layouts := []vk.DescriptorSetLayout{
+		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+	}
+
+	alloc_info := vk.DescriptorSetAllocateInfo{
+		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
+		DescriptorPool:     s.DescriptorPool,
+		DescriptorSetCount: 3,
+		PSetLayouts:        global_layouts,
+	}
+
+	s.GlobalDescriptorSets = make([]vk.DescriptorSet, 3)
+	for _, gds := range s.GlobalDescriptorSets {
+		result = vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &gds)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("%s", VulkanResultString(result, true))
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -1472,43 +1636,220 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShader
 		return err
 	}
 
-	// kzero_memory(&shader_stage->create_info, sizeof(VkShaderModuleCreateInfo));
-	// shader_stage->create_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	// // Use the resource's size and data directly.
-	// shader_stage->create_info.codeSize = binary_resource.data_size;
-	// shader_stage->create_info.pCode = (u32*)binary_resource.data;
+	shader_stage.CreateInfo = vk.ShaderModuleCreateInfo{
+		SType:    vk.StructureTypeShaderModuleCreateInfo,
+		CodeSize: binary_resource.DataSize,
+		PCode:    binary_resource.Data.([]uint32),
+	}
 
-	// VK_CHECK(vkCreateShaderModule(
-	//     context.device.logical_device,
-	//     &shader_stage->create_info,
-	//     context.allocator,
-	//     &shader_stage->handle));
+	result := vk.CreateShaderModule(vr.context.Device.LogicalDevice, &shader_stage.CreateInfo, vr.context.Allocator, &shader_stage.Handle)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
+		return err
+	}
 
-	// // Release the resource.
-	// resource_system_unload(&binary_resource);
+	// Release the resource.
+	vr.assetManager.UnloadAsset(binary_resource)
 
-	// // Shader stage info
-	// kzero_memory(&shader_stage->shader_stage_create_info, sizeof(VkPipelineShaderStageCreateInfo));
-	// shader_stage->shader_stage_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	// shader_stage->shader_stage_create_info.stage = config.stage;
-	// shader_stage->shader_stage_create_info.module = shader_stage->handle;
-	// shader_stage->shader_stage_create_info.pName = "main";
+	// Shader stage info
+	shader_stage.ShaderStageCreateInfo = vk.PipelineShaderStageCreateInfo{
+		SType:  vk.StructureTypePipelineShaderStageCreateInfo,
+		Stage:  config.Stage,
+		Module: shader_stage.Handle,
+		PName:  "main",
+	}
 
 	return nil
 }
 
-func (vr *VulkanRenderer) ShaderUse(shader *metadata.Shader) bool { return false }
-
-func (vr *VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) bool { return false }
-
-func (vr *VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
-	return false
+func (vr *VulkanRenderer) ShaderUse(shader *metadata.Shader) bool {
+	s := shader.InternalData.(*VulkanShader)
+	s.Pipeline.Bind(vr.context.GraphicsCommandBuffers[vr.context.ImageIndex], vk.PipelineBindPointGraphics)
+	return true
 }
 
-func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) bool { return false }
+func (vr *VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) bool {
+	if shader == nil {
+		return false
+	}
+	shader.BoundUboOffset = uint32(shader.GlobalUboOffset)
+	return true
+}
+
+func (vr *VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
+	if shader == nil {
+		return false
+	}
+
+	internal := shader.InternalData.(*VulkanShader)
+
+	shader.BoundInstanceID = instance_id
+	state := internal.InstanceStates[instance_id]
+	shader.BoundUboOffset = uint32(state.Offset)
+
+	return true
+}
+
+func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) bool {
+	image_index := vr.context.ImageIndex
+	internal := shader.InternalData.(*VulkanShader)
+	command_buffer := vr.context.GraphicsCommandBuffers[image_index].Handle
+	global_descriptor := internal.GlobalDescriptorSets[image_index]
+
+	// Apply UBO first
+	bufferInfo := vk.DescriptorBufferInfo{
+		Buffer: (internal.UniformBuffer.InternalData.(*VulkanBuffer)).Handle,
+		Offset: vk.DeviceSize(shader.GlobalUboOffset),
+		Range:  vk.DeviceSize(shader.GlobalUboStride),
+	}
+
+	// Update descriptor sets.
+	ubo_write := vk.WriteDescriptorSet{
+		SType:           vk.StructureTypeWriteDescriptorSet,
+		DstSet:          internal.GlobalDescriptorSets[image_index],
+		DstBinding:      0,
+		DstArrayElement: 0,
+		DescriptorType:  vk.DescriptorTypeUniformBuffer,
+		DescriptorCount: 1,
+		PBufferInfo:     []vk.DescriptorBufferInfo{bufferInfo},
+	}
+
+	descriptor_writes := make([]vk.WriteDescriptorSet, 2)
+	descriptor_writes[0] = ubo_write
+
+	global_set_binding_count := uint32(internal.Config.DescriptorSets[DESC_SET_INDEX_GLOBAL].BindingCount)
+	if global_set_binding_count > 1 {
+		// TODO: There are samplers to be written. Support this.
+		global_set_binding_count = 1
+		core.LogError("Global image samplers are not yet supported.")
+
+		// VkWriteDescriptorSet sampler_write = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+		// descriptor_writes[1] = ...
+	}
+
+	vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, global_set_binding_count, descriptor_writes, 0, nil)
+
+	// Bind the global descriptor set to be updated.
+	vk.CmdBindDescriptorSets(command_buffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 0, 1, []vk.DescriptorSet{global_descriptor}, 0, nil)
+	return true
+}
 
 func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool {
-	return false
+	internal := shader.InternalData.(*VulkanShader)
+	if internal.InstanceUniformCount < 1 && internal.InstanceUniformSamplerCount < 1 {
+		core.LogError("This shader does not use instances.")
+		return false
+	}
+	image_index := vr.context.ImageIndex
+	command_buffer := vr.context.GraphicsCommandBuffers[image_index].Handle
+
+	// Obtain instance data.
+	object_state := internal.InstanceStates[shader.BoundInstanceID]
+	object_descriptor_set := object_state.DescriptorSetState.DescriptorSets[image_index]
+
+	if needs_update {
+		descriptor_writes := make([]vk.WriteDescriptorSet, 2) // Always a max of 2 descriptor sets.
+
+		descriptor_count := uint32(0)
+		descriptor_index := uint32(0)
+
+		buffer_info := vk.DescriptorBufferInfo{}
+
+		// Descriptor 0 - Uniform buffer
+		if internal.InstanceUniformCount > 0 {
+			// Only do this if the descriptor has not yet been updated.
+			instance_ubo_generation := object_state.DescriptorSetState.DescriptorSets[descriptor_index] //.generations[image_index]
+			// TODO: determine if update is required.
+			if *instance_ubo_generation == loaders.InvalidIDUint8 {
+				buffer_info.Buffer = (internal.UniformBuffer.InternalData.(*VulkanBuffer)).Handle
+				buffer_info.Offset = vk.DeviceSize(object_state.Offset)
+				buffer_info.Range = vk.DeviceSize(shader.UboStride)
+
+				ubo_descriptor := vk.WriteDescriptorSet{
+					SType:           vk.StructureTypeWriteDescriptorSet,
+					DstSet:          object_descriptor_set,
+					DstBinding:      descriptor_index,
+					DescriptorType:  vk.DescriptorTypeUniformBuffer,
+					DescriptorCount: 1,
+					PBufferInfo:     []vk.DescriptorBufferInfo{buffer_info},
+				}
+
+				descriptor_writes[descriptor_count] = ubo_descriptor
+				descriptor_count++
+
+				// Update the frame generation. In this case it is only needed once since this is a buffer.
+				*instance_ubo_generation = 1 // material.generation; TODO: some generation from... somewhere
+			}
+			descriptor_index++
+		}
+
+		// Iterate samplers.
+		if internal.InstanceUniformSamplerCount > 0 {
+			sampler_binding_index := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
+			total_sampler_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
+			update_sampler_count := uint32(0)
+			image_infos := make([]vk.DescriptorImageInfo, VULKAN_SHADER_MAX_GLOBAL_TEXTURES)
+			for i := uint32(0); i < total_sampler_count; i++ {
+				// TODO: only update in the list if actually needing an update.
+				texture_map := internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[i]
+				texture := texture_map.Texture
+
+				// Ensure the texture is valid.
+				if texture.Generation == loaders.InvalidID {
+					switch texture_map.Use {
+					case metadata.TextureUseMapDiffuse:
+						texture = texture_system_get_default_diffuse_texture()
+						break
+					case metadata.TextureUseMapSpecular:
+						texture = texture_system_get_default_specular_texture()
+						break
+					case metadata.TextureUseMapNormal:
+						texture = texture_system_get_default_normal_texture()
+						break
+					default:
+						core.LogWarn("Undefined texture use %d", texture_map.Use)
+						texture = texture_system_get_default_texture()
+						break
+					}
+				}
+
+				image := texture.InternalData.(*VulkanImage)
+				image_infos[i].ImageLayout = vk.ImageLayoutShaderReadOnlyOptimal
+				image_infos[i].ImageView = image.View
+				image_infos[i].Sampler = texture_map.InternalData.(vk.Sampler)
+
+				// TODO: change up descriptor state to handle this properly.
+				// Sync frame generation if not using a default texture.
+				// if (t.generation != INVALID_ID) {
+				//     *descriptor_generation = t.generation;
+				//     *descriptor_id = t.id;
+				// }
+
+				update_sampler_count++
+			}
+
+			sampler_descriptor := vk.WriteDescriptorSet{
+				SType:           vk.StructureTypeWriteDescriptorSet,
+				DstSet:          object_descriptor_set,
+				DstBinding:      descriptor_index,
+				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
+				DescriptorCount: update_sampler_count,
+				PImageInfo:      image_infos,
+			}
+
+			descriptor_writes[descriptor_count] = sampler_descriptor
+			descriptor_count++
+		}
+
+		if descriptor_count > 0 {
+			vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, descriptor_count, descriptor_writes, 0, nil)
+		}
+	}
+
+	// Bind the descriptor set to be updated, or in case the shader changed.
+	vk.CmdBindDescriptorSets(command_buffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 1, 1, []vk.DescriptorSet{object_descriptor_set}, 0, nil)
+
+	return true
 }
 
 func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {

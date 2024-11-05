@@ -60,7 +60,7 @@ type VulkanShaderConfig struct {
 	/** @brief  The configuration for every stage of this shader. */
 	Stages [VULKAN_SHADER_MAX_STAGES]VulkanShaderStageConfig
 	/** @brief An array of descriptor pool sizes. */
-	PoolSizes [2]vk.DescriptorPoolSize
+	PoolSizes []vk.DescriptorPoolSize
 	/**
 	 * @brief The max number of descriptor sets that can be allocated from this shader.
 	 * Should typically be a decently high number.
@@ -72,10 +72,10 @@ type VulkanShaderConfig struct {
 	 */
 	DescriptorSetCount uint8
 	/** @brief Descriptor sets, max of 2. Index 0=global, 1=instance */
-	DescriptorSets [2]VulkanDescriptorSetConfig
+	DescriptorSets []*VulkanDescriptorSetConfig
 
 	/** @brief An array of attribute descriptions for this shader. */
-	Attributes [VULKAN_SHADER_MAX_ATTRIBUTES]vk.VertexInputAttributeDescription
+	Attributes []vk.VertexInputAttributeDescription
 
 	/** @brief Face culling mode, provided by the front end. */
 	CullMode metadata.FaceCullMode
@@ -123,9 +123,9 @@ type VulkanShader struct {
 	DescriptorPool vk.DescriptorPool
 
 	/** @brief Descriptor set layouts, max of 2. Index 0=global, 1=instance. */
-	DescriptorSetLayouts [2]vk.DescriptorSetLayout
+	DescriptorSetLayouts []vk.DescriptorSetLayout
 	/** @brief Global descriptor sets, one per frame. */
-	GlobalDescriptorSets [3]vk.DescriptorSet
+	GlobalDescriptorSets []vk.DescriptorSet
 	/** @brief The uniform buffer used by this shader. */
 	UniformBuffer *metadata.RenderBuffer
 

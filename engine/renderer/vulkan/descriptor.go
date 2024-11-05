@@ -9,7 +9,7 @@ type VulkanDescriptorSetConfig struct {
 	/** @brief The number of bindings in this set. */
 	BindingCount uint8
 	/** @brief An array of binding layouts for this set. */
-	Bindings [VULKAN_SHADER_MAX_BINDINGS]vk.DescriptorSetLayoutBinding
+	Bindings []vk.DescriptorSetLayoutBinding
 	/** @brief The index of the sampler binding. */
 	SamplerBindingIndex uint8
 }
@@ -35,5 +35,5 @@ type VulkanShaderDescriptorSetState struct {
 	/** @brief The descriptor sets for this instance, one per frame. */
 	DescriptorSets [3]vk.DescriptorSet
 	/** @brief A descriptor state per descriptor, which in turn handles frames. Count is managed in shader config. */
-	DescriptorStates [VULKAN_SHADER_MAX_BINDINGS]VulkanDescriptorState
+	DescriptorStates []*VulkanDescriptorState
 }
