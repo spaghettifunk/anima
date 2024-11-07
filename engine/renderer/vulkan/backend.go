@@ -1994,12 +1994,12 @@ func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.Textu
 	sampler_info := vk.SamplerCreateInfo{
 		SType: vk.StructureTypeSamplerCreateInfo,
 
-		MinFilter: vr.convert_filter_type("min", texture_map.FilterMinify),
-		MagFilter: vr.convert_filter_type("mag", texture_map.FilterMagnify),
+		MinFilter: vr.convertFilterType("min", texture_map.FilterMinify),
+		MagFilter: vr.convertFilterType("mag", texture_map.FilterMagnify),
 
-		AddressModeU: vr.convert_repeat_type("U", texture_map.RepeatU),
-		AddressModeV: vr.convert_repeat_type("V", texture_map.RepeatV),
-		AddressModeW: vr.convert_repeat_type("W", texture_map.RepeatW),
+		AddressModeU: vr.convertRepeatType("U", texture_map.RepeatU),
+		AddressModeV: vr.convertRepeatType("V", texture_map.RepeatV),
+		AddressModeW: vr.convertRepeatType("W", texture_map.RepeatW),
 
 		// TODO: Configurable
 		AnisotropyEnable:        vk.True,
@@ -2032,14 +2032,51 @@ func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.Textu
 	}
 }
 
-func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
-	return nil
+func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
+	// Max number of attachments
+	attachment_views := make([]vk.ImageView, 32)
+	for i := uint32(0); i < uint32(attachment_count); i++ {
+		attachment_views[i] = (attachments[i].InternalData.(*VulkanImage)).View
+	}
+
+	// Take a copy of the attachments and count.
+	out_target := &metadata.RenderTarget{
+		AttachmentCount: attachment_count,
+		Attachments:     make([]*metadata.Texture, attachment_count),
+	}
+
+	framebuffer_create_info := vk.FramebufferCreateInfo{
+		SType:           vk.StructureTypeFramebufferCreateInfo,
+		RenderPass:      (pass.InternalData.(*VulkanRenderPass)).Handle,
+		AttachmentCount: uint32(attachment_count),
+		PAttachments:    attachment_views,
+		Width:           width,
+		Height:          height,
+		Layers:          1,
+	}
+
+	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, out_target.InternalFramebuffer.(*vk.Framebuffer))
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
+		return nil, err
+	}
+	return out_target, nil
 }
 
 func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, free_internal_memory bool) {
+	if target != nil && target.InternalFramebuffer != nil {
+		vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, target.InternalFramebuffer.(vk.Framebuffer), vr.context.Allocator)
+		target.InternalFramebuffer = nil
+		if free_internal_memory {
+			target.Attachments = nil
+			target.AttachmentCount = 0
+		}
+	}
 }
 
-func (vr *VulkanRenderer) IsMultithreaded() bool { return false }
+func (vr *VulkanRenderer) IsMultithreaded() bool {
+	return vr.context.MultithreadingEnabled
+}
 
 func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) (*metadata.RenderBuffer, error) {
 	return nil, nil
@@ -2055,31 +2092,212 @@ func (vr *VulkanRenderer) RenderBufferDestroyInternal(buffer *metadata.RenderBuf
 	return nil
 }
 
-func (vr *VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {}
-
-func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
-	return false
+func (vr *VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {
+	if buffer != nil {
+		buffer.Buffer = nil
+		// Free up the backend resources.
+		vr.RenderBufferDestroyInternal(buffer)
+		buffer.InternalData = nil
+	}
 }
 
-func (vr *VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool { return false }
+func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
+	if buffer == nil {
+		core.LogError("renderer_renderbuffer_bind requires a valid pointer to a buffer")
+		return false
+	}
+	return vr.RenderBufferBind(buffer, offset)
+}
+
+func (vr *VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool {
+	if buffer == nil || buffer.InternalData == nil {
+		core.LogError("vulkan_buffer_unbind requires valid pointer to a buffer.")
+		return false
+	}
+	// NOTE: Does nothing, for now.
+	return true
+}
 
 func (vr *VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
-	return nil
+	if buffer == nil || buffer.InternalData == nil {
+		core.LogError("vulkan_buffer_map_memory requires a valid pointer to a buffer.")
+		return nil
+	}
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	var data interface{}
+	dd := unsafe.Pointer(&data)
+	result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &dd)
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("%s", VulkanResultString(result, true))
+		return nil
+	}
+	return data
 }
 
 func (vr *VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) {
+	if buffer == nil || buffer.InternalData == nil {
+		core.LogError("vulkan_buffer_unmap_memory requires a valid pointer to a buffer.")
+		return
+	}
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
 }
 
 func (vr *VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool {
-	return false
+	if buffer == nil || buffer.InternalData == nil {
+		core.LogError("vulkan_buffer_flush requires a valid pointer to a buffer.")
+		return false
+	}
+	// NOTE: If not host-coherent, flush the mapped memory range.
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	if !vr.vulkanBufferIsHostCoherent(internal_buffer) {
+		mrange := vk.MappedMemoryRange{
+			SType:  vk.StructureTypeMappedMemoryRange,
+			Memory: internal_buffer.Memory,
+			Offset: vk.DeviceSize(offset),
+			Size:   vk.DeviceSize(size),
+		}
+		result := vk.FlushMappedMemoryRanges(vr.context.Device.LogicalDevice, 1, []vk.MappedMemoryRange{mrange})
+		if !VulkanResultIsSuccess(result) {
+			core.LogError("%s", VulkanResultString(result, true))
+			return false
+		}
+	}
+
+	return true
 }
 
-func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (out_memory []interface{}) {
-	return nil
+func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) ([]interface{}, error) {
+	if buffer == nil || buffer.InternalData == nil {
+		err := fmt.Errorf("vulkan_buffer_read requires a valid pointer to a buffer and out_memory, and the size must be nonzero.")
+		return nil, err
+	}
+
+	out_memory := make([]interface{}, 1)
+
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	if vr.vulkanBufferIsDeviceLocal(internal_buffer) && !vr.vulkanBufferIsHostVisible(internal_buffer) {
+		// NOTE: If a read buffer is needed (i.e.) the target buffer's memory is not host visible but is device-local,
+		// create the read buffer, copy data to it, then read from that buffer.
+
+		// Create a host-visible staging buffer to copy to. Mark it as the destination of the transfer.
+		read, err := vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_READ, size, false)
+		if err != nil {
+			core.LogError("vulkan_buffer_read() - Failed to create read buffer.")
+			return nil, err
+		}
+		vr.RenderBufferBind(read, 0)
+		read_internal := read.InternalData.(*VulkanBuffer)
+
+		// Perform the copy from device local to the read buffer.
+		vr.RenderBufferCopyRange(buffer, offset, read, 0, size)
+
+		// Map/copy/unmap
+		var mapped_data interface{}
+		md := unsafe.Pointer(&mapped_data)
+		result := vk.MapMemory(vr.context.Device.LogicalDevice, read_internal.Memory, 0, vk.DeviceSize(size), 0, &md)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("%s", VulkanResultString(result, true))
+			return nil, err
+		}
+
+		// kcopy_memory(*out_memory, mapped_data, size);
+		vk.UnmapMemory(vr.context.Device.LogicalDevice, read_internal.Memory)
+
+		// Clean up the read buffer.
+		vr.RenderBufferUnbind(read)
+		vr.RenderBufferDestroy(read)
+	} else {
+		// If no staging buffer is needed, map/copy/unmap.
+		var data_ptr interface{}
+		dp := unsafe.Pointer(&data_ptr)
+		result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &dp)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("%s", VulkanResultString(result, true))
+			return nil, err
+		}
+		// kcopy_memory(*out_memory, data_ptr, size);
+		vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
+	}
+
+	return out_memory, nil
 }
 
 func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool {
-	return false
+	if buffer == nil || buffer.InternalData == nil {
+		return false
+	}
+
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+
+	// Create new buffer.
+	buffer_info := vk.BufferCreateInfo{
+		SType:       vk.StructureTypeBufferCreateInfo,
+		Size:        vk.DeviceSize(new_total_size),
+		Usage:       internal_buffer.Usage,
+		SharingMode: vk.SharingModeExclusive, // NOTE: Only used in one queue.
+	}
+
+	var new_buffer vk.Buffer
+	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &new_buffer)
+
+	// Gather memory requirements.
+	requirements := vk.MemoryRequirements{}
+	vk.GetBufferMemoryRequirements(vr.context.Device.LogicalDevice, new_buffer, &requirements)
+
+	// Allocate memory info
+	allocate_info := vk.MemoryAllocateInfo{
+		SType:           vk.StructureTypeMemoryAllocateInfo,
+		AllocationSize:  requirements.Size,
+		MemoryTypeIndex: uint32(internal_buffer.MemoryIndex),
+	}
+
+	// Allocate the memory.
+	var new_memory vk.DeviceMemory
+	result = vk.AllocateMemory(vr.context.Device.LogicalDevice, &allocate_info, vr.context.Allocator, &new_memory)
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("Unable to resize vulkan buffer because the required memory allocation failed. Error: %s", VulkanResultString(result, true))
+		return false
+	}
+
+	// Bind the new buffer's memory
+	result = vk.BindBufferMemory(vr.context.Device.LogicalDevice, new_buffer, vk.DeviceMemory(new_memory), vk.DeviceSize(0))
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("%s", VulkanResultString(result, true))
+		return false
+	}
+
+	// Copy over the data.
+	vr.vulkan_buffer_copy_range_internal(internal_buffer.Handle, 0, new_buffer, 0, buffer.TotalSize)
+
+	// Make sure anything potentially using these is finished.
+	// NOTE: We could use vkQueueWaitIdle here if we knew what queue this buffer would be used with...
+	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+
+	// Destroy the old
+	if internal_buffer.Memory != nil {
+		vk.FreeMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vr.context.Allocator)
+		internal_buffer.Memory = nil
+	}
+	if internal_buffer.Handle != nil {
+		vk.DestroyBuffer(vr.context.Device.LogicalDevice, internal_buffer.Handle, vr.context.Allocator)
+		internal_buffer.Handle = nil
+	}
+
+	// Report free of the old, allocate of the new.
+	is_device_memory := (internal_buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyDeviceLocalBit)) == uint32(vk.MemoryPropertyDeviceLocalBit)
+
+	internal_buffer.MemoryRequirements = requirements
+	internal_buffer.MemoryRequirements.Size = 1 //MEMORY_TAG_GPU_LOCAL
+	if !is_device_memory {
+		internal_buffer.MemoryRequirements.Size = 2 //MEMORY_TAG_VULKAN
+	}
+
+	// Set new properties
+	internal_buffer.Memory = new_memory
+	internal_buffer.Handle = new_buffer
+
+	return true
 }
 
 // func (vr *VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
@@ -2091,30 +2309,146 @@ func (vr *VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, 
 }
 
 func (vr *VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
-	return false
+	if buffer == nil || buffer.InternalData == nil || size == 0 || data == nil {
+		core.LogError("vulkan_buffer_load_range requires a valid pointer to a buffer, a nonzero size and a valid pointer to data")
+		return false
+	}
+
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	if vr.vulkanBufferIsDeviceLocal(internal_buffer) && !vr.vulkanBufferIsHostVisible(internal_buffer) {
+		// NOTE: If a staging buffer is needed (i.e.) the target buffer's memory is not host visible but is device-local,
+		// create a staging buffer to load the data into first. Then copy from it to the target buffer.
+
+		// Create a host-visible staging buffer to upload to. Mark it as the source of the transfer.
+		staging, err := vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_STAGING, size, false)
+		if err != nil {
+			core.LogError("vulkan_buffer_load_range() - Failed to create staging buffer")
+			return false
+		}
+		vr.RenderBufferBind(staging, 0)
+
+		// Load the data into the staging buffer.
+		vr.RenderBufferLoadRange(staging, 0, size, data)
+
+		// Perform the copy from staging to the device local buffer.
+		vr.RenderBufferCopyRange(staging, 0, buffer, offset, size)
+
+		// Clean up the staging buffer.
+		vr.RenderBufferUnbind(staging)
+		vr.RenderBufferDestroy(staging)
+	} else {
+		// If no staging buffer is needed, map/copy/unmap.
+		var data_ptr interface{}
+		pp := unsafe.Pointer(&data_ptr)
+		if result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &pp); !VulkanResultIsSuccess(result) {
+			core.LogError("%s", VulkanResultString(result, true))
+			return false
+		}
+
+		data = data_ptr
+
+		vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
+	}
+
+	return true
 }
 
 func (vr *VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
-	return false
+	if source == nil || source.InternalData == nil || dest == nil || dest.InternalData == nil || size == 0 {
+		core.LogError("vulkan_buffer_copy_range requires a valid pointers to source and destination buffers as well as a nonzero size")
+		return false
+	}
+
+	return vr.vulkan_buffer_copy_range_internal(
+		(source.InternalData.(*VulkanBuffer)).Handle,
+		source_offset,
+		(dest.InternalData.(*VulkanBuffer)).Handle,
+		dest_offset,
+		size,
+	)
+}
+
+// Indicates if the provided buffer has device-local memory.
+func (vr *VulkanRenderer) vulkanBufferIsDeviceLocal(buffer *VulkanBuffer) bool {
+	return (buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyDeviceLocalBit)) == uint32(vk.MemoryPropertyDeviceLocalBit)
+}
+
+// Indicates if the provided buffer has host-visible memory.
+func (vr *VulkanRenderer) vulkanBufferIsHostVisible(buffer *VulkanBuffer) bool {
+	return (buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyHostVisibleBit)) == uint32(vk.MemoryPropertyHostVisibleBit)
+}
+
+// Indicates if the provided buffer has host-coherent memory.
+func (vr *VulkanRenderer) vulkanBufferIsHostCoherent(buffer *VulkanBuffer) bool {
+	return (buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyHostCoherentBit)) == uint32(vk.MemoryPropertyHostCoherentBit)
+}
+
+func (vr *VulkanRenderer) vulkan_buffer_copy_range_internal(source vk.Buffer, source_offset uint64, dest vk.Buffer, dest_offset, size uint64) bool {
+	// TODO: Assuming queue and pool usage here. Might want dedicated queue.
+	queue := vr.context.Device.GraphicsQueue
+	vk.QueueWaitIdle(queue)
+	// Create a one-time-use command buffer.
+	temp_command_buffer, err := AllocateAndBeginSingleUse(vr.context, vr.context.Device.GraphicsCommandPool)
+	if err != nil {
+		core.LogError(err.Error())
+		return false
+	}
+
+	// Prepare the copy command and add it to the command buffer.
+	copy_region := vk.BufferCopy{
+		SrcOffset: vk.DeviceSize(source_offset),
+		DstOffset: vk.DeviceSize(dest_offset),
+		Size:      vk.DeviceSize(size),
+	}
+	vk.CmdCopyBuffer(temp_command_buffer.Handle, source, dest, 1, []vk.BufferCopy{copy_region})
+
+	// Submit the buffer for execution and wait for it to complete.
+	temp_command_buffer.EndSingleUse(vr.context, vr.context.Device.GraphicsCommandPool, queue)
+
+	return true
 }
 
 func (vr *VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
-	return false
+	command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
+
+	if buffer.RenderBufferType == metadata.RENDERBUFFER_TYPE_VERTEX {
+		// Bind vertex buffer at offset.
+		offsets := []vk.DeviceSize{vk.DeviceSize(offset)}
+		vk.CmdBindVertexBuffers(command_buffer.Handle, 0, 1, []vk.Buffer{buffer.InternalData.(*VulkanBuffer).Handle}, offsets)
+		if !bind_only {
+			vk.CmdDraw(command_buffer.Handle, element_count, 1, 0, 0)
+		}
+		return true
+	} else if buffer.RenderBufferType == metadata.RENDERBUFFER_TYPE_INDEX {
+		// Bind index buffer at offset.
+		vk.CmdBindIndexBuffer(command_buffer.Handle, (buffer.InternalData.(*VulkanBuffer)).Handle, vk.DeviceSize(offset), vk.IndexTypeUint32)
+		if !bind_only {
+			vk.CmdDrawIndexed(command_buffer.Handle, element_count, 1, 0, 0, 0)
+		}
+		return true
+	} else {
+		core.LogError("Cannot draw buffer of type: %d", buffer.RenderBufferType)
+		return false
+	}
 }
 
 func (vr *VulkanRenderer) WindowAttachmentGet(index uint8) *metadata.Texture {
-	return nil
+	if index >= uint8(vr.context.Swapchain.ImageCount) {
+		core.LogFatal("attempting to get attachment index out of range: %d. Attachment count: %d", index, vr.context.Swapchain.ImageCount)
+		return nil
+	}
+	return vr.context.Swapchain.RenderTextures[index]
 }
 
 func (vr *VulkanRenderer) WindowAttachmentIndexGet() uint64 {
-	return 0
+	return uint64(vr.context.ImageIndex)
 }
 
 func (vr *VulkanRenderer) DepthAttachmentGet() *metadata.Texture {
 	return vr.context.Swapchain.DepthTexture
 }
 
-func (vr *VulkanRenderer) convert_repeat_type(axis string, repeat metadata.TextureRepeat) vk.SamplerAddressMode {
+func (vr *VulkanRenderer) convertRepeatType(axis string, repeat metadata.TextureRepeat) vk.SamplerAddressMode {
 	switch repeat {
 	case metadata.TextureRepeatRepeat:
 		return vk.SamplerAddressModeRepeat
@@ -2130,7 +2464,7 @@ func (vr *VulkanRenderer) convert_repeat_type(axis string, repeat metadata.Textu
 	}
 }
 
-func (vr *VulkanRenderer) convert_filter_type(op string, filter metadata.TextureFilter) vk.Filter {
+func (vr *VulkanRenderer) convertFilterType(op string, filter metadata.TextureFilter) vk.Filter {
 	switch filter {
 	case metadata.TextureFilterModeNearest:
 		return vk.FilterNearest

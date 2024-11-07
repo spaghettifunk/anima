@@ -16,7 +16,7 @@ type VulkanBuffer struct {
 	/** @brief The Handle to the internal buffer. */
 	Handle vk.Buffer
 	/** @brief The Usage flags. */
-	Usage vk.BufferUsageFlagBits
+	Usage vk.BufferUsageFlags
 	/** @brief Indicates if the buffer's memory is currently locked. */
 	IsLocked bool
 	/** @brief The Memory used by the buffer. */

@@ -392,7 +392,7 @@ func (r *RendererSystem) TextureMapReleaseResources(texture_map *metadata.Textur
 	r.backend.TextureMapReleaseResources(texture_map)
 }
 
-func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) *metadata.RenderTarget {
+func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
 	return r.backend.RenderTargetCreate(attachment_count, attachments, pass, width, height)
 }
 
@@ -455,7 +455,7 @@ func (r *RendererSystem) RenderBufferFlush(buffer *metadata.RenderBuffer, offset
 	return r.backend.RenderBufferFlush(buffer, offset, size)
 }
 
-func (r *RendererSystem) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) []interface{} {
+func (r *RendererSystem) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) ([]interface{}, error) {
 	return r.backend.RenderBufferRead(buffer, offset, size)
 }
 
@@ -521,32 +521,45 @@ func (r *RendererSystem) regenerateRenderTargets() {
 
 		// Skybox render targets
 		skyboxAttachments := []*metadata.Texture{windowTargetTexture}
-		r.SkyboxRenderPass.Targets[i] = r.backend.RenderTargetCreate(
+		var err error
+		r.SkyboxRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
 			1,
 			skyboxAttachments,
 			r.SkyboxRenderPass,
 			r.FramebufferWidth,
 			r.FramebufferHeight,
 		)
+		if err != nil {
+			core.LogError(err.Error())
+			return
+		}
 
 		// World render targets.
 		attachments := []*metadata.Texture{windowTargetTexture, depthTargetTexture}
-		r.WorldRenderPass.Targets[i] = r.backend.RenderTargetCreate(
+		r.WorldRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
 			2,
 			attachments,
 			r.WorldRenderPass,
 			r.FramebufferWidth,
 			r.FramebufferHeight,
 		)
+		if err != nil {
+			core.LogError(err.Error())
+			return
+		}
 
 		// UI render targets
 		uiAttachments := []*metadata.Texture{windowTargetTexture}
-		r.UIRenderPass.Targets[i] = r.backend.RenderTargetCreate(
+		r.UIRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
 			1,
 			uiAttachments,
 			r.UIRenderPass,
 			r.FramebufferWidth,
 			r.FramebufferHeight,
 		)
+		if err != nil {
+			core.LogError(err.Error())
+			return
+		}
 	}
 }

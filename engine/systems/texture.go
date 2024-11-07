@@ -182,42 +182,6 @@ func (ts *TextureSystem) Release(name string) {
 	core.LogDebug("texture ID `%d` released", id)
 }
 
-// func (ts *TextureSystem) WrapInternal(name string, width, height uint32, channelCount uint8, hasTransparency, isWriteable, registerTexture bool, internalData interface{}) (*metadata.Texture, error) {
-// 	id := metadata.InvalidID
-// 	var texture *metadata.Texture
-// 	if registerTexture {
-// 		// NOTE: Wrapped textures are never auto-released because it means that thier
-// 		// resources are created and managed somewhere within the renderer internals.
-// 		id, ok := ts.ProcessTextureReference(name, metadata.TextureType2d, 1, false, true)
-// 		if !ok {
-// 			err := fmt.Errorf("func texture system WrapInternal failed to obtain a new texture id")
-// 			core.LogError(err.Error())
-// 			return nil, err
-// 		}
-// 		texture = ts.RegisteredTextures[id]
-// 	} else {
-// 		texture = &metadata.Texture{}
-// 	}
-// 	texture.ID = id
-// 	texture.TextureType = metadata.TextureType2d
-// 	texture.Name = name
-// 	texture.Width = width
-// 	texture.Height = height
-// 	texture.ChannelCount = channelCount
-// 	texture.Generation = metadata.InvalidID
-// 	texture.InternalData = internalData
-// 	texture.Flags |= 0
-// 	if hasTransparency {
-// 		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
-// 	}
-// 	texture.Flags |= 0
-// 	if isWriteable {
-// 		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)
-// 	}
-// 	texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWrapped)
-// 	return texture, nil
-// }
-
 func (ts *TextureSystem) SetInternal(texture *metadata.Texture, internalData interface{}) bool {
 	if texture != nil {
 		texture.InternalData = internalData
@@ -226,29 +190,6 @@ func (ts *TextureSystem) SetInternal(texture *metadata.Texture, internalData int
 	}
 	return false
 }
-
-// func (ts *TextureSystem) Resize(texture *metadata.Texture, width, height uint32, regenerateInternalData bool) bool {
-// 	if texture != nil {
-// 		if (texture.Flags & metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)) == 0 {
-// 			core.LogWarn("texture_system_resize should not be called on textures that are not writeable.")
-// 			return false
-// 		}
-// 		texture.Width = width
-// 		texture.Height = height
-// 		// Only allow this for writeable textures that are not wrapped.
-// 		// Wrapped textures can call texture_system_set_internal then call
-// 		// this function to get the above parameter updates and a generation
-// 		// update.
-// 		if (texture.Flags&metadata.TextureFlagBits(metadata.TextureFlagIsWrapped) == 0) && regenerateInternalData {
-// 			// Regenerate internals for the new size.
-// 			ts.renderer.TextureResize(texture, width, height)
-// 			return false
-// 		}
-// 		texture.Generation++
-// 		return true
-// 	}
-// 	return false
-// }
 
 func (ts *TextureSystem) WriteData(texture *metadata.Texture, offset, size uint32, data interface{}) bool {
 	if texture != nil {
