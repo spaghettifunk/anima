@@ -3,7 +3,6 @@ package systems
 import (
 	"fmt"
 
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/components"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -49,9 +48,9 @@ func NewCameraSystem(config *CameraSystemConfig) (*CameraSystem, error) {
 	}
 	// Invalidate all cameras in the array.
 	for i := uint16(0); i < cs.Config.MaxCameraCount; i++ {
-		cs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
+		cs.Lookup[metadata.GenerateNewHash()] = metadata.InvalidIDUint16
 		cs.Cameras[i] = &components.CameraLookup{
-			ID:             loaders.InvalidIDUint16,
+			ID:             metadata.InvalidIDUint16,
 			ReferenceCount: 0,
 		}
 	}
@@ -88,15 +87,15 @@ func (cs *CameraSystem) Acquire(name string) (*components.Camera, error) {
 		return nil, err
 	}
 
-	if id == loaders.InvalidIDUint16 {
+	if id == metadata.InvalidIDUint16 {
 		// Find free slot
 		for i := uint16(0); i < cs.Config.MaxCameraCount; i++ {
-			if i == loaders.InvalidIDUint16 {
+			if i == metadata.InvalidIDUint16 {
 				id = i
 				break
 			}
 		}
-		if id == loaders.InvalidIDUint16 {
+		if id == metadata.InvalidIDUint16 {
 			err := fmt.Errorf("func CameraSystemAcquire failed to acquire new slot. Adjust camera system config to allow more. Null returned")
 			core.LogError(err.Error())
 			return nil, err
@@ -130,12 +129,12 @@ func (cs *CameraSystem) Release(name string) {
 	if !ok {
 		core.LogWarn("CameraSystemRelease failed lookup. Nothing was done.")
 	}
-	if id != loaders.InvalidIDUint16 {
+	if id != metadata.InvalidIDUint16 {
 		// Decrement the reference count, and reset the camera if the counter reaches 0.
 		cs.Cameras[id].ReferenceCount--
 		if cs.Cameras[id].ReferenceCount < 1 {
 			cs.Cameras[id].Camera.Reset()
-			cs.Cameras[id].ID = loaders.InvalidIDUint16
+			cs.Cameras[id].ID = metadata.InvalidIDUint16
 			cs.Lookup[name] = cs.Cameras[id].ID
 		}
 	}

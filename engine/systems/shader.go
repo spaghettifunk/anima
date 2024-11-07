@@ -3,7 +3,6 @@ package systems
 import (
 	"fmt"
 
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
@@ -51,7 +50,7 @@ func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *RendererS
 	shaderSystem := &ShaderSystem{
 		Config:          config,
 		Shaders:         make([]*metadata.Shader, config.MaxShaderCount),
-		CurrentShaderID: loaders.InvalidID,
+		CurrentShaderID: metadata.InvalidID,
 		Lookup:          make(map[string]uint32),
 		textureSystem:   ts,
 		renderer:        r,
@@ -60,8 +59,8 @@ func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *RendererS
 	// Invalidate all shader ids.
 	for i := uint16(0); i < config.MaxShaderCount; i++ {
 		shaderSystem.Shaders[i] = &metadata.Shader{
-			ID:                loaders.InvalidID,
-			RenderFrameNumber: loaders.InvalidIDUint64,
+			ID:                metadata.InvalidID,
+			RenderFrameNumber: metadata.InvalidIDUint64,
 		}
 	}
 
@@ -77,7 +76,7 @@ func (shaderSystem *ShaderSystem) Shutdown() error {
 	// Destroy any shaders still in existence.
 	for i := uint16(0); i < shaderSystem.Config.MaxShaderCount; i++ {
 		sh := shaderSystem.Shaders[i]
-		if sh.ID != loaders.InvalidID {
+		if sh.ID != metadata.InvalidID {
 			if err := shaderSystem.shaderDestroy(sh); err != nil {
 				core.LogError(err.Error())
 				return err
@@ -99,7 +98,7 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	shader := shaderSystem.Shaders[id]
 	shader.ID = id
 
-	if shader.ID == loaders.InvalidID {
+	if shader.ID == metadata.InvalidID {
 		err := fmt.Errorf("unable to find free slot to create new shader. Aborting")
 		core.LogError(err.Error())
 		return nil, err
@@ -108,7 +107,7 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	shader.State = metadata.SHADER_STATE_NOT_CREATED
 	shader.Name = config.Name
 	shader.PushConstantRangeCount = 0
-	shader.BoundInstanceID = loaders.InvalidID
+	shader.BoundInstanceID = metadata.InvalidID
 	shader.AttributeStride = 0
 
 	// Setup arrays
@@ -188,7 +187,7 @@ func (shaderSystem *ShaderSystem) GetShaderID(shaderName string) uint32 {
  * @return A pointer to a shader, if found; otherwise 0.
  */
 func (shaderSystem *ShaderSystem) GetShaderByID(shaderID uint32) (*metadata.Shader, error) {
-	if shaderID >= uint32(shaderSystem.Config.MaxShaderCount) || shaderSystem.Shaders[shaderID].ID == loaders.InvalidID {
+	if shaderID >= uint32(shaderSystem.Config.MaxShaderCount) || shaderSystem.Shaders[shaderID].ID == metadata.InvalidID {
 		return nil, fmt.Errorf("shader with ID `%d` not found", shaderID)
 	}
 	return shaderSystem.Shaders[shaderID], nil
@@ -202,7 +201,7 @@ func (shaderSystem *ShaderSystem) GetShaderByID(shaderID uint32) (*metadata.Shad
  */
 func (shaderSystem *ShaderSystem) GetShader(shaderName string) (*metadata.Shader, error) {
 	shader_id := shaderSystem.getShaderID(shaderName)
-	if shader_id != loaders.InvalidID {
+	if shader_id != metadata.InvalidID {
 		return shaderSystem.GetShaderByID(shader_id)
 	}
 	return nil, fmt.Errorf("shader with name `%s` not found", shaderName)
@@ -216,7 +215,7 @@ func (shaderSystem *ShaderSystem) GetShader(shaderName string) (*metadata.Shader
  */
 func (shaderSystem *ShaderSystem) UseShader(shaderName string) bool {
 	next_shader_id := shaderSystem.getShaderID(shaderName)
-	if next_shader_id == loaders.InvalidID {
+	if next_shader_id == metadata.InvalidID {
 		return false
 	}
 	return shaderSystem.useByID(next_shader_id)
@@ -240,15 +239,15 @@ func (shaderSystem *ShaderSystem) UseShaderByID(shaderID uint32) bool {
  * @return The uniform index, if found; otherwise INVALID_ID_U16.
  */
 func (shaderSystem *ShaderSystem) GetUniformIndex(shader *metadata.Shader, uniformName string) uint16 {
-	if shader.ID == loaders.InvalidID {
+	if shader.ID == metadata.InvalidID {
 		core.LogError("func GetUniformIndex called with invalid shader.")
-		return loaders.InvalidIDUint16
+		return metadata.InvalidIDUint16
 	}
 
 	index := shaderSystem.Lookup[uniformName]
-	if index == uint32(loaders.InvalidIDUint16) {
+	if index == uint32(metadata.InvalidIDUint16) {
 		core.LogError("Shader '%s' does not have a registered uniform named '%s'", shader.Name, uniformName)
-		return loaders.InvalidIDUint16
+		return metadata.InvalidIDUint16
 	}
 	return shader.Uniforms[index].Index
 }
@@ -262,7 +261,7 @@ func (shaderSystem *ShaderSystem) GetUniformIndex(shader *metadata.Shader, unifo
  * @return True on success; otherwise false.
  */
 func (shaderSystem *ShaderSystem) SetUniform(uniformName string, value interface{}) bool {
-	if shaderSystem.CurrentShaderID == loaders.InvalidID {
+	if shaderSystem.CurrentShaderID == metadata.InvalidID {
 		core.LogError("func SetUniform called without a shader in use.")
 		return false
 	}
@@ -471,18 +470,18 @@ func (shaderSystem *ShaderSystem) getShaderID(shader_name string) uint32 {
 	id, ok := shaderSystem.Lookup[shader_name]
 	if !ok {
 		core.LogError("There is no shader registered named '%s'.", shader_name)
-		return loaders.InvalidID
+		return metadata.InvalidID
 	}
 	return id
 }
 
 func (s *ShaderSystem) newShaderID() uint32 {
 	for i := uint32(0); i < uint32(s.Config.MaxShaderCount); i++ {
-		if s.Shaders[i].ID == loaders.InvalidID {
+		if s.Shaders[i].ID == metadata.InvalidID {
 			return i
 		}
 	}
-	return loaders.InvalidID
+	return metadata.InvalidID
 }
 
 func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_name string, size uint32, shader_uniform_type metadata.ShaderUniformType, scope metadata.ShaderScope, set_location uint32, is_sampler bool) bool {
@@ -519,7 +518,7 @@ func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_na
 		}
 	} else {
 		// Push a new aligned range (align to 4, as required by Vulkan spec)
-		entry.SetIndex = loaders.InvalidIDUint8
+		entry.SetIndex = metadata.InvalidIDUint8
 		r := metadata.GetAlignedRange(shader.PushConstantSize, uint64(size), 4)
 		// utilize the aligned offset/range
 		entry.Offset = r.Offset
@@ -557,7 +556,7 @@ func (shaderSystem *ShaderSystem) uniformNameValid(shader *metadata.Shader, unif
 		core.LogError("Uniform name must exist.")
 		return false
 	}
-	if location, ok := shader.UniformLookup[uniform_name]; !ok && location != loaders.InvalidIDUint16 {
+	if location, ok := shader.UniformLookup[uniform_name]; !ok && location != metadata.InvalidIDUint16 {
 		core.LogError("A uniform by the name '%s' already exists on shader '%s'.", uniform_name, shader.Name)
 		return false
 	}

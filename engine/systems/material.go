@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/spaghettifunk/anima/engine/assets"
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -53,7 +52,7 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 	}
 
 	ms := &MaterialSystem{
-		MaterialShaderID: loaders.InvalidID,
+		MaterialShaderID: metadata.InvalidID,
 		DefaultMaterial: &metadata.Material{
 			DiffuseMap: &metadata.TextureMap{
 				Texture: &metadata.Texture{},
@@ -67,24 +66,24 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 			DiffuseColour: math.NewVec4One(),
 		},
 		MaterialLocations: &metadata.MaterialShaderUniformLocations{
-			View:            loaders.InvalidIDUint16,
-			Projection:      loaders.InvalidIDUint16,
-			DiffuseColour:   loaders.InvalidIDUint16,
-			DiffuseTexture:  loaders.InvalidIDUint16,
-			SpecularTexture: loaders.InvalidIDUint16,
-			NormalTexture:   loaders.InvalidIDUint16,
-			AmbientColour:   loaders.InvalidIDUint16,
-			Shininess:       loaders.InvalidIDUint16,
-			Model:           loaders.InvalidIDUint16,
-			RenderMode:      loaders.InvalidIDUint16,
+			View:            metadata.InvalidIDUint16,
+			Projection:      metadata.InvalidIDUint16,
+			DiffuseColour:   metadata.InvalidIDUint16,
+			DiffuseTexture:  metadata.InvalidIDUint16,
+			SpecularTexture: metadata.InvalidIDUint16,
+			NormalTexture:   metadata.InvalidIDUint16,
+			AmbientColour:   metadata.InvalidIDUint16,
+			Shininess:       metadata.InvalidIDUint16,
+			Model:           metadata.InvalidIDUint16,
+			RenderMode:      metadata.InvalidIDUint16,
 		},
-		UIShaderID: loaders.InvalidID,
+		UIShaderID: metadata.InvalidID,
 		UILocations: &metadata.UIShaderUniformLocations{
-			DiffuseColour:  loaders.InvalidIDUint16,
-			DiffuseTexture: loaders.InvalidIDUint16,
-			View:           loaders.InvalidIDUint16,
-			Projection:     loaders.InvalidIDUint16,
-			Model:          loaders.InvalidIDUint16,
+			DiffuseColour:  metadata.InvalidIDUint16,
+			DiffuseTexture: metadata.InvalidIDUint16,
+			View:           metadata.InvalidIDUint16,
+			Projection:     metadata.InvalidIDUint16,
+			Model:          metadata.InvalidIDUint16,
 		},
 		RegisteredMaterials:     make([]*metadata.Material, config.MaxMaterialCount),
 		RegisteredMaterialTable: make(map[string]*metadata.MaterialReference),
@@ -97,7 +96,7 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 	// Fill the hashtable with invalid references to use as a default.
 	invalid_ref := &metadata.MaterialReference{
 		AutoRelease:    false,
-		Handle:         loaders.InvalidID,
+		Handle:         metadata.InvalidID,
 		ReferenceCount: 0,
 	}
 
@@ -105,10 +104,10 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 	for i := uint32(0); i < config.MaxMaterialCount; i++ {
 		ms.RegisteredMaterialTable[metadata.GenerateNewHash()] = invalid_ref
 		ms.RegisteredMaterials[i] = &metadata.Material{
-			ID:                loaders.InvalidID,
-			Generation:        loaders.InvalidID,
-			InternalID:        loaders.InvalidID,
-			RenderFrameNumber: loaders.InvalidID,
+			ID:                metadata.InvalidID,
+			Generation:        metadata.InvalidID,
+			InternalID:        metadata.InvalidID,
+			RenderFrameNumber: metadata.InvalidID,
 		}
 	}
 
@@ -127,7 +126,7 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 func (ms *MaterialSystem) Shutdown() error {
 	// Invalidate all materials in the array.
 	for i := uint32(0); i < ms.Config.MaxMaterialCount; i++ {
-		if ms.RegisteredMaterials[i].ID != loaders.InvalidID {
+		if ms.RegisteredMaterials[i].ID != metadata.InvalidID {
 			ms.destroyMaterial(ms.RegisteredMaterials[i])
 		}
 	}
@@ -205,12 +204,12 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 		ref.AutoRelease = config.AutoRelease
 	}
 	ref.ReferenceCount++
-	if ref.Handle == loaders.InvalidID {
+	if ref.Handle == metadata.InvalidID {
 		// This means no material exists here. Find a free index first.
 		count := ms.Config.MaxMaterialCount
 		var material *metadata.Material
 		for i := uint32(0); i < count; i++ {
-			if ms.RegisteredMaterials[i].ID == loaders.InvalidID {
+			if ms.RegisteredMaterials[i].ID == metadata.InvalidID {
 				// A free slot has been found. Use its index as the handle.
 				ref.Handle = i
 				material = ms.RegisteredMaterials[i]
@@ -219,17 +218,15 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 		}
 
 		// Make sure an empty slot was actually found.
-		if material == nil || ref.Handle == loaders.InvalidID {
+		if material == nil || ref.Handle == metadata.InvalidID {
 			err := fmt.Errorf("material_system_acquire - Material system cannot hold anymore materials. Adjust configuration to allow more")
 			core.LogError(err.Error())
 			return nil, err
 		}
 
 		// Create new material.
-		material = ms.loadMaterial(config)
-		if material == nil {
-			err := fmt.Errorf("failed to load material '%s'", config.Name)
-			core.LogError(err.Error())
+		material, err := ms.loadMaterial(config)
+		if err != nil {
 			return nil, err
 		}
 
@@ -240,7 +237,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			return nil, err
 		}
 		// Save off the locations for known types for quick lookups.
-		if ms.MaterialShaderID == loaders.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_MATERIAL {
+		if ms.MaterialShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_MATERIAL {
 			ms.MaterialShaderID = shader.ID
 			ms.MaterialLocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.MaterialLocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -253,7 +250,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			ms.MaterialLocations.Shininess = ms.shaderSystem.GetUniformIndex(shader, "shininess")
 			ms.MaterialLocations.Model = ms.shaderSystem.GetUniformIndex(shader, "model")
 			ms.MaterialLocations.RenderMode = ms.shaderSystem.GetUniformIndex(shader, "mode")
-		} else if ms.UIShaderID == loaders.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_UI {
+		} else if ms.UIShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_UI {
 			ms.UIShaderID = shader.ID
 			ms.UILocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.UILocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -262,7 +259,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			ms.UILocations.Model = ms.shaderSystem.GetUniformIndex(shader, "model")
 		}
 
-		if material.Generation == loaders.InvalidID {
+		if material.Generation == metadata.InvalidID {
 			material.Generation = 0
 		} else {
 			material.Generation++
@@ -304,7 +301,7 @@ func (ms *MaterialSystem) Release(name string) {
 			// Destroy/reset material.
 			ms.destroyMaterial(material)
 			// Reset the reference.
-			ref.Handle = loaders.InvalidID
+			ref.Handle = metadata.InvalidID
 			ref.AutoRelease = false
 			// KTRACE("Released material '%s'., Material unloaded because reference count=0 and AutoRelease=true.", name);
 		} else {
@@ -445,7 +442,7 @@ func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model [][]math
 	return false
 }
 
-func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) *metadata.Material {
+func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metadata.Material, error) {
 	material := &metadata.Material{}
 
 	material.Name = config.Name
@@ -465,15 +462,14 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) *metadat
 	material.DiffuseMap.RepeatV = metadata.TextureRepeatRepeat
 	material.DiffuseMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.DiffuseMap) {
-		core.LogError("Unable to acquire resources for diffuse texture map.")
-		return nil
+		err := fmt.Errorf("Unable to acquire resources for diffuse texture map.")
+		return nil, err
 	}
 	if len(config.DiffuseMapName) > 0 {
 		material.DiffuseMap.Use = metadata.TextureUseMapDiffuse
 		t, err := ms.textureSystem.Acquire(config.DiffuseMapName, true)
 		if err != nil {
-			core.LogError(err.Error())
-			return nil
+			return nil, err
 		}
 		material.DiffuseMap.Texture = t
 		if material.DiffuseMap.Texture == nil {
@@ -495,15 +491,14 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) *metadat
 	material.SpecularMap.RepeatV = metadata.TextureRepeatRepeat
 	material.SpecularMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.SpecularMap) {
-		core.LogError("Unable to acquire resources for specular texture map.")
-		return nil
+		err := fmt.Errorf("Unable to acquire resources for specular texture map.")
+		return nil, err
 	}
 	if len(config.SpecularMapName) > 0 {
 		material.SpecularMap.Use = metadata.TextureUseMapSpecular
 		t, err := ms.textureSystem.Acquire(config.SpecularMapName, true)
 		if err != nil {
-			core.LogError(err.Error())
-			return nil
+			return nil, err
 		}
 		material.SpecularMap.Texture = t
 		if material.SpecularMap.Texture == nil {
@@ -524,15 +519,14 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) *metadat
 	material.NormalMap.RepeatV = metadata.TextureRepeatRepeat
 	material.NormalMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.NormalMap) {
-		core.LogError("Unable to acquire resources for normal texture map.")
-		return nil
+		err := fmt.Errorf("Unable to acquire resources for normal texture map.")
+		return nil, err
 	}
 	if len(config.NormalMapName) > 0 {
 		material.NormalMap.Use = metadata.TextureUseMapNormal
 		t, err := ms.textureSystem.Acquire(config.NormalMapName, true)
 		if err != nil {
-			core.LogError(err.Error())
-			return nil
+			return nil, err
 		}
 		material.NormalMap.Texture = t
 		if material.NormalMap.Texture == nil {
@@ -551,14 +545,17 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) *metadat
 	shader, err := ms.shaderSystem.GetShader(config.ShaderName)
 	if err != nil {
 		core.LogError("Unable to load material because its shader was not found: '%s'. This is likely a problem with the material asset.", config.ShaderName)
-		return nil
+		return nil, err
 	}
 
 	// Gather a list of pointers to texture maps;
 	texture_map := []*metadata.TextureMap{material.DiffuseMap, material.SpecularMap, material.NormalMap}
-	material.InternalID = ms.renderer.ShaderAcquireInstanceResources(shader, texture_map)
+	material.InternalID, err = ms.renderer.ShaderAcquireInstanceResources(shader, texture_map)
+	if err != nil {
+		return nil, err
+	}
 
-	return material
+	return material, nil
 }
 
 func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
@@ -581,7 +578,7 @@ func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
 	ms.renderer.TextureMapReleaseResources(material.NormalMap)
 
 	// Release renderer resources.
-	if material.ShaderID != loaders.InvalidID && material.InternalID != loaders.InvalidID {
+	if material.ShaderID != metadata.InvalidID && material.InternalID != metadata.InvalidID {
 		shader, err := ms.shaderSystem.GetShaderByID(material.ShaderID)
 		if err != nil {
 			core.LogError(err.Error())
@@ -590,19 +587,19 @@ func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
 		if !ms.renderer.ShaderReleaseInstanceResources(shader, material.InternalID) {
 			core.LogError("failed to release the shader instance resources")
 		}
-		material.ShaderID = loaders.InvalidID
+		material.ShaderID = metadata.InvalidID
 	}
 
 	// Zero it out, invalidate IDs.
-	material.ID = loaders.InvalidID
-	material.Generation = loaders.InvalidID
-	material.InternalID = loaders.InvalidID
-	material.RenderFrameNumber = loaders.InvalidID
+	material.ID = metadata.InvalidID
+	material.Generation = metadata.InvalidID
+	material.InternalID = metadata.InvalidID
+	material.RenderFrameNumber = metadata.InvalidID
 }
 
 func (ms *MaterialSystem) createDefaultMaterial() bool {
-	ms.DefaultMaterial.ID = loaders.InvalidID
-	ms.DefaultMaterial.Generation = loaders.InvalidID
+	ms.DefaultMaterial.ID = metadata.InvalidID
+	ms.DefaultMaterial.Generation = metadata.InvalidID
 	ms.DefaultMaterial.Name = metadata.DefaultMaterialName
 	ms.DefaultMaterial.DiffuseColour = math.NewVec4Zero() // white
 	ms.DefaultMaterial.DiffuseMap.Use = metadata.TextureUseMapDiffuse
@@ -622,7 +619,11 @@ func (ms *MaterialSystem) createDefaultMaterial() bool {
 		return false
 	}
 
-	ms.DefaultMaterial.InternalID = ms.renderer.ShaderAcquireInstanceResources(shader, texture_maps)
+	ms.DefaultMaterial.InternalID, err = ms.renderer.ShaderAcquireInstanceResources(shader, texture_maps)
+	if err != nil {
+		core.LogError(err.Error())
+		return false
+	}
 
 	// Make sure to assign the shader id.
 	ms.DefaultMaterial.ShaderID = shader.ID

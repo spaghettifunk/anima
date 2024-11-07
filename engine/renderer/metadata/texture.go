@@ -133,3 +133,156 @@ type TextureMap struct {
 	/** @brief A pointer to internal, render API-specific data. Typically the internal sampler. */
 	InternalData interface{}
 }
+
+type DefaultTexture struct {
+	DefaultTexture         *Texture
+	TexturePixels          []uint8
+	DefaultDiffuseTexture  *Texture
+	DiffuseTexturePixels   []uint8
+	DefaultSpecularTexture *Texture
+	SpecularTexturePixels  []uint8
+	DefaultNormalTexture   *Texture
+	NormalTexturePixels    []uint8
+}
+
+func NewDefaultTexture() *DefaultTexture {
+	return &DefaultTexture{
+		DefaultTexture:         &Texture{},
+		DefaultDiffuseTexture:  &Texture{},
+		DefaultSpecularTexture: &Texture{},
+		DefaultNormalTexture:   &Texture{},
+	}
+}
+
+// CreateSkeletonTexture misses the call to the actual renderer to properly generate the texture
+// this method creates the shell of the objects that will hold the texture
+func (ts *DefaultTexture) CreateSkeletonTextures() bool {
+	// NOTE: Create default texture, a 256x256 blue/white checkerboard pattern.
+	// This is done in code to eliminate asset dependencies.
+	// KTRACE("Creating default texture...");
+	texDimension := uint32(256)
+	channels := uint32(4)
+	pixelCount := uint32(texDimension * texDimension)
+
+	pixels := make([]uint8, pixelCount*channels)
+
+	// Each pixel.
+	for row := uint32(0); row < texDimension; row++ {
+		for col := uint32(0); col < texDimension; col++ {
+			index := uint32((row * texDimension) + col)
+			index_bpp := uint32(index * channels)
+			if row%2 != 0 {
+				if col%2 != 0 {
+					pixels[index_bpp+0] = 0
+					pixels[index_bpp+1] = 0
+				}
+			} else {
+				if col%2 == 0 {
+					pixels[index_bpp+0] = 0
+					pixels[index_bpp+1] = 0
+				}
+			}
+		}
+	}
+
+	ts.DefaultTexture.Name = DEFAULT_TEXTURE_NAME
+
+	ts.DefaultTexture.Width = texDimension
+	ts.DefaultTexture.Height = texDimension
+	ts.DefaultTexture.ChannelCount = 4
+	ts.DefaultTexture.Generation = InvalidID
+	ts.DefaultTexture.Flags = 0
+	ts.DefaultTexture.TextureType = TextureType2d
+	ts.TexturePixels = pixels
+
+	// ts.renderer.TextureCreate(pixels, ts.DefaultTexture)
+
+	// Manually set the texture generation to invalid since this is a default texture.
+	ts.DefaultTexture.Generation = InvalidID
+
+	// Diffuse texture.
+	// KTRACE("Creating default diffuse texture...");
+	diffPixels := make([]uint8, 16*16*4)
+	// Default diffuse map is all white.
+
+	ts.DefaultDiffuseTexture.Name = DEFAULT_DIFFUSE_TEXTURE_NAME
+	ts.DefaultDiffuseTexture.Width = 16
+	ts.DefaultDiffuseTexture.Height = 16
+	ts.DefaultDiffuseTexture.ChannelCount = 4
+	ts.DefaultDiffuseTexture.Generation = InvalidID
+	ts.DefaultDiffuseTexture.Flags = 0
+	ts.DefaultDiffuseTexture.TextureType = TextureType2d
+	ts.DiffuseTexturePixels = diffPixels
+
+	// ts.renderer.TextureCreate(diffPixels, ts.DefaultDiffuseTexture)
+
+	// Manually set the texture generation to invalid since this is a default texture.
+	ts.DefaultDiffuseTexture.Generation = InvalidID
+
+	// Specular texture.
+	// KTRACE("Creating default specular texture...");
+	specPixels := make([]uint8, 16*16*4)
+	// Default spec map is black (no specular)
+
+	ts.DefaultSpecularTexture.Name = DEFAULT_SPECULAR_TEXTURE_NAME
+	ts.DefaultSpecularTexture.Width = 16
+	ts.DefaultSpecularTexture.Height = 16
+	ts.DefaultSpecularTexture.ChannelCount = 4
+	ts.DefaultSpecularTexture.Generation = InvalidID
+	ts.DefaultSpecularTexture.Flags = 0
+	ts.DefaultSpecularTexture.TextureType = TextureType2d
+	ts.SpecularTexturePixels = specPixels
+
+	// ts.renderer.TextureCreate(specPixels, ts.DefaultSpecularTexture)
+
+	// Manually set the texture generation to invalid since this is a default texture.
+	ts.DefaultSpecularTexture.Generation = InvalidID
+
+	// Normal texture.
+	// KTRACE("Creating default normal texture...");
+	normalPixels := make([]uint8, 16*16*4) // w * h * channels
+
+	// Each pixel.
+	for row := 0; row < 16; row++ {
+		for col := 0; col < 16; col++ {
+			index := uint32((row * 16) + col)
+			index_bpp := index * channels
+			// Set blue, z-axis by default and alpha.
+			normalPixels[index_bpp+0] = 128
+			normalPixels[index_bpp+1] = 128
+			normalPixels[index_bpp+2] = 255
+			normalPixels[index_bpp+3] = 255
+		}
+	}
+
+	ts.DefaultNormalTexture.Name = DEFAULT_NORMAL_TEXTURE_NAME
+	ts.DefaultNormalTexture.Width = 16
+	ts.DefaultNormalTexture.Height = 16
+	ts.DefaultNormalTexture.ChannelCount = 4
+	ts.DefaultNormalTexture.Generation = InvalidID
+	ts.DefaultNormalTexture.Flags = 0
+	ts.DefaultNormalTexture.TextureType = TextureType2d
+	ts.NormalTexturePixels = normalPixels
+
+	// ts.renderer.TextureCreate(normalPixels, ts.DefaultNormalTexture)
+
+	// Manually set the texture generation to invalid since this is a default texture.
+	ts.DefaultNormalTexture.Generation = InvalidID
+
+	return true
+}
+
+func (ts *DefaultTexture) DestroyDefaultTextures() {
+	ts.DestroySkeletonTexture(ts.DefaultTexture)
+	ts.DestroySkeletonTexture(ts.DefaultDiffuseTexture)
+	ts.DestroySkeletonTexture(ts.DefaultSpecularTexture)
+	ts.DestroySkeletonTexture(ts.DefaultNormalTexture)
+}
+
+func (ts *DefaultTexture) DestroySkeletonTexture(texture *Texture) {
+	// Clean up backend resources.
+	// ts.renderer.TextureDestroy(texture)
+
+	texture.ID = InvalidID
+	texture.Generation = InvalidID
+}

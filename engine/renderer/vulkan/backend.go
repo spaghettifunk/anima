@@ -10,7 +10,6 @@ import (
 	"github.com/go-gl/glfw/v3.3/glfw"
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/assets"
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -24,10 +23,13 @@ const (
 )
 
 type VulkanRenderer struct {
-	platform          *platform.Platform
-	assetManager      *assets.AssetManager
+	platform *platform.Platform
+	context  *VulkanContext
+
+	assetManager   *assets.AssetManager
+	defaultTexture *metadata.DefaultTexture
+
 	FrameNumber       uint64
-	context           *VulkanContext
 	FramebufferWidth  uint32
 	FramebufferHeight uint32
 
@@ -35,10 +37,14 @@ type VulkanRenderer struct {
 }
 
 func New(p *platform.Platform, am *assets.AssetManager) *VulkanRenderer {
+	defaultTextures := metadata.NewDefaultTexture()
+	defaultTextures.CreateSkeletonTextures()
+
 	return &VulkanRenderer{
-		platform:     p,
-		assetManager: am,
-		FrameNumber:  0,
+		platform:       p,
+		assetManager:   am,
+		defaultTexture: defaultTextures,
+		FrameNumber:    0,
 		context: &VulkanContext{
 			Geometries:                    make([]*VulkanGeometryData, VULKAN_MAX_GEOMETRY_COUNT),
 			FramebufferWidth:              0,
@@ -219,6 +225,12 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		return nil
 	}
 
+	// create default textures
+	vr.TextureCreate(vr.defaultTexture.TexturePixels, vr.defaultTexture.DefaultTexture)
+	vr.TextureCreate(vr.defaultTexture.SpecularTexturePixels, vr.defaultTexture.DefaultSpecularTexture)
+	vr.TextureCreate(vr.defaultTexture.DiffuseTexturePixels, vr.defaultTexture.DefaultDiffuseTexture)
+	vr.TextureCreate(vr.defaultTexture.NormalTexturePixels, vr.defaultTexture.DefaultNormalTexture)
+
 	// Swapchain
 	sc, err := SwapchainCreate(vr.context, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
 	if err != nil {
@@ -230,16 +242,16 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 	// Hold registered renderpasses.
 	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
-		vr.context.RegisteredPasses[i].ID = loaders.InvalidIDUint16
+		vr.context.RegisteredPasses[i].ID = metadata.InvalidIDUint16
 	}
 
 	// Renderpasses
 	vr.context.RenderPassTable = make(map[string]uint32, len(config.PassConfigs))
 	for i := 0; i < len(config.PassConfigs); i++ {
-		id := loaders.InvalidID
+		id := metadata.InvalidID
 		// Snip up a new id.
 		for j := uint32(0); j < VULKAN_MAX_REGISTERED_RENDERPASSES; j++ {
-			if vr.context.RegisteredPasses[j].ID == loaders.InvalidIDUint16 {
+			if vr.context.RegisteredPasses[j].ID == metadata.InvalidIDUint16 {
 				// Found one.
 				vr.context.RegisteredPasses[j].ID = uint16(j)
 				id = j
@@ -248,7 +260,7 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		}
 
 		// Verify we got an id
-		if id == loaders.InvalidID {
+		if id == metadata.InvalidID {
 			err := fmt.Errorf("no space was found for a new renderpass. Increase VULKAN_MAX_REGISTERED_RENDERPASSES. Initialization failed")
 			core.LogError(err.Error())
 			return err
@@ -344,7 +356,7 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 	// Mark all geometries as invalid
 	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-		vr.context.Geometries[i].ID = loaders.InvalidID
+		vr.context.Geometries[i].ID = metadata.InvalidID
 	}
 
 	core.LogInfo("Vulkan renderer initialized successfully.")
@@ -393,7 +405,7 @@ func (vr *VulkanRenderer) Shutdow() error {
 
 	// Renderpasses
 	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
-		if vr.context.RegisteredPasses[i].ID != loaders.InvalidIDUint16 {
+		if vr.context.RegisteredPasses[i].ID != metadata.InvalidIDUint16 {
 			vr.RenderPassDestroy(vr.context.RegisteredPasses[i])
 		}
 	}
@@ -679,7 +691,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 	}
 
 	// Check if this is a re-upload. If it is, need to free old data afterward.
-	isReupload := geometry.InternalID != loaders.InvalidID
+	isReupload := geometry.InternalID != metadata.InvalidID
 	oldRange := &VulkanGeometryData{}
 
 	var internalData *VulkanGeometryData
@@ -695,7 +707,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		oldRange.VertexElementSize = internalData.VertexElementSize
 	} else {
 		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-			if vr.context.Geometries[i].ID == loaders.InvalidID {
+			if vr.context.Geometries[i].ID == metadata.InvalidID {
 				// Found a free index.
 				geometry.InternalID = i
 				vr.context.Geometries[i].ID = i
@@ -732,7 +744,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		}
 	}
 
-	if internalData.Generation == loaders.InvalidID {
+	if internalData.Generation == metadata.InvalidID {
 		internalData.Generation = 0
 	} else {
 		internalData.Generation++
@@ -955,7 +967,7 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 }
 
 func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) error {
-	if geometry != nil && geometry.InternalID != loaders.InvalidID {
+	if geometry != nil && geometry.InternalID != metadata.InvalidID {
 		if !VulkanResultIsSuccess(vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)) {
 			err := fmt.Errorf("failed to wait for device")
 			return err
@@ -977,15 +989,15 @@ func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) error {
 		}
 
 		// Clean up data.
-		internal_data.ID = loaders.InvalidID
-		internal_data.Generation = loaders.InvalidID
+		internal_data.ID = metadata.InvalidID
+		internal_data.Generation = metadata.InvalidID
 	}
 	return nil
 }
 
 func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) error {
 	// Ignore non-uploaded geometries.
-	if data.Geometry != nil && data.Geometry.InternalID == loaders.InvalidID {
+	if data.Geometry != nil && data.Geometry.InternalID == metadata.InvalidID {
 		return nil
 	}
 
@@ -1219,7 +1231,7 @@ func (vr *VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool {
 
 func (vr *VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass {
 	id := vr.context.RenderPassTable[name]
-	if id == loaders.InvalidID {
+	if id == metadata.InvalidID {
 		core.LogWarn("there is no registered renderpass named '%s'.", name)
 		return nil
 	}
@@ -1298,8 +1310,8 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	}
 
 	// Zero out arrays and counts.
-	outShader.Config.DescriptorSets[0].SamplerBindingIndex = loaders.InvalidIDUint8
-	outShader.Config.DescriptorSets[1].SamplerBindingIndex = loaders.InvalidIDUint8
+	outShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
+	outShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
 
 	// Get the uniform counts.
 	outShader.GlobalUniformCount = 0
@@ -1393,7 +1405,7 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	// Invalidate all instance states.
 	// TODO: dynamic
 	for i := 0; i < 1024; i++ {
-		outShader.InstanceStates[i].ID = loaders.InvalidID
+		outShader.InstanceStates[i].ID = metadata.InvalidID
 	}
 
 	// Keep a copy of the cull mode.
@@ -1758,28 +1770,28 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 		// Descriptor 0 - Uniform buffer
 		if internal.InstanceUniformCount > 0 {
 			// Only do this if the descriptor has not yet been updated.
-			instance_ubo_generation := object_state.DescriptorSetState.DescriptorSets[descriptor_index] //.generations[image_index]
+			// instance_ubo_generation := object_state.DescriptorSetState.DescriptorSets[descriptor_index] //.generations[image_index]
 			// TODO: determine if update is required.
-			if *instance_ubo_generation == loaders.InvalidIDUint8 {
-				buffer_info.Buffer = (internal.UniformBuffer.InternalData.(*VulkanBuffer)).Handle
-				buffer_info.Offset = vk.DeviceSize(object_state.Offset)
-				buffer_info.Range = vk.DeviceSize(shader.UboStride)
+			// if *instance_ubo_generation == metadata.InvalidIDUint8 {
+			buffer_info.Buffer = (internal.UniformBuffer.InternalData.(*VulkanBuffer)).Handle
+			buffer_info.Offset = vk.DeviceSize(object_state.Offset)
+			buffer_info.Range = vk.DeviceSize(shader.UboStride)
 
-				ubo_descriptor := vk.WriteDescriptorSet{
-					SType:           vk.StructureTypeWriteDescriptorSet,
-					DstSet:          object_descriptor_set,
-					DstBinding:      descriptor_index,
-					DescriptorType:  vk.DescriptorTypeUniformBuffer,
-					DescriptorCount: 1,
-					PBufferInfo:     []vk.DescriptorBufferInfo{buffer_info},
-				}
-
-				descriptor_writes[descriptor_count] = ubo_descriptor
-				descriptor_count++
-
-				// Update the frame generation. In this case it is only needed once since this is a buffer.
-				*instance_ubo_generation = 1 // material.generation; TODO: some generation from... somewhere
+			ubo_descriptor := vk.WriteDescriptorSet{
+				SType:           vk.StructureTypeWriteDescriptorSet,
+				DstSet:          object_descriptor_set,
+				DstBinding:      descriptor_index,
+				DescriptorType:  vk.DescriptorTypeUniformBuffer,
+				DescriptorCount: 1,
+				PBufferInfo:     []vk.DescriptorBufferInfo{buffer_info},
 			}
+
+			descriptor_writes[descriptor_count] = ubo_descriptor
+			descriptor_count++
+
+			// Update the frame generation. In this case it is only needed once since this is a buffer.
+			// *instance_ubo_generation = 1 // material.generation; TODO: some generation from... somewhere
+			// }
 			descriptor_index++
 		}
 
@@ -1789,27 +1801,24 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 			total_sampler_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
 			update_sampler_count := uint32(0)
 			image_infos := make([]vk.DescriptorImageInfo, VULKAN_SHADER_MAX_GLOBAL_TEXTURES)
+
 			for i := uint32(0); i < total_sampler_count; i++ {
 				// TODO: only update in the list if actually needing an update.
 				texture_map := internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[i]
 				texture := texture_map.Texture
 
 				// Ensure the texture is valid.
-				if texture.Generation == loaders.InvalidID {
+				if texture.Generation == metadata.InvalidID {
 					switch texture_map.Use {
 					case metadata.TextureUseMapDiffuse:
-						texture = texture_system_get_default_diffuse_texture()
-						break
+						texture = vr.defaultTexture.DefaultDiffuseTexture
 					case metadata.TextureUseMapSpecular:
-						texture = texture_system_get_default_specular_texture()
-						break
+						texture = vr.defaultTexture.DefaultSpecularTexture
 					case metadata.TextureUseMapNormal:
-						texture = texture_system_get_default_normal_texture()
-						break
+						texture = vr.defaultTexture.DefaultNormalTexture
 					default:
 						core.LogWarn("Undefined texture use %d", texture_map.Use)
-						texture = texture_system_get_default_texture()
-						break
+						texture = vr.defaultTexture.DefaultTexture
 					}
 				}
 
@@ -1852,23 +1861,176 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 	return true
 }
 
-func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
-	return 0
+func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
+	internal := shader.InternalData.(*VulkanShader)
+	// TODO: dynamic
+	out_instance_id := metadata.InvalidID
+	for i := uint32(0); i < 1024; i++ {
+		if internal.InstanceStates[i].ID == metadata.InvalidID {
+			internal.InstanceStates[i].ID = i
+			out_instance_id = i
+			break
+		}
+	}
+	if out_instance_id == metadata.InvalidID {
+		err := fmt.Errorf("vulkan_shader_acquire_instance_resources failed to acquire new id")
+		return 0, err
+	}
+
+	instance_state := internal.InstanceStates[out_instance_id]
+	sampler_binding_index := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
+	instance_texture_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
+	// Wipe out the memory for the entire array, even if it isn't all used.
+	instance_state.InstanceTextureMaps = make([]metadata.TextureMap, shader.InstanceTextureCount)
+
+	// Set unassigned texture pointers to default until assigned.
+	for i := uint32(0); i < instance_texture_count; i++ {
+		if maps[i].Texture != nil {
+			instance_state.InstanceTextureMaps[i].Texture = vr.defaultTexture.DefaultTexture
+		}
+	}
+
+	// Allocate some space in the UBO - by the stride, not the size.
+	// size := shader.UboStride;
+	// if (size > 0) {
+	//     if (!renderer_renderbuffer_allocate(&internal.uniform_buffer, size, &instance_state.offset)) {
+	//         core.LogError("vulkan_material_shader_acquire_resources failed to acquire ubo space");
+	//         return false;
+	//     }
+	// }
+
+	set_state := instance_state.DescriptorSetState
+
+	// Each descriptor binding in the set
+	binding_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].BindingCount
+	for i := uint32(0); i < uint32(binding_count); i++ {
+		for j := uint32(0); j < 3; j++ {
+			set_state.DescriptorStates[i].Generations[j] = metadata.InvalidIDUint8
+			set_state.DescriptorStates[i].IDs[j] = metadata.InvalidID
+		}
+	}
+
+	// Allocate 3 descriptor sets (one per frame).
+	layouts := []vk.DescriptorSetLayout{
+		internal.DescriptorSetLayouts[DESC_SET_INDEX_INSTANCE],
+		internal.DescriptorSetLayouts[DESC_SET_INDEX_INSTANCE],
+		internal.DescriptorSetLayouts[DESC_SET_INDEX_INSTANCE],
+	}
+
+	alloc_info := vk.DescriptorSetAllocateInfo{
+		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
+		DescriptorPool:     internal.DescriptorPool,
+		DescriptorSetCount: uint32(len(layouts)),
+		PSetLayouts:        layouts,
+	}
+	for _, ds := range instance_state.DescriptorSetState.DescriptorSets {
+		result := vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &ds)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("error allocating instance descriptor sets in shader: '%s'", VulkanResultString(result, true))
+			return 0, err
+		}
+	}
+
+	return out_instance_id, nil
 }
 
 func (vr *VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
-	return false
+	internal := shader.InternalData.(*VulkanShader)
+	instance_state := internal.InstanceStates[instance_id]
+
+	// Wait for any pending operations using the descriptor set to finish.
+	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+
+	// Free 3 descriptor sets (one per frame)
+	for _, ds := range instance_state.DescriptorSetState.DescriptorSets {
+		result := vk.FreeDescriptorSets(vr.context.Device.LogicalDevice, internal.DescriptorPool, 1, &ds)
+		if !VulkanResultIsSuccess(result) {
+			core.LogError("Error freeing object shader descriptor sets!")
+		}
+	}
+
+	// Destroy descriptor states.
+	instance_state.DescriptorSetState.DescriptorStates = nil
+
+	if instance_state.InstanceTextureMaps != nil {
+		instance_state.InstanceTextureMaps = nil
+	}
+
+	if !vr.RenderBufferFree(internal.UniformBuffer, shader.UboStride, instance_state.Offset) {
+		core.LogError("vulkan_renderer_shader_release_instance_resources failed to free range from renderbuffer.")
+	}
+	instance_state.Offset = metadata.InvalidIDUint64
+	instance_state.ID = metadata.InvalidID
+
+	return true
 }
 
-func (vr *VulkanRenderer) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
-	return false
+func (vr *VulkanRenderer) SetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
+	internal := shader.InternalData.(*VulkanShader)
+	if uniform.ShaderUniformType == metadata.ShaderUniformTypeSampler {
+		if uniform.Scope == metadata.ShaderScopeGlobal {
+			shader.GlobalTextureMaps[uniform.Location] = value.(*metadata.TextureMap)
+		} else {
+			internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[uniform.Location] = value.(metadata.TextureMap)
+		}
+	} else {
+		if uniform.Scope == metadata.ShaderScopeLocal {
+			// Is local, using push constants. Do this immediately.
+			command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex].Handle
+			vk.CmdPushConstants(command_buffer, internal.Pipeline.PipelineLayout, vk.ShaderStageFlags(vk.ShaderStageVertexBit)|vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+				uint32(uniform.Offset), uint32(uniform.Size), unsafe.Pointer(&value),
+			)
+		} else {
+			// Map the appropriate memory location and copy the data over.
+			addr := internal.MappedUniformBufferBlock.(uint64)
+			addr += uint64(shader.BoundUboOffset) + uniform.Offset
+		}
+	}
+	return true
 }
 
 func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {
-	return false
+	// Create a sampler for the texture
+	sampler_info := vk.SamplerCreateInfo{
+		SType: vk.StructureTypeSamplerCreateInfo,
+
+		MinFilter: vr.convert_filter_type("min", texture_map.FilterMinify),
+		MagFilter: vr.convert_filter_type("mag", texture_map.FilterMagnify),
+
+		AddressModeU: vr.convert_repeat_type("U", texture_map.RepeatU),
+		AddressModeV: vr.convert_repeat_type("V", texture_map.RepeatV),
+		AddressModeW: vr.convert_repeat_type("W", texture_map.RepeatW),
+
+		// TODO: Configurable
+		AnisotropyEnable:        vk.True,
+		MaxAnisotropy:           16,
+		BorderColor:             vk.BorderColorIntOpaqueBlack,
+		UnnormalizedCoordinates: vk.False,
+		CompareEnable:           vk.False,
+		CompareOp:               vk.CompareOpAlways,
+		MipmapMode:              vk.SamplerMipmapModeLinear,
+		MipLodBias:              0.0,
+		MinLod:                  0.0,
+		MaxLod:                  0.0,
+	}
+
+	result := vk.CreateSampler(vr.context.Device.LogicalDevice, &sampler_info, vr.context.Allocator, texture_map.InternalData.(*vk.Sampler))
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("Error creating texture sampler: %s", VulkanResultString(result, true))
+		return false
+	}
+
+	return true
 }
 
-func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {}
+func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {
+	if texture_map != nil {
+		// Make sure there's no way this is in use.
+		vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+		vk.DestroySampler(vr.context.Device.LogicalDevice, texture_map.InternalData.(vk.Sampler), vr.context.Allocator)
+		texture_map.InternalData = 0
+	}
+}
 
 func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (out_target *metadata.RenderTarget) {
 	return nil
@@ -1949,7 +2111,35 @@ func (vr *VulkanRenderer) WindowAttachmentIndexGet() uint64 {
 }
 
 func (vr *VulkanRenderer) DepthAttachmentGet() *metadata.Texture {
-	return nil
+	return vr.context.Swapchain.DepthTexture
+}
+
+func (vr *VulkanRenderer) convert_repeat_type(axis string, repeat metadata.TextureRepeat) vk.SamplerAddressMode {
+	switch repeat {
+	case metadata.TextureRepeatRepeat:
+		return vk.SamplerAddressModeRepeat
+	case metadata.TextureRepeatMirroredRepeat:
+		return vk.SamplerAddressModeMirroredRepeat
+	case metadata.TextureRepeatClampToEdge:
+		return vk.SamplerAddressModeClampToEdge
+	case metadata.TextureRepeatClampToBorder:
+		return vk.SamplerAddressModeClampToBorder
+	default:
+		core.LogWarn("convert_repeat_type(axis='%s') Type '%x' not supported, defaulting to repeat.", axis, repeat)
+		return vk.SamplerAddressModeRepeat
+	}
+}
+
+func (vr *VulkanRenderer) convert_filter_type(op string, filter metadata.TextureFilter) vk.Filter {
+	switch filter {
+	case metadata.TextureFilterModeNearest:
+		return vk.FilterNearest
+	case metadata.TextureFilterModeLinear:
+		return vk.FilterLinear
+	default:
+		core.LogWarn("convert_filter_type(op='%s'): Unsupported filter type '%x', defaulting to linear.", op, filter)
+		return vk.FilterLinear
+	}
 }
 
 func dbgCallbackFunc(flags vk.DebugReportFlags, objectType vk.DebugReportObjectType, object uint64, location uint64, messageCode int32, pLayerPrefix string, pMessage string, pUserData unsafe.Pointer) vk.Bool32 {

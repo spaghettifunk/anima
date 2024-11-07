@@ -372,7 +372,7 @@ func (r *RendererSystem) ShaderApplyInstance(shader *metadata.Shader, needs_upda
 	return r.backend.ShaderApplyInstance(shader, needs_update)
 }
 
-func (r *RendererSystem) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (out_instance_id uint32) {
+func (r *RendererSystem) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
 	return r.backend.ShaderAcquireInstanceResources(shader, maps)
 }
 
@@ -381,7 +381,7 @@ func (r *RendererSystem) ShaderReleaseInstanceResources(shader *metadata.Shader,
 }
 
 func (r *RendererSystem) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
-	return r.backend.ShaderSetUniform(shader, uniform, value)
+	return r.backend.SetUniform(shader, uniform, value)
 }
 
 func (r *RendererSystem) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {

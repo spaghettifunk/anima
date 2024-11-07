@@ -3,7 +3,6 @@ package systems
 import (
 	"fmt"
 
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -61,9 +60,9 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *Rend
 	for i := uint32(0); i < count; i++ {
 		gs.RegisteredGeometries[i] = &metadata.GeometryReference{
 			Geometry: &metadata.Geometry{
-				ID:         loaders.InvalidID,
-				InternalID: loaders.InvalidID,
-				Generation: loaders.InvalidIDUint16,
+				ID:         metadata.InvalidID,
+				InternalID: metadata.InvalidID,
+				Generation: metadata.InvalidIDUint16,
 			},
 		}
 	}
@@ -93,7 +92,7 @@ func (gs *GeometrySystem) Shutdown() error {
  * @return A pointer to the acquired geometry or nullptr if failed.
  */
 func (gs *GeometrySystem) AcquireByID(id uint32) (*metadata.Geometry, error) {
-	if id != loaders.InvalidID && gs.RegisteredGeometries[id].Geometry.ID != loaders.InvalidID {
+	if id != metadata.InvalidID && gs.RegisteredGeometries[id].Geometry.ID != metadata.InvalidID {
 		gs.RegisteredGeometries[id].ReferenceCount++
 		return gs.RegisteredGeometries[id].Geometry, nil
 	}
@@ -114,7 +113,7 @@ func (gs *GeometrySystem) AcquireByID(id uint32) (*metadata.Geometry, error) {
 func (gs *GeometrySystem) AcquireFromConfig(config *metadata.GeometryConfig, autoRelease bool) (*metadata.Geometry, error) {
 	var geometry *metadata.Geometry
 	for i := uint32(0); i < gs.Config.MaxGeometryCount; i++ {
-		if gs.RegisteredGeometries[i].Geometry.ID == loaders.InvalidID {
+		if gs.RegisteredGeometries[i].Geometry.ID == metadata.InvalidID {
 			// Found empty slot.
 			gs.RegisteredGeometries[i].AutoRelease = autoRelease
 			gs.RegisteredGeometries[i].ReferenceCount = 1
@@ -160,7 +159,7 @@ func (gs *GeometrySystem) ConfigDispose(config *metadata.GeometryConfig) error {
  * @param geometry The geometry to be released.
  */
 func (gs *GeometrySystem) Release(geometry *metadata.Geometry) {
-	if geometry != nil && geometry.ID != loaders.InvalidID {
+	if geometry != nil && geometry.ID != metadata.InvalidID {
 		ref := gs.RegisteredGeometries[geometry.ID]
 
 		// Take a copy of the id;
@@ -521,7 +520,7 @@ func (gs *GeometrySystem) createDefaultGeometries() bool {
 	indices := []uint32{0, 1, 2, 0, 3, 1}
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	gs.DefaultGeometry.InternalID = loaders.InvalidID
+	gs.DefaultGeometry.InternalID = metadata.InvalidID
 	if !gs.renderer.CreateGeometry(gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
 		core.LogFatal("Failed to create default geometry. Application cannot continue.")
 		return false
@@ -573,9 +572,9 @@ func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geomet
 		// Invalidate the entry.
 		gs.RegisteredGeometries[geometry.ID].ReferenceCount = 0
 		gs.RegisteredGeometries[geometry.ID].AutoRelease = false
-		geometry.ID = loaders.InvalidID
-		geometry.Generation = loaders.InvalidIDUint16
-		geometry.InternalID = loaders.InvalidID
+		geometry.ID = metadata.InvalidID
+		geometry.Generation = metadata.InvalidIDUint16
+		geometry.InternalID = metadata.InvalidID
 
 		return false
 	}
@@ -602,9 +601,9 @@ func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geomet
 
 func (gs *GeometrySystem) destroyGeometry(geometry *metadata.Geometry) {
 	gs.renderer.DestroyGeometry(geometry)
-	geometry.InternalID = loaders.InvalidID
-	geometry.Generation = loaders.InvalidIDUint16
-	geometry.ID = loaders.InvalidID
+	geometry.InternalID = metadata.InvalidID
+	geometry.Generation = metadata.InvalidIDUint16
+	geometry.ID = metadata.InvalidID
 
 	geometry.Name = ""
 

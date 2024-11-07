@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/spaghettifunk/anima/engine/assets"
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
@@ -185,17 +184,20 @@ func (e *Engine) Initialize() error {
 		return err
 	}
 	e.skybox.Geometry = g
-	e.skybox.RenderFrameNumber = loaders.InvalidIDUint64
+	e.skybox.RenderFrameNumber = metadata.InvalidIDUint64
 	skyboxShader, err := e.systemManager.ShaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_SKYBOX)
 	if err != nil {
 		return err
 	}
 	maps := []*metadata.TextureMap{e.skybox.Cubemap}
-	e.skybox.InstanceID = e.systemManager.RendererSystem.ShaderAcquireInstanceResources(skyboxShader, maps)
+	e.skybox.InstanceID, err = e.systemManager.RendererSystem.ShaderAcquireInstanceResources(skyboxShader, maps)
+	if err != nil {
+		return err
+	}
 
 	// Invalidate all meshes.
 	for i := 0; i < 10; i++ {
-		e.meshes[i].Generation = loaders.InvalidIDUint8
+		e.meshes[i].Generation = metadata.InvalidIDUint8
 	}
 
 	meshCount := 0
@@ -340,7 +342,7 @@ func (e *Engine) Run() error {
 			// World
 			meshes := []*metadata.Mesh{}
 			for _, m := range e.meshes {
-				if m.Generation != loaders.InvalidIDUint8 {
+				if m.Generation != metadata.InvalidIDUint8 {
 					meshes = append(meshes, m)
 				}
 			}

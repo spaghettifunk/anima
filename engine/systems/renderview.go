@@ -1,7 +1,6 @@
 package systems
 
 import (
-	"github.com/spaghettifunk/anima/engine/assets/loaders"
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/views"
@@ -44,9 +43,9 @@ func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem) (*Ren
 	}
 	// Fill the array with invalid entries.
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
-		rvs.Lookup[metadata.GenerateNewHash()] = loaders.InvalidIDUint16
+		rvs.Lookup[metadata.GenerateNewHash()] = metadata.InvalidIDUint16
 		rvs.RegisteredViews[i] = &metadata.RenderView{
-			ID: loaders.InvalidIDUint16,
+			ID: metadata.InvalidIDUint16,
 		}
 	}
 	return rvs, nil
@@ -84,21 +83,21 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) bool {
 
 	// Make sure there is not already an entry with this name already registered.
 	id, ok := rvs.Lookup[config.Name]
-	if ok && id != loaders.InvalidIDUint16 {
+	if ok && id != metadata.InvalidIDUint16 {
 		core.LogError("render_view_system_create - A view named '%s' already exists. A new one will not be created.", config.Name)
 		return false
 	}
 
 	// Find a new id.
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
-		if rvs.RegisteredViews[i].ID == loaders.InvalidIDUint16 {
+		if rvs.RegisteredViews[i].ID == metadata.InvalidIDUint16 {
 			id = uint16(i)
 			break
 		}
 	}
 
 	// Make sure a valid entry was found.
-	if id == loaders.InvalidIDUint16 {
+	if id == metadata.InvalidIDUint16 {
 		core.LogError("render_view_system_create - No available space for a new view. Change system config to account for more.")
 		return false
 	}
@@ -167,7 +166,7 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) bool {
 func (rvs *RenderViewSystem) OnWindowResize(width, height uint32) {
 	// Send to all views
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
-		if rvs.RegisteredViews[i].ID != loaders.InvalidIDUint16 {
+		if rvs.RegisteredViews[i].ID != metadata.InvalidIDUint16 {
 			rvs.RegisteredViews[i].OnResize(width, height)
 		}
 	}
@@ -180,7 +179,7 @@ func (rvs *RenderViewSystem) OnWindowResize(width, height uint32) {
  * @return A pointer to a view if found; otherwise 0.
  */
 func (rvs *RenderViewSystem) Get(name string) *metadata.RenderView {
-	if id, ok := rvs.Lookup[name]; ok && id != loaders.InvalidIDUint16 {
+	if id, ok := rvs.Lookup[name]; ok && id != metadata.InvalidIDUint16 {
 		return rvs.RegisteredViews[id]
 	}
 	return nil
