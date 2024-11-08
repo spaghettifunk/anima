@@ -35,13 +35,15 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
-
 	cs, err := NewCameraSystem(&CameraSystemConfig{
 		MaxCameraCount: 61,
 	})
 	if err != nil {
 		return nil, err
 	}
+	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
+		MaxViewCount: 251,
+	}, renderer)
 	if err != nil {
 		return nil, err
 	}
@@ -76,9 +78,6 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
-	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
-		MaxViewCount: 251,
-	}, renderer)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +97,12 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 
 func (sm *SystemManager) Initialize() error {
 	if err := sm.RendererSystem.Initialize(sm.ShaderSystem); err != nil {
+		return err
+	}
+	if err := sm.TextureSystem.Initialize(); err != nil {
+		return err
+	}
+	if err := sm.GeometrySystem.Initialize(); err != nil {
 		return err
 	}
 	return nil

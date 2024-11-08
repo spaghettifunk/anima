@@ -1,7 +1,9 @@
 package assets
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -19,31 +21,77 @@ type AssetInfo struct {
 }
 
 type AssetManager struct {
-	assets   map[string]AssetInfo
-	loaders  map[metadata.ResourceType]Loader
-	mutex    sync.RWMutex
-	watcher  *fsnotify.Watcher
-	watchDir string
+	assets  map[string]AssetInfo
+	loaders map[metadata.ResourceType]Loader
+
+	mutex sync.RWMutex
+
+	done     chan struct{}
+	fsnotify *fsnotify.Watcher
+	isClosed bool
+	events   chan fsnotify.Event
+	errors   chan error
 }
 
-func NewAssetManager() *AssetManager {
-	return &AssetManager{
-		assets:  make(map[string]AssetInfo),
-		loaders: make(map[metadata.ResourceType]Loader),
+func NewAssetManager() (*AssetManager, error) {
+	fsWatch, err := fsnotify.NewWatcher()
+	if err != nil {
+		return nil, err
 	}
+
+	return &AssetManager{
+		assets:   make(map[string]AssetInfo),
+		loaders:  make(map[metadata.ResourceType]Loader),
+		fsnotify: fsWatch,
+		events:   make(chan fsnotify.Event),
+		errors:   make(chan error),
+		done:     make(chan struct{}),
+	}, nil
 }
 
 func (am *AssetManager) Initialize(assetsDir string) error {
-	go func() {
-		if err := am.startWatching(assetsDir); err != nil {
-			core.LogError(err.Error())
-		}
-	}()
+	go am.start()
+
+	if err := am.addRecursive(assetsDir); err != nil {
+		return err
+	}
 
 	// Register loaders
 	am.registerLoader(metadata.ResourceTypeShader, &loaders.ShaderLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.TextureLoader{})
 
+	return nil
+}
+
+// Add starts watching the named file or directory (non-recursively).
+func (am *AssetManager) add(name string) error {
+	if am.isClosed {
+		return errors.New("rfsnotify instance already closed")
+	}
+	return am.fsnotify.Add(name)
+}
+
+// AddRecursive starts watching the named directory and all sub-directories.
+func (am *AssetManager) addRecursive(name string) error {
+	if am.isClosed {
+		return errors.New("rfsnotify instance already closed")
+	}
+	if err := am.watchRecursive(name, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Remove stops watching the the named file or directory (non-recursively).
+func (am *AssetManager) remove(name string) error {
+	return am.fsnotify.Remove(name)
+}
+
+// RemoveRecursive stops watching the named directory and all sub-directories.
+func (am *AssetManager) removeRecursive(name string) error {
+	if err := am.watchRecursive(name, true); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -76,52 +124,65 @@ func (am *AssetManager) UnloadAsset(asset *metadata.Resource) error {
 	return nil
 }
 
-// Initialize the file watcher and start watching in a separate goroutine
-func (am *AssetManager) startWatching(dir string) error {
-	am.watchDir = dir
-	var err error
-	am.watcher, err = fsnotify.NewWatcher()
-	if err != nil {
-		return err
-	}
-
-	// Start the watcher in a separate goroutine
-	go am.watchFiles()
-
-	// Add directory to watcher
-	err = am.watcher.Add(dir)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// Watch for file changes and update the asset index
-func (am *AssetManager) watchFiles() {
-	defer am.watcher.Close()
-
+func (am *AssetManager) start() {
 	for {
 		select {
-		case event, ok := <-am.watcher.Events:
-			if !ok {
-				return
+
+		case e := <-am.fsnotify.Events:
+			s, err := os.Stat(e.Name)
+			if err == nil && s != nil && s.IsDir() {
+				if e.Op&fsnotify.Create != 0 {
+					am.watchRecursive(e.Name, false)
+				}
 			}
 			// Handle create or modify events
-			if event.Op&(fsnotify.Create|fsnotify.Write) != 0 {
-				am.handleFileEvent(event.Name)
+			if e.Op&(fsnotify.Create|fsnotify.Write) != 0 {
+				am.handleFileEvent(e.Name)
 			}
-			// Handle remove events
-			if event.Op&fsnotify.Remove != 0 {
-				am.removeAsset(event.Name)
+			//Can't stat a deleted directory, so just pretend that it's always a directory and
+			//try to remove from the watch list...  we really have no clue if it's a directory or not...
+			if e.Op&fsnotify.Remove != 0 {
+				am.removeAsset(e.Name)
+				am.fsnotify.Remove(e.Name)
 			}
-		case err, ok := <-am.watcher.Errors:
-			if !ok {
-				return
-			}
-			core.LogError(err.Error())
+			am.events <- e
+
+		case e := <-am.fsnotify.Errors:
+			am.errors <- e
+			core.LogError(e.Error())
+
+		case <-am.done:
+			am.fsnotify.Close()
+			close(am.events)
+			close(am.errors)
+			return
 		}
 	}
+}
+
+// watchRecursive adds all directories under the given one to the watch list.
+// this is probably a very racey process. What if a file is added to a folder before we get the watch added?
+func (am *AssetManager) watchRecursive(path string, unWatch bool) error {
+	err := filepath.Walk(path, func(walkPath string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			if unWatch {				
+				if err = am.fsnotify.Remove(walkPath); err != nil {
+					return err
+				}
+			} else {				
+				if err = am.fsnotify.Add(walkPath); err != nil {
+					return err
+				}
+			}
+		} else {
+			am.handleFileEvent(walkPath)
+		}		
+		return nil
+	})
+	return err
 }
 
 // Handle the creation or modification of a file
@@ -130,6 +191,9 @@ func (am *AssetManager) handleFileEvent(path string) {
 	defer am.mutex.Unlock()
 
 	assetType := determineAssetType(path)
+	if assetType == metadata.ResourceTypeNone {
+		return
+	}
 	am.assets[path] = AssetInfo{
 		Path:       path,
 		Type:       assetType,
@@ -147,11 +211,17 @@ func (am *AssetManager) removeAsset(path string) {
 
 func determineAssetType(path string) metadata.ResourceType {
 	switch filepath.Ext(path) {
-	case ".spv":
+	case ".tga":
+		return metadata.ResourceTypeTexture
+	case ".glsl", ".shadercfg":
 		return metadata.ResourceTypeShader
 	case ".png", ".jpg":
 		return metadata.ResourceTypeImage
+	case ".kmt":
+		return metadata.ResourceTypeMaterial
+	case ".obj", ".ksm", ".mtl":
+		return metadata.ResourceTypeModel
 	default:
-		return metadata.ResourceTypeCustom
+		return metadata.ResourceTypeNone
 	}
 }

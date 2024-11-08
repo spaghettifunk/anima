@@ -172,11 +172,14 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	createInfo.EnabledLayerCount = uint32(len(required_validation_layer_names))
 	createInfo.PpEnabledLayerNames = VulkanSafeStrings(required_validation_layer_names)
 
-	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &vr.context.Instance); res != vk.Success {
+	var instance vk.Instance
+	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &instance); res != vk.Success {
 		err := fmt.Errorf("failed in creating the Vulkan Instance with error `%s`", VulkanResultString(res, true))
 		core.LogError(err.Error())
 		return err
 	}
+	vr.context.Instance = instance
+
 	if err := vk.InitInstance(vr.context.Instance); err != nil {
 		core.LogError(err.Error())
 		return err
@@ -242,7 +245,12 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 	// Hold registered renderpasses.
 	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
-		vr.context.RegisteredPasses[i].ID = metadata.InvalidIDUint16
+		vr.context.RegisteredPasses[i] = &metadata.RenderPass{
+			ID: metadata.InvalidIDUint16,
+			InternalData: &VulkanRenderPass{
+				State: NOT_ALLOCATED,
+			},
+		}
 	}
 
 	// Renderpasses
@@ -337,8 +345,8 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		err := fmt.Errorf("error creating vertex buffer")
 		return err
 	}
-	if !vr.RenderBufferBind(vr.context.ObjectVertexBuffer, 0) {
-		err := fmt.Errorf("error binding vertex buffer")
+	if err := vr.RenderBufferBind(vr.context.ObjectVertexBuffer, 0); err != nil {
+		core.LogError("error binding vertex buffer")
 		return err
 	}
 
@@ -349,14 +357,9 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		err := fmt.Errorf("error creating index buffer")
 		return err
 	}
-	if !vr.RenderBufferBind(vr.context.ObjectIndexBuffer, 0) {
-		err := fmt.Errorf("error binding index buffer")
+	if err := vr.RenderBufferBind(vr.context.ObjectIndexBuffer, 0); err != nil {
+		core.LogError("error binding index buffer")
 		return err
-	}
-
-	// Mark all geometries as invalid
-	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-		vr.context.Geometries[i].ID = metadata.InvalidID
 	}
 
 	core.LogInfo("Vulkan renderer initialized successfully.")
@@ -706,6 +709,14 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		oldRange.VertexCount = internalData.VertexCount
 		oldRange.VertexElementSize = internalData.VertexElementSize
 	} else {
+		// Mark all geometries as invalid
+		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
+			if vr.context.Geometries[i] == nil {
+				vr.context.Geometries[i] = &VulkanGeometryData{
+					ID: metadata.InvalidID,
+				}
+			}
+		}
 		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
 			if vr.context.Geometries[i].ID == metadata.InvalidID {
 				// Found a free index.
@@ -910,7 +921,10 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 		err := fmt.Errorf("failed to create staging buffer for texture write")
 		return err
 	}
-	vr.RenderBufferBind(staging, 0)
+
+	if err := vr.RenderBufferBind(staging, 0); err != nil {
+		return err
+	}
 
 	vr.RenderBufferLoadRange(staging, 0, uint64(size), pixels)
 
@@ -934,7 +948,8 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 	}
 
 	// Copy the data from the buffer.
-	if err := image.ImageCopyFromBuffer(vr.context, texture.TextureType, (staging.InternalData.(*VulkanBuffer)).Handle, tempBuffer); err != nil {
+	buff := staging.InternalData.(*VulkanBuffer)
+	if err := image.ImageCopyFromBuffer(vr.context, texture.TextureType, buff.Handle, tempBuffer); err != nil {
 		return err
 	}
 
@@ -2055,17 +2070,22 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments
 		Layers:          1,
 	}
 
-	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, out_target.InternalFramebuffer.(*vk.Framebuffer))
+	// fb := out_target.InternalFramebuffer
+	var fb vk.Framebuffer
+	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, &fb)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
 	}
+	out_target.InternalFramebuffer = fb
+
 	return out_target, nil
 }
 
 func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, free_internal_memory bool) {
 	if target != nil && target.InternalFramebuffer != nil {
-		vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, target.InternalFramebuffer.(vk.Framebuffer), vr.context.Allocator)
+		fb := target.InternalFramebuffer.(*vk.Framebuffer)
+		vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, *fb, vr.context.Allocator)
 		target.InternalFramebuffer = nil
 		if free_internal_memory {
 			target.Attachments = nil
@@ -2079,7 +2099,84 @@ func (vr *VulkanRenderer) IsMultithreaded() bool {
 }
 
 func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64, use_freelist bool) (*metadata.RenderBuffer, error) {
-	return nil, nil
+	out_buffer := &metadata.RenderBuffer{
+		RenderBufferType: renderbufferType,
+		TotalSize:        total_size,
+	}
+
+	internal_buffer := &VulkanBuffer{}
+
+	switch out_buffer.RenderBufferType {
+	case metadata.RENDERBUFFER_TYPE_VERTEX:
+		internal_buffer.Usage = vk.BufferUsageFlags(vk.BufferUsageVertexBufferBit) | vk.BufferUsageFlags(vk.BufferUsageTransferDstBit) | vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit)
+		internal_buffer.MemoryPropertyFlags = uint32(vk.MemoryPropertyDeviceLocalBit)
+	case metadata.RENDERBUFFER_TYPE_INDEX:
+		internal_buffer.Usage = vk.BufferUsageFlags(vk.BufferUsageIndexBufferBit) | vk.BufferUsageFlags(vk.BufferUsageTransferDstBit) | vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit)
+		internal_buffer.MemoryPropertyFlags = uint32(vk.MemoryPropertyDeviceLocalBit)
+	case metadata.RENDERBUFFER_TYPE_UNIFORM:
+		device_local_bits := uint32(vk.MemoryPropertyDeviceLocalBit)
+		if vr.context.Device.SupportsDeviceLocalHostVisible {
+			device_local_bits = 0
+		}
+		internal_buffer.Usage = vk.BufferUsageFlags(vk.BufferUsageUniformBufferBit) | vk.BufferUsageFlags(vk.BufferUsageTransferDstBit)
+		internal_buffer.MemoryPropertyFlags = uint32(vk.MemoryPropertyHostVisibleBit) | uint32(vk.MemoryPropertyHostCoherentBit) | device_local_bits
+	case metadata.RENDERBUFFER_TYPE_STAGING:
+		internal_buffer.Usage = vk.BufferUsageFlags(vk.BufferUsageTransferSrcBit)
+		internal_buffer.MemoryPropertyFlags = uint32(vk.MemoryPropertyHostVisibleBit) | uint32(vk.MemoryPropertyHostCoherentBit)
+	case metadata.RENDERBUFFER_TYPE_READ:
+		internal_buffer.Usage = vk.BufferUsageFlags(vk.BufferUsageTransferDstBit)
+		internal_buffer.MemoryPropertyFlags = uint32(vk.MemoryPropertyHostVisibleBit) | uint32(vk.MemoryPropertyHostCoherentBit)
+	case metadata.RENDERBUFFER_TYPE_STORAGE:
+		err := fmt.Errorf("storage buffer not yet supported")
+		return nil, err
+	default:
+		err := fmt.Errorf("unsupported buffer type: %d", out_buffer.RenderBufferType)
+		return nil, err
+	}
+
+	buffer_info := vk.BufferCreateInfo{
+		SType:       vk.StructureTypeBufferCreateInfo,
+		Size:        vk.DeviceSize(out_buffer.TotalSize),
+		Usage:       internal_buffer.Usage,
+		SharingMode: vk.SharingModeExclusive, // NOTE: Only used in one queue.
+	}
+
+	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &internal_buffer.Handle)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
+		return nil, err
+	}
+
+	// Gather memory requirements.
+	vk.GetBufferMemoryRequirements(vr.context.Device.LogicalDevice, internal_buffer.Handle, &internal_buffer.MemoryRequirements)
+	internal_buffer.MemoryRequirements.Deref()
+
+	internal_buffer.MemoryIndex = vr.context.FindMemoryIndex(internal_buffer.MemoryRequirements.MemoryTypeBits, internal_buffer.MemoryPropertyFlags)
+	if internal_buffer.MemoryIndex == -1 {
+		err := fmt.Errorf("unable to create vulkan buffer because the required memory type index was not found")
+		return nil, err
+	}
+
+	// Allocate memory info
+	allocate_info := vk.MemoryAllocateInfo{
+		SType:           vk.StructureTypeMemoryAllocateInfo,
+		AllocationSize:  internal_buffer.MemoryRequirements.Size,
+		MemoryTypeIndex: uint32(internal_buffer.MemoryIndex),
+	}
+
+	// Allocate the memory.
+	var mem vk.DeviceMemory
+	result = vk.AllocateMemory(vr.context.Device.LogicalDevice, &allocate_info, vr.context.Allocator, &mem)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
+		return nil, err
+	}
+	internal_buffer.Memory = mem
+
+	// Allocate the internal state block of memory at the end once we are sure everything was created successfully.
+	out_buffer.InternalData = internal_buffer
+
+	return out_buffer, nil
 }
 
 // vulkan_buffer_create_internal
@@ -2101,12 +2198,18 @@ func (vr *VulkanRenderer) RenderBufferDestroy(buffer *metadata.RenderBuffer) {
 	}
 }
 
-func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
+func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) error {
 	if buffer == nil {
-		core.LogError("renderer_renderbuffer_bind requires a valid pointer to a buffer")
-		return false
+		err := fmt.Errorf("renderer_renderbuffer_bind requires a valid pointer to a buffer")
+		return err
 	}
-	return vr.RenderBufferBind(buffer, offset)
+	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+	result := vk.BindBufferMemory(vr.context.Device.LogicalDevice, internal_buffer.Handle, internal_buffer.Memory, vk.DeviceSize(offset))
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
+		return err
+	}
+	return nil
 }
 
 func (vr *VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool {
@@ -2338,9 +2441,8 @@ func (vr *VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, o
 		vr.RenderBufferDestroy(staging)
 	} else {
 		// If no staging buffer is needed, map/copy/unmap.
-		var data_ptr interface{}
-		pp := unsafe.Pointer(&data_ptr)
-		if result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &pp); !VulkanResultIsSuccess(result) {
+		var data_ptr unsafe.Pointer
+		if result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &data_ptr); !VulkanResultIsSuccess(result) {
 			core.LogError("%s", VulkanResultString(result, true))
 			return false
 		}

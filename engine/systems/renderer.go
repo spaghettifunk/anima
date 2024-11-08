@@ -108,15 +108,15 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 	// TODO: Will know how to get these when we define views.
 	r.SkyboxRenderPass = r.backend.RenderPassGet(SkyboxRenderPassName)
 	r.SkyboxRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.SkyboxRenderPass.Targets = make([]*metadata.RenderTarget, 1)
+	r.SkyboxRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
 
 	r.WorldRenderPass = r.backend.RenderPassGet(WorldRenderPassName)
 	r.WorldRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.WorldRenderPass.Targets = make([]*metadata.RenderTarget, 1)
+	r.WorldRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
 
 	r.UIRenderPass = r.backend.RenderPassGet(UIRenderPassName)
 	r.UIRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.UIRenderPass.Targets = make([]*metadata.RenderTarget, 1)
+	r.UIRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
 
 	r.regenerateRenderTargets()
 
@@ -432,9 +432,9 @@ func (r *RendererSystem) RenderBufferDestroy(buffer *metadata.RenderBuffer) {
 	}
 }
 
-func (r *RendererSystem) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) bool {
+func (r *RendererSystem) RenderBufferBind(buffer *metadata.RenderBuffer, offset uint64) error {
 	if buffer == nil {
-		return false
+		return fmt.Errorf("buffer cannot be nil")
 	}
 	return r.backend.RenderBufferBind(buffer, offset)
 }

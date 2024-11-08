@@ -58,12 +58,17 @@ func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, am *assets.Ass
 
 	// Create default textures for use in the system.
 	ts.DefaultTexture.CreateSkeletonTextures()
+
+	return ts, nil
+}
+
+func (ts *TextureSystem) Initialize() error {
 	ts.renderer.TextureCreate(ts.DefaultTexture.TexturePixels, ts.DefaultTexture.DefaultTexture)
 	ts.renderer.TextureCreate(ts.DefaultTexture.DiffuseTexturePixels, ts.DefaultTexture.DefaultDiffuseTexture)
 	ts.renderer.TextureCreate(ts.DefaultTexture.SpecularTexturePixels, ts.DefaultTexture.DefaultSpecularTexture)
 	ts.renderer.TextureCreate(ts.DefaultTexture.NormalTexturePixels, ts.DefaultTexture.DefaultNormalTexture)
 
-	return ts, nil
+	return nil
 }
 
 func (ts *TextureSystem) Shutdown() error {

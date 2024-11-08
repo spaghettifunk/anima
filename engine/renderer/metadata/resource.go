@@ -16,12 +16,17 @@ const (
 	ResourceTypeShader
 	/** @brief Mesh resource type (collection of geometry configs). */
 	ResourceTypeMesh
+	/** @brief Model resource type */
+	ResourceTypeModel
+	/** @brief Texture resource type */
+	ResourceTypeTexture
 	/** @brief Bitmap font resource type. */
 	ResourceTypeBitmapFont
 	/** @brief System font resource type. */
 	ResourceTypeSystemFont
 	/** @brief Custom resource type. Used by loaders outside the core engine. */
 	ResourceTypeCustom
+	ResourceTypeNone
 )
 
 /** @brief A magic number indicating the file as an anima binary file. */

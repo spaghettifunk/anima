@@ -153,7 +153,7 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 		sourceStage = vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
 		// Used for copying
 		destStage = vk.PipelineStageFlags(vk.PipelineStageTransferBit)
-	} else if oldLayout == vk.ImageLayoutTransferDstOptimal && newLayout == vk.ImageLayoutReadOnlyOptimal {
+	} else if oldLayout == vk.ImageLayoutTransferDstOptimal && newLayout == vk.ImageLayoutShaderReadOnlyOptimal {
 		// Transitioning from a transfer destination layout to a shader-readonly layout.
 		barrier.SrcAccessMask = vk.AccessFlags(vk.AccessTransferWriteBit)
 		barrier.DstAccessMask = vk.AccessFlags(vk.AccessShaderReadBit)
@@ -162,7 +162,7 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 		// The fragment stage.
 		destStage = vk.PipelineStageFlags(vk.PipelineStageFragmentShaderBit)
 	} else {
-		err := fmt.Errorf("unsupported layout transition!")
+		err := fmt.Errorf("unsupported layout transition")
 		return err
 	}
 
@@ -198,6 +198,7 @@ func (image *VulkanImage) ImageCopyFromBuffer(context *VulkanContext, textureTyp
 			Depth:  1,
 		},
 	}
+	region.Deref()
 
 	vk.CmdCopyBufferToImage(
 		commandBuffer.Handle,
@@ -207,6 +208,7 @@ func (image *VulkanImage) ImageCopyFromBuffer(context *VulkanContext, textureTyp
 		1,
 		[]vk.BufferImageCopy{region},
 	)
+	
 	return nil
 }
 

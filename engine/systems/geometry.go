@@ -67,30 +67,21 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *Rend
 		}
 	}
 
-	if !gs.createDefaultGeometries() {
-		err := fmt.Errorf("failed to create default geometries. Application cannot continue")
-		core.LogError(err.Error())
-		return nil, err
-	}
-
 	return gs, nil
 }
 
-/**
- * @brief Shuts down the geometry system.
- *
- * @param state The state block of memory.
- */
+func (gs *GeometrySystem) Initialize() error {
+	if !gs.createDefaultGeometries() {
+		err := fmt.Errorf("failed to create default geometries. Application cannot continue")
+		return err
+	}
+	return nil
+}
+
 func (gs *GeometrySystem) Shutdown() error {
 	return nil
 }
 
-/**
- * @brief Acquires an existing geometry by id.
- *
- * @param id The geometry identifier to acquire by.
- * @return A pointer to the acquired geometry or nullptr if failed.
- */
 func (gs *GeometrySystem) AcquireByID(id uint32) (*metadata.Geometry, error) {
 	if id != metadata.InvalidID && gs.RegisteredGeometries[id].Geometry.ID != metadata.InvalidID {
 		gs.RegisteredGeometries[id].ReferenceCount++

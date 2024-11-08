@@ -55,7 +55,11 @@ type Engine struct {
 func New(g *Game) (*Engine, error) {
 	p := platform.New()
 
-	am := assets.NewAssetManager()
+	am, err := assets.NewAssetManager()
+	if err != nil {
+		core.LogError(err.Error())
+		return nil, err
+	}
 
 	sm, err := systems.NewSystemManager(g.ApplicationConfig.Name, g.ApplicationConfig.StartWidth, g.ApplicationConfig.StartHeight, p, am)
 	if err != nil {
@@ -110,7 +114,7 @@ func (e *Engine) Initialize() error {
 	if err != nil {
 		return err
 	}
-	if err := e.assetManager.Initialize(wd); err != nil {
+	if err := e.assetManager.Initialize(fmt.Sprintf("%s/assets", wd)); err != nil {
 		return err
 	}
 
@@ -119,154 +123,154 @@ func (e *Engine) Initialize() error {
 	}
 
 	// START: temporary stuff
-	skyboxConfig := &metadata.RenderViewConfig{
-		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-		Width:          0,
-		Height:         0,
-		Name:           "skybox",
-		PassCount:      1,
-		Passes: []metadata.RenderViewPassConfig{
-			{
-				Name: "Renderpass.Builtin.Skybox",
-			},
-		},
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	}
-	if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
-		core.LogFatal(err.Error())
-		return err
-	}
+	// skyboxConfig := &metadata.RenderViewConfig{
+	// 	RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
+	// 	Width:          0,
+	// 	Height:         0,
+	// 	Name:           "skybox",
+	// 	PassCount:      1,
+	// 	Passes: []metadata.RenderViewPassConfig{
+	// 		{
+	// 			Name: "Renderpass.Builtin.Skybox",
+	// 		},
+	// 	},
+	// 	ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	// }
+	// if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
+	// 	core.LogFatal(err.Error())
+	// 	return err
+	// }
 
-	opaqueWorldConfig := &metadata.RenderViewConfig{
-		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-		Width:          0,
-		Height:         0,
-		Name:           "world_opaque",
-		PassCount:      1,
-		Passes: []metadata.RenderViewPassConfig{
-			{
-				Name: "Renderpass.Builtin.World",
-			},
-		},
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	}
-	if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
-		core.LogFatal(err.Error())
-		return err
-	}
+	// opaqueWorldConfig := &metadata.RenderViewConfig{
+	// 	RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
+	// 	Width:          0,
+	// 	Height:         0,
+	// 	Name:           "world_opaque",
+	// 	PassCount:      1,
+	// 	Passes: []metadata.RenderViewPassConfig{
+	// 		{
+	// 			Name: "Renderpass.Builtin.World",
+	// 		},
+	// 	},
+	// 	ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	// }
+	// if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
+	// 	core.LogFatal(err.Error())
+	// 	return err
+	// }
 
-	// Skybox
-	e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
-	e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
-	e.skybox.Cubemap.RepeatU = metadata.TextureRepeatClampToEdge
-	e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
-	e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
-	e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
-	if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
-		err := fmt.Errorf("unable to acquire resources for cube map texture")
-		return err
-	}
+	// // Skybox
+	// e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
+	// e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
+	// e.skybox.Cubemap.RepeatU = metadata.TextureRepeatClampToEdge
+	// e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
+	// e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
+	// e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
+	// if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
+	// 	err := fmt.Errorf("unable to acquire resources for cube map texture")
+	// 	return err
+	// }
 
-	t, err := e.systemManager.TextureSystem.AcquireCube("skybox", true)
-	if err != nil {
-		return err
-	}
-	e.skybox.Cubemap.Texture = t
-	skyboxCubeConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "skybox_cube", "")
-	if err != nil {
-		return err
-	}
+	// t, err := e.systemManager.TextureSystem.AcquireCube("skybox", true)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.skybox.Cubemap.Texture = t
+	// skyboxCubeConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "skybox_cube", "")
+	// if err != nil {
+	// 	return err
+	// }
 
-	// Clear out the material name.
-	skyboxCubeConfig.MaterialName = ""
-	g, err := e.systemManager.GeometrySystem.AcquireFromConfig(skyboxCubeConfig, true)
-	if err != nil {
-		return err
-	}
-	e.skybox.Geometry = g
-	e.skybox.RenderFrameNumber = metadata.InvalidIDUint64
-	skyboxShader, err := e.systemManager.ShaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_SKYBOX)
-	if err != nil {
-		return err
-	}
-	maps := []*metadata.TextureMap{e.skybox.Cubemap}
-	e.skybox.InstanceID, err = e.systemManager.RendererSystem.ShaderAcquireInstanceResources(skyboxShader, maps)
-	if err != nil {
-		return err
-	}
+	// // Clear out the material name.
+	// skyboxCubeConfig.MaterialName = ""
+	// g, err := e.systemManager.GeometrySystem.AcquireFromConfig(skyboxCubeConfig, true)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.skybox.Geometry = g
+	// e.skybox.RenderFrameNumber = metadata.InvalidIDUint64
+	// skyboxShader, err := e.systemManager.ShaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_SKYBOX)
+	// if err != nil {
+	// 	return err
+	// }
+	// maps := []*metadata.TextureMap{e.skybox.Cubemap}
+	// e.skybox.InstanceID, err = e.systemManager.RendererSystem.ShaderAcquireInstanceResources(skyboxShader, maps)
+	// if err != nil {
+	// 	return err
+	// }
 
-	// Invalidate all meshes.
-	for i := 0; i < 10; i++ {
-		e.meshes[i].Generation = metadata.InvalidIDUint8
-	}
+	// // Invalidate all meshes.
+	// for i := 0; i < 10; i++ {
+	// 	e.meshes[i].Generation = metadata.InvalidIDUint8
+	// }
 
-	meshCount := 0
+	// meshCount := 0
 
-	// Load up a cube configuration, and load geometry from it.
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
-	gConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "test_cube", "test_material")
-	if err != nil {
-		return err
-	}
-	c, err := e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
-	if err != nil {
-		return err
-	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformCreate()
-	meshCount++
-	e.meshes[meshCount].Generation = 0
-	// Clean up the allocations for the geometry config.
-	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+	// // Load up a cube configuration, and load geometry from it.
+	// e.meshes[meshCount].GeometryCount = 1
+	// e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	// gConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "test_cube", "test_material")
+	// if err != nil {
+	// 	return err
+	// }
+	// c, err := e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.meshes[meshCount].Geometries[0] = c
+	// e.meshes[meshCount].Transform = math.TransformCreate()
+	// meshCount++
+	// e.meshes[meshCount].Generation = 0
+	// // Clean up the allocations for the geometry config.
+	// e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
-	// A second cube
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
-	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(5.0, 5.0, 5.0, 1.0, 1.0, "test_cube_2", "test_material")
-	if err != nil {
-		return err
-	}
-	c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
-	if err != nil {
-		return err
-	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(10.0, 0.0, 1.0))
-	// Set the first cube as the parent to the second.
-	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
-	meshCount++
-	e.meshes[meshCount].Generation = 0
-	// Clean up the allocations for the geometry config.
-	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+	// // A second cube
+	// e.meshes[meshCount].GeometryCount = 1
+	// e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	// gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(5.0, 5.0, 5.0, 1.0, 1.0, "test_cube_2", "test_material")
+	// if err != nil {
+	// 	return err
+	// }
+	// c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.meshes[meshCount].Geometries[0] = c
+	// e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(10.0, 0.0, 1.0))
+	// // Set the first cube as the parent to the second.
+	// e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	// meshCount++
+	// e.meshes[meshCount].Generation = 0
+	// // Clean up the allocations for the geometry config.
+	// e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
-	// A third cube!
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
-	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_2", "test_material")
-	if err != nil {
-		return err
-	}
-	c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
-	if err != nil {
-		return err
-	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(5.0, 0.0, 1.0))
-	// Set the second cube as the parent to the third.
-	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
-	meshCount++
-	e.meshes[meshCount].Generation = 0
-	// Clean up the allocations for the geometry config.
-	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
+	// // A third cube!
+	// e.meshes[meshCount].GeometryCount = 1
+	// e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	// gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_2", "test_material")
+	// if err != nil {
+	// 	return err
+	// }
+	// c, err = e.systemManager.GeometrySystem.AcquireFromConfig(gConfig, true)
+	// if err != nil {
+	// 	return err
+	// }
+	// e.meshes[meshCount].Geometries[0] = c
+	// e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(5.0, 0.0, 1.0))
+	// // Set the second cube as the parent to the third.
+	// e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	// meshCount++
+	// e.meshes[meshCount].Generation = 0
+	// // Clean up the allocations for the geometry config.
+	// e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
-	e.carMesh = e.meshes[meshCount]
-	e.carMesh.Transform = math.TransformFromPosition(math.NewVec3(15.0, 0.0, 1.0))
-	meshCount++
+	// e.carMesh = e.meshes[meshCount]
+	// e.carMesh.Transform = math.TransformFromPosition(math.NewVec3(15.0, 0.0, 1.0))
+	// meshCount++
 
-	e.sponzaMesh = e.meshes[meshCount]
-	e.sponzaMesh.Transform = math.TransformFromPositionRotationScale(math.NewVec3(15.0, 0.0, 1.0), math.NewQuatIdentity(), math.NewVec3(0.05, 0.05, 0.05))
-	meshCount++
+	// e.sponzaMesh = e.meshes[meshCount]
+	// e.sponzaMesh.Transform = math.TransformFromPositionRotationScale(math.NewVec3(15.0, 0.0, 1.0), math.NewQuatIdentity(), math.NewVec3(0.05, 0.05, 0.05))
+	// meshCount++
 
 	// END: temporary stuff
 

@@ -21,6 +21,8 @@ type VulkanDevice struct {
 	PresentQueue  vk.Queue
 	TransferQueue vk.Queue
 
+	SupportsDeviceLocalHostVisible bool
+
 	GraphicsCommandPool vk.CommandPool
 
 	Properties vk.PhysicalDeviceProperties
