@@ -133,7 +133,7 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 		return nil, nil
 	}
 
-	if !shaderSystem.renderer.ShaderCreate(shader, config, pass, config.StageCount, config.StageFilenames, config.Stages) {
+	if !shaderSystem.renderer.ShaderCreate(shader, config, pass, uint8(len(config.Stages)), config.StageFilenames, config.Stages) {
 		err := fmt.Errorf("shader was not created")
 		core.LogError(err.Error())
 		return nil, err
@@ -143,12 +143,12 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	shader.State = metadata.SHADER_STATE_UNINITIALIZED
 
 	// Process attributes
-	for i := uint8(0); i < config.AttributeCount; i++ {
+	for i := 0; i < len(config.Attributes); i++ {
 		shaderSystem.addAttribute(shader, config.Attributes[i])
 	}
 
 	// Process uniforms
-	for i := uint8(0); i < config.UniformCount; i++ {
+	for i := 0; i < len(config.Uniforms); i++ {
 		if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
 			shaderSystem.addSampler(shader, config.Uniforms[i])
 		} else {

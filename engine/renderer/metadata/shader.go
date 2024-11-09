@@ -1,5 +1,7 @@
 package metadata
 
+import "fmt"
+
 /**
  * @brief Represents the current state of a given shader.
  */
@@ -89,7 +91,7 @@ type Shader struct {
 	/** @brief The push constant stride, aligned to 4 bytes as required by Vulkan. */
 	PushConstantStride uint64
 
-	/** @brief An array of global texture map pointers. Darray */
+	/** @brief An array of global texture map pointers */
 	GlobalTextureMaps []*TextureMap
 
 	/** @brief The number of instance textures. */
@@ -105,10 +107,10 @@ type Shader struct {
 	/** @brief A hashtable to store uniform index/locations by name. */
 	UniformLookup map[string]uint16
 
-	/** @brief An array of Uniforms in this shader. Darray. */
+	/** @brief An array of Uniforms in this shader. */
 	Uniforms []ShaderUniform
 
-	/** @brief An array of Attributes. Darray. */
+	/** @brief An array of Attributes. */
 	Attributes []ShaderAttribute
 
 	/** @brief The internal State of the shader. */
@@ -155,6 +157,43 @@ const (
 	ShaderAttribTypeUint32    ShaderAttributeType = 10
 )
 
+func ShaderAttributeTypeFromString(s string) (ShaderAttributeType, error) {
+	if s == "" {
+		return ShaderAttribTypeFloat32, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeFloat32_2, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeFloat32_3, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeFloat32_4, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeMatrix4, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeInt8, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeUint8, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeInt16, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeUint16, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeInt32, nil
+	}
+	if s == "" {
+		return ShaderAttribTypeUint32, nil
+	}
+	return 0, fmt.Errorf("string %s is not a valid ShaderAttribType", s)
+}
+
 /** @brief Available uniform types. */
 type ShaderUniformType uint
 
@@ -174,6 +213,49 @@ const (
 	ShaderUniformTypeCustom    ShaderUniformType = 255
 )
 
+func ShaderUniformTypeFromString(s string) (ShaderUniformType, error) {
+	if s == "" {
+		return ShaderUniformTypeFloat32, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeFloat32_2, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeFloat32_3, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeFloat32_4, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeInt8, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeUint8, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeInt16, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeUint16, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeInt32, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeUint32, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeMatrix4, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeSampler, nil
+	}
+	if s == "" {
+		return ShaderUniformTypeCustom, nil
+	}
+	return 0, fmt.Errorf("string %s is not a valid ShaderUniformType", s)
+}
+
 /**
  * @brief Defines shader scope, which indicates how
  * often it gets updated.
@@ -191,8 +273,6 @@ const (
 
 /** @brief Configuration for an attribute. */
 type ShaderAttributeConfig struct {
-	/** @brief The length of the name. */
-	NameLength uint8
 	/** @brief The name of the attribute. */
 	Name string
 	/** @brief The size of the attribute. */
@@ -203,8 +283,6 @@ type ShaderAttributeConfig struct {
 
 /** @brief Configuration for a uniform. */
 type ShaderUniformConfig struct {
-	/** @brief The length of the name. */
-	NameLength uint8
 	/** @brief The name of the uniform. */
 	Name string
 	/** @brief The size of the uniform. */
@@ -227,22 +305,16 @@ type ShaderConfig struct {
 	Name string
 	/** @brief The face cull mode to be used. Default is BACK if not supplied. */
 	CullMode FaceCullMode
-	/** @brief The count of attributes. */
-	AttributeCount uint8
-	/** @brief The collection of attributes. Darray. */
+	/** @brief The collection of attributes. */
 	Attributes []*ShaderAttributeConfig
-	/** @brief The count of uniforms. */
-	UniformCount uint8
-	/** @brief The collection of uniforms. Darray. */
+	/** @brief The collection of uniforms. */
 	Uniforms []*ShaderUniformConfig
 	/** @brief The name of the renderpass used by this shader. */
 	RenderpassName string
-	/** @brief The number of stages present in the shader. */
-	StageCount uint8
-	/** @brief The collection of stages. Darray. */
-	Stages []ShaderStage
-	/** @brief The collection of stage names. Must align with stages array. Darray. */
+	/** @brief The collection of stages. */
+	Stages []*ShaderStage
+	/** @brief The collection of stage names. Must align with stages array. */
 	StageNames []string
-	/** @brief The collection of stage file names to be loaded (one per stage). Must align with stages array. Darray. */
+	/** @brief The collection of stage file names to be loaded (one per stage). Must align with stages array. */
 	StageFilenames []string
 }

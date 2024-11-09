@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,7 +102,17 @@ func (am *AssetManager) registerLoader(assetType metadata.ResourceType, loader L
 }
 
 // Load an asset using the appropriate loader
-func (am *AssetManager) LoadAsset(path string, resourceType metadata.ResourceType, params interface{}) (*metadata.Resource, error) {
+func (am *AssetManager) LoadAsset(filename string, resourceType metadata.ResourceType, params interface{}) (*metadata.Resource, error) {
+	var path string
+	switch resourceType {
+	case metadata.ResourceTypeShader:
+		core.LogDebug("shader")
+		path = fmt.Sprintf("assets/shaders/%s.shadercfg", filename)
+	default:
+		err := fmt.Errorf("unknown resource type")
+		return nil, err
+	}
+
 	am.mutex.RLock()
 	asset, exists := am.assets[path]
 	am.mutex.RUnlock()
@@ -163,23 +174,29 @@ func (am *AssetManager) start() {
 // watchRecursive adds all directories under the given one to the watch list.
 // this is probably a very racey process. What if a file is added to a folder before we get the watch added?
 func (am *AssetManager) watchRecursive(path string, unWatch bool) error {
-	err := filepath.Walk(path, func(walkPath string, fi os.FileInfo, err error) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	wd = wd + "/" // add trailing slash
+	err = filepath.Walk(path, func(walkPath string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if fi.IsDir() {
-			if unWatch {				
+			if unWatch {
 				if err = am.fsnotify.Remove(walkPath); err != nil {
 					return err
 				}
-			} else {				
+			} else {
 				if err = am.fsnotify.Add(walkPath); err != nil {
 					return err
 				}
 			}
 		} else {
-			am.handleFileEvent(walkPath)
-		}		
+			p := strings.TrimPrefix(walkPath, wd)
+			am.handleFileEvent(p)
+		}
 		return nil
 	})
 	return err
@@ -213,7 +230,7 @@ func determineAssetType(path string) metadata.ResourceType {
 	switch filepath.Ext(path) {
 	case ".tga":
 		return metadata.ResourceTypeTexture
-	case ".glsl", ".shadercfg":
+	case ".shadercfg":
 		return metadata.ResourceTypeShader
 	case ".png", ".jpg":
 		return metadata.ResourceTypeImage

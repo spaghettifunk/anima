@@ -1,20 +1,47 @@
-# Kohi shader config file
-version=1.0
-name=Shader.Builtin.UI
-renderpass=Renderpass.Builtin.UI
-stages=vertex,fragment
-stagefiles=shaders/Builtin.UIShader.vert.spv,shaders/Builtin.UIShader.frag.spv
-use_instance=1
-use_local=1
+# Using TOML as base of the sahder configuration
+# Different extension to determine which Go structure to invoke to populate the data
 
-# Attributes: type,name
-attribute=vec2,in_position
-attribute=vec2,in_texcoord
+version = "1.0"
+name = "Shader.Builtin.UI"
+renderpass = "Renderpass.Builtin.UI"
+stages = ["vertex", "fragment"]
+stagefiles = ["shaders/Builtin.UIShader.vert.spv", "shaders/Builtin.UIShader.frag.spv"]
+use_instance = true
+use_local = true
 
-# Uniforms: type,scope,name
-# NOTE: For scope: 0=global, 1=instance, 2=local
-uniform=mat4,0,projection
-uniform=mat4,0,view
-uniform=vec4,1,diffuse_colour
-uniform=samp,1,diffuse_texture
-uniform=mat4,2,model
+# Attributes
+[[attribute]]
+type = "vec2"
+name = "in_position"
+
+[[attribute]]
+type = "vec2"
+name = "in_texcoord"
+
+# Uniforms
+# Scope: 0=global, 1=instance, 2=local
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "projection"
+
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "view"
+
+[[uniform]]
+type = "vec4"
+scope = 1
+name = "diffuse_colour"
+
+[[uniform]]
+type = "samp"
+scope = 1
+name = "diffuse_texture"
+
+[[uniform]]
+type = "mat4"
+scope = 2
+name = "model"
+
