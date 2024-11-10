@@ -78,9 +78,6 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
-	if err != nil {
-		return nil, err
-	}
 	return &SystemManager{
 		RendererSystem:   renderer,
 		CameraSystem:     cs,
@@ -100,6 +97,9 @@ func (sm *SystemManager) Initialize() error {
 		return err
 	}
 	if err := sm.TextureSystem.Initialize(); err != nil {
+		return err
+	}
+	if err := sm.MaterialSystem.Initialize(); err != nil {
 		return err
 	}
 	if err := sm.GeometrySystem.Initialize(); err != nil {

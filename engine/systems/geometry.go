@@ -2,6 +2,7 @@ package systems
 
 import (
 	"fmt"
+	"unsafe"
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/math"
@@ -512,7 +513,7 @@ func (gs *GeometrySystem) createDefaultGeometries() bool {
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
 	gs.DefaultGeometry.InternalID = metadata.InvalidID
-	if !gs.renderer.CreateGeometry(gs.DefaultGeometry, 0, 4, verts, 0, 6, indices) {
+	if !gs.renderer.CreateGeometry(gs.DefaultGeometry, uint32(unsafe.Sizeof(math.Vertex3D{})), 4, verts, uint32(unsafe.Sizeof(uint32(1))), 6, indices) {
 		core.LogFatal("Failed to create default geometry. Application cannot continue.")
 		return false
 	}
@@ -546,7 +547,7 @@ func (gs *GeometrySystem) createDefaultGeometries() bool {
 	indices2d := []uint32{2, 1, 0, 3, 0, 1}
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	if !gs.renderer.CreateGeometry(gs.Default2DGeometry, 0, 4, verts2d, 0, 6, indices2d) {
+	if !gs.renderer.CreateGeometry(gs.Default2DGeometry, uint32(unsafe.Sizeof(math.Vertex2D{})), 4, verts2d, uint32(unsafe.Sizeof(uint32(1))), 6, indices2d) {
 		core.LogFatal("Failed to create default 2d geometry. Application cannot continue.")
 		return false
 	}

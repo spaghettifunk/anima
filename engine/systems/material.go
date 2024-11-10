@@ -47,8 +47,8 @@ type MaterialSystem struct {
  */
 func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, ts *TextureSystem, am *assets.AssetManager, r *RendererSystem) (*MaterialSystem, error) {
 	if config.MaxMaterialCount == 0 {
-		core.LogError("func NewMaterialSystem - config.MaxMaterialCount must be > 0.")
-		return nil, nil
+		err := fmt.Errorf("func NewMaterialSystem - config.MaxMaterialCount must be > 0")
+		return nil, err
 	}
 
 	ms := &MaterialSystem{
@@ -110,12 +110,15 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 			RenderFrameNumber: metadata.InvalidID,
 		}
 	}
-
-	if !ms.createDefaultMaterial() {
-		core.LogError("Failed to create default material. Application cannot continue.")
-		return nil, nil
-	}
 	return ms, nil
+}
+
+func (ms *MaterialSystem) Initialize() error {
+	if !ms.createDefaultMaterial() {
+		err := fmt.Errorf("failed to create default material. Application cannot continue")
+		return err
+	}
+	return nil
 }
 
 /**

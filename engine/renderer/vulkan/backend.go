@@ -2,7 +2,6 @@ package vulkan
 
 import (
 	"fmt"
-	"math"
 	m "math"
 	"runtime"
 	"unsafe"
@@ -11,6 +10,7 @@ import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
@@ -489,7 +489,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 	}
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
-	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}, vk.True, math.MaxUint64)
+	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}, vk.True, m.MaxUint64)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("func BeginFram In-flight fence wait failure! error: %s", VulkanResultString(result, true))
 		return err
@@ -734,7 +734,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 
 	// Vertex data.
 	internalData.VertexCount = vertexCount
-	internalData.VertexElementSize = 0 //sizeof(vertex_3d);
+	internalData.VertexElementSize = uint32(unsafe.Sizeof(math.Vertex3D{}))
 	total_size := uint64(vertexCount * vertex_size)
 
 	// Load the data.
@@ -746,7 +746,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 	// Index data, if applicable
 	if indexCount > 0 && len(indices) > 0 {
 		internalData.IndexCount = indexCount
-		internalData.IndexElementSize = 0 //sizeof(u32)
+		internalData.IndexElementSize = uint32(unsafe.Sizeof(uint32(1)))
 		total_size = uint64(indexCount * index_size)
 
 		if !vr.RenderBufferLoadRange(vr.context.ObjectIndexBuffer, internalData.IndexBufferOffset, total_size, indices) {
