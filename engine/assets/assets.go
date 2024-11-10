@@ -60,6 +60,7 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	// Register loaders
 	am.registerLoader(metadata.ResourceTypeShader, &loaders.ShaderLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.TextureLoader{})
+	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 
 	return nil
 }
@@ -106,8 +107,12 @@ func (am *AssetManager) LoadAsset(filename string, resourceType metadata.Resourc
 	var path string
 	switch resourceType {
 	case metadata.ResourceTypeShader:
-		core.LogDebug("shader")
 		path = fmt.Sprintf("assets/shaders/%s.shadercfg", filename)
+	case metadata.ResourceTypeBinary:
+		path = fmt.Sprintf("assets/%s", filename)
+		params = map[string]string{
+			"name": filename,
+		}
 	default:
 		err := fmt.Errorf("unknown resource type")
 		return nil, err
@@ -232,6 +237,8 @@ func determineAssetType(path string) metadata.ResourceType {
 		return metadata.ResourceTypeTexture
 	case ".shadercfg":
 		return metadata.ResourceTypeShader
+	case ".spv":
+		return metadata.ResourceTypeBinary
 	case ".png", ".jpg":
 		return metadata.ResourceTypeImage
 	case ".kmt":

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/spaghettifunk/anima/engine"
+	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/testbed"
 )
 
@@ -22,6 +23,7 @@ func main() {
 	}
 
 	if err := engine.Initialize(); err != nil {
+		core.LogFatal(err.Error())
 		panic(err)
 	}
 

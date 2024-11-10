@@ -4,9 +4,12 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"hash/fnv"
+
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 func GetAlignedRange(offset, size, granularity uint64) *MemoryRange {
+	core.LogInfo("Values in GetAlignedRange are - offset: %d, size: %d and granularity: %d", offset, size, granularity)
 	m := &MemoryRange{
 		Offset: GetAligned(offset, granularity),
 		Size:   GetAligned(size, granularity),
@@ -15,7 +18,9 @@ func GetAlignedRange(offset, size, granularity uint64) *MemoryRange {
 }
 
 func GetAligned(operand, granularity uint64) uint64 {
-	return (operand + (granularity - 1)) & ^(granularity - 1)
+	val := (operand + (granularity - 1)) &^ (granularity - 1)
+	core.LogInfo("the value of GetAligned with operand: %d and granularity %d is %d", operand, granularity, val)
+	return val
 }
 
 // Generate a fast FNV-1a hash as a string

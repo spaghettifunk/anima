@@ -1,5 +1,7 @@
 package metadata
 
+import "fmt"
+
 /** @brief Determines face culling mode during rendering. */
 type FaceCullMode int
 
@@ -13,3 +15,19 @@ const (
 	/** @brief Both front and back faces are culled. */
 	FaceCullModeFrontAndBack FaceCullMode = 0x3
 )
+
+func CullModeFromString(s string) (FaceCullMode, error) {
+	if s == "front" {
+		return FaceCullModeFront, nil
+	}
+	if s == "back" {
+		return FaceCullModeBack, nil
+	}
+	if s == "front_and_back" {
+		return FaceCullModeFrontAndBack, nil
+	}
+	if s == "none" {
+		return FaceCullModeNone, nil
+	}
+	return 0, fmt.Errorf("string %s is not a valid face cull mode", s)
+}

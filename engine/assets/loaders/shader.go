@@ -3,6 +3,7 @@ package loaders
 import (
 	"fmt"
 	"os"
+	"unsafe"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -13,6 +14,7 @@ type ShaderLoader struct{}
 type tmpShaderConfig struct {
 	Version     string      `toml:"version"`
 	Name        string      `toml:"name"`
+	CullMode    string      `toml:"cull_mode"`
 	Renderpass  string      `toml:"renderpass"`
 	Stages      []string    `toml:"stages"`
 	StageFiles  []string    `toml:"stagefiles"`
@@ -55,25 +57,62 @@ func (config *tmpShaderConfig) Validate() error {
 }
 
 func (config *tmpShaderConfig) TransformToShaderConfig() (*metadata.ShaderConfig, error) {
-	shaderCfg := metadata.ShaderConfig{
+	shaderCfg := &metadata.ShaderConfig{
 		Name:           config.Name,
 		RenderpassName: config.Renderpass,
 		StageNames:     config.StageFiles,
 		StageFilenames: config.StageFiles,
 	}
 
-	attributes := make([]*metadata.ShaderAttributeConfig, len(config.Attributes))
-	for _, att := range config.Attributes {
-		a := &metadata.ShaderAttributeConfig{
-			Name: att.Name,			
+	stages := make([]metadata.ShaderStage, len(config.Stages))
+	for i, st := range config.Stages {
+		s, err := metadata.ShaderStageFromString(st)
+		if err != nil {
+			return nil, err
 		}
+		stages[i] = s
+	}
+	shaderCfg.Stages = stages
 
-		
+	attributes := make([]*metadata.ShaderAttributeConfig, len(config.Attributes))
+	for i, att := range config.Attributes {
+		t, size, err := metadata.ShaderAttributeTypeFromString(att.Type)
+		if err != nil {
+			return nil, err
+		}
+		attributes[i] = &metadata.ShaderAttributeConfig{
+			Name:                att.Name,
+			ShaderAttributeType: t,
+			Size:                size,
+		}
+	}
+	shaderCfg.Attributes = attributes
 
-		attributes = append(attributes, a)
+	uniforms := make([]*metadata.ShaderUniformConfig, len(config.Uniforms))
+	for i, unif := range config.Uniforms {
+		t, size, err := metadata.ShaderUniformTypeFromString(unif.Type)
+		if err != nil {
+			return nil, err
+		}
+		uniforms[i] = &metadata.ShaderUniformConfig{
+			Name:              unif.Name,
+			Size:              size,
+			ShaderUniformType: t,
+			Location:          0,
+			Scope:             metadata.ShaderScope(unif.Scope),
+		}
+	}
+	shaderCfg.Uniforms = uniforms
+
+	if config.CullMode != "" {
+		cm, err := metadata.CullModeFromString(config.CullMode)
+		if err != nil {
+			return nil, err
+		}
+		shaderCfg.CullMode = cm
 	}
 
-	return &shaderCfg, nil
+	return shaderCfg, nil
 }
 
 func (sl *ShaderLoader) Load(path string, assetType metadata.ResourceType, params interface{}) (*metadata.Resource, error) {
@@ -100,9 +139,9 @@ func (sl *ShaderLoader) Load(path string, assetType metadata.ResourceType, param
 	return &metadata.Resource{
 		Name:     shaderCfg.Name,
 		FullPath: path,
-		DataSize: uint64(len(cfg)),
+		DataSize: uint64(unsafe.Sizeof(shaderCfg)),
 		Data:     shaderCfg,
-	}, nil // or return a struct wrapping the shader binary data
+	}, nil
 }
 
 func (sl *ShaderLoader) Unload(resource *metadata.Resource) error {

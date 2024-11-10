@@ -109,11 +109,12 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	shader.PushConstantRangeCount = 0
 	shader.BoundInstanceID = metadata.InvalidID
 	shader.AttributeStride = 0
+	shader.UniformLookup = make(map[string]uint16)
 
 	// Setup arrays
-	shader.GlobalTextureMaps = make([]*metadata.TextureMap, 1)
-	shader.Uniforms = make([]metadata.ShaderUniform, 1)
-	shader.Attributes = make([]metadata.ShaderAttribute, 1)
+	shader.GlobalTextureMaps = make([]*metadata.TextureMap, shaderSystem.Config.MaxGlobalTextures)
+	shader.Uniforms = []metadata.ShaderUniform{}
+	shader.Attributes = []metadata.ShaderAttribute{}
 
 	// A running total of the actual global uniform buffer object size.
 	shader.GlobalUboSize = 0
@@ -149,6 +150,10 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 
 	// Process uniforms
 	for i := 0; i < len(config.Uniforms); i++ {
+		_, ok := shader.UniformLookup[config.Uniforms[i].Name]
+		if !ok {
+			shader.UniformLookup[config.Uniforms[i].Name] = metadata.InvalidIDUint16
+		}
 		if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
 			shaderSystem.addSampler(shader, config.Uniforms[i])
 		} else {

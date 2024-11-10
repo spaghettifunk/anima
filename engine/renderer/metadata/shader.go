@@ -119,7 +119,7 @@ type Shader struct {
 	/** @brief The number of push constant ranges. */
 	PushConstantRangeCount uint8
 	/** @brief An array of push constant ranges. */
-	PushConstantRanges [32]*MemoryRange
+	PushConstantRanges []*MemoryRange
 	/** @brief The size of all attributes combined, a.k.a. the size of a vertex. */
 	AttributeStride uint16
 
@@ -140,6 +140,22 @@ const (
 	ShaderStageCompute  ShaderStage = 0x0000008
 )
 
+func ShaderStageFromString(s string) (ShaderStage, error) {
+	if s == "vert" || s == "vertex" {
+		return ShaderStageVertex, nil
+	}
+	if s == "geom" || s == "geometry" {
+		return ShaderStageGeometry, nil
+	}
+	if s == "comp" || s == "compute" {
+		return ShaderStageCompute, nil
+	}
+	if s == "frag" || s == "fragment" {
+		return ShaderStageFragment, nil
+	}
+	return 0, fmt.Errorf("string %s is not a valid shader stage", s)
+}
+
 /** @brief Available attribute types. */
 type ShaderAttributeType uint
 
@@ -157,41 +173,41 @@ const (
 	ShaderAttribTypeUint32    ShaderAttributeType = 10
 )
 
-func ShaderAttributeTypeFromString(s string) (ShaderAttributeType, error) {
-	if s == "" {
-		return ShaderAttribTypeFloat32, nil
+func ShaderAttributeTypeFromString(s string) (ShaderAttributeType, uint8, error) {
+	if s == "f32" {
+		return ShaderAttribTypeFloat32, 4, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeFloat32_2, nil
+	if s == "vec2" {
+		return ShaderAttribTypeFloat32_2, 8, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeFloat32_3, nil
+	if s == "vec3" {
+		return ShaderAttribTypeFloat32_3, 12, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeFloat32_4, nil
+	if s == "vec4" {
+		return ShaderAttribTypeFloat32_4, 16, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeMatrix4, nil
+	// if s == "mat4" {
+	// 	return ShaderAttribTypeMatrix4, nil
+	// }
+	if s == "i8" {
+		return ShaderAttribTypeInt8, 1, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeInt8, nil
+	if s == "u8" {
+		return ShaderAttribTypeUint8, 1, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeUint8, nil
+	if s == "i16" {
+		return ShaderAttribTypeInt16, 2, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeInt16, nil
+	if s == "u16" {
+		return ShaderAttribTypeUint16, 2, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeUint16, nil
+	if s == "i32" {
+		return ShaderAttribTypeInt32, 4, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeInt32, nil
+	if s == "u32" {
+		return ShaderAttribTypeUint32, 4, nil
 	}
-	if s == "" {
-		return ShaderAttribTypeUint32, nil
-	}
-	return 0, fmt.Errorf("string %s is not a valid ShaderAttribType", s)
+	return 0, 0, fmt.Errorf("string %s is not a valid ShaderAttribType", s)
 }
 
 /** @brief Available uniform types. */
@@ -213,47 +229,44 @@ const (
 	ShaderUniformTypeCustom    ShaderUniformType = 255
 )
 
-func ShaderUniformTypeFromString(s string) (ShaderUniformType, error) {
-	if s == "" {
-		return ShaderUniformTypeFloat32, nil
+func ShaderUniformTypeFromString(s string) (ShaderUniformType, uint8, error) {
+	if s == "f32" {
+		return ShaderUniformTypeFloat32, 4, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeFloat32_2, nil
+	if s == "vec2" {
+		return ShaderUniformTypeFloat32_2, 8, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeFloat32_3, nil
+	if s == "vec3" {
+		return ShaderUniformTypeFloat32_3, 12, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeFloat32_4, nil
+	if s == "vec4" {
+		return ShaderUniformTypeFloat32_4, 16, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeInt8, nil
+	if s == "i8" {
+		return ShaderUniformTypeInt8, 1, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeUint8, nil
+	if s == "u8" {
+		return ShaderUniformTypeUint8, 1, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeInt16, nil
+	if s == "i16" {
+		return ShaderUniformTypeInt16, 2, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeUint16, nil
+	if s == "u16" {
+		return ShaderUniformTypeUint16, 2, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeInt32, nil
+	if s == "i32" {
+		return ShaderUniformTypeInt32, 4, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeUint32, nil
+	if s == "u32" {
+		return ShaderUniformTypeUint32, 4, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeMatrix4, nil
+	if s == "mat4" {
+		return ShaderUniformTypeMatrix4, 64, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeSampler, nil
+	if s == "samp" || s == "sampler" {
+		return ShaderUniformTypeSampler, 0, nil
 	}
-	if s == "" {
-		return ShaderUniformTypeCustom, nil
-	}
-	return 0, fmt.Errorf("string %s is not a valid ShaderUniformType", s)
+	return 0, 0, fmt.Errorf("string %s is not a valid ShaderUniformType", s)
 }
 
 /**
@@ -312,7 +325,7 @@ type ShaderConfig struct {
 	/** @brief The name of the renderpass used by this shader. */
 	RenderpassName string
 	/** @brief The collection of stages. */
-	Stages []*ShaderStage
+	Stages []ShaderStage
 	/** @brief The collection of stage names. Must align with stages array. */
 	StageNames []string
 	/** @brief The collection of stage file names to be loaded (one per stage). Must align with stages array. */

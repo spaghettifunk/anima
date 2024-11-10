@@ -203,8 +203,8 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		}
 
 		var dbg vk.DebugReportCallback
-		if err := vk.Error(vk.CreateDebugReportCallback(vr.context.Instance, &debugCreateInfo, nil, &dbg)); err != nil {
-			core.LogError("vk.CreateDebugReportCallback failed with %s", err)
+		if result := vk.CreateDebugReportCallback(vr.context.Instance, &debugCreateInfo, nil, &dbg); !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("vk.CreateDebugReportCallback failed with %s", VulkanResultString(result, true))
 			return err
 		}
 		vr.context.debugMessenger = dbg
@@ -1254,15 +1254,21 @@ func (vr *VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass {
 }
 
 func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stageCount uint8, stageFilenames []string, stages []metadata.ShaderStage) bool {
-	// shader := &metadata.Shader{
-	// 	// GlobalTextureMaps:  []*metadata.TextureMap{},
-	// 	// Uniforms:           []metadata.ShaderUniform{},
-	// 	// Attributes:         []metadata.ShaderAttribute{},
-	// 	// PushConstantRanges: [32]*metadata.MemoryRange{},
-	// 	// UniformLookup:      make(map[string]uint16),
-	// 	InternalData: &VulkanShader{},
-	// }
-	shader.InternalData = &VulkanShader{}
+	shader.InternalData = &VulkanShader{
+		Config: &VulkanShaderConfig{
+			PoolSizes:      make([]vk.DescriptorPoolSize, 2),
+			DescriptorSets: make([]*VulkanDescriptorSetConfig, 2),
+			Attributes:     make([]vk.VertexInputAttributeDescription, len(config.Attributes)),
+			Stages:         make([]VulkanShaderStageConfig, len(config.Stages)),
+		},
+		Renderpass:           &VulkanRenderPass{},
+		DescriptorSetLayouts: []vk.DescriptorSetLayout{},
+		Stages:               []*VulkanShaderStage{},
+		GlobalDescriptorSets: []vk.DescriptorSet{},
+		UniformBuffer:        &metadata.RenderBuffer{},
+		Pipeline:             &VulkanPipeline{},
+		InstanceStates:       make([]*VulkanShaderInstanceState, 1024),
+	}
 
 	// Translate stages
 	vkStages := make([]vk.ShaderStageFlags, VULKAN_SHADER_MAX_STAGES)
@@ -1290,21 +1296,20 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	// Take a copy of the pointer to the context.
 	outShader := shader.InternalData.(*VulkanShader)
 
+	// initialize descriptorsets
+	for i := range outShader.Config.DescriptorSets {
+		outShader.Config.DescriptorSets[i] = &VulkanDescriptorSetConfig{
+			Bindings: []vk.DescriptorSetLayoutBinding{},
+		}
+	}
+
 	outShader.Renderpass = pass.InternalData.(*VulkanRenderPass)
 
 	// Build out the configuration.
 	outShader.Config.MaxDescriptorSetCount = maxDescriptorAllocateCount
 
-	// Shader stages. Parse out the flags.
-	outShader.Config.StageCount = 0
 	// Iterate provided stages.
 	for i := uint8(0); i < stageCount; i++ {
-		// Make sure there is room enough to add the stage.
-		if outShader.Config.StageCount+1 > uint8(VULKAN_SHADER_MAX_STAGES) {
-			core.LogError("Shaders may have a maximum of %d stages", VULKAN_SHADER_MAX_STAGES)
-			return false
-		}
-
 		// Make sure the stage is a supported one.
 		var stageFlag vk.ShaderStageFlagBits
 		switch stages[i] {
@@ -1319,9 +1324,8 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 		}
 
 		// Set the stage and bump the counter.
-		outShader.Config.Stages[outShader.Config.StageCount].Stage = stageFlag
-		outShader.Config.Stages[outShader.Config.StageCount].FileName = stageFilenames[i]
-		outShader.Config.StageCount++
+		outShader.Config.Stages[i].Stage = stageFlag
+		outShader.Config.Stages[i].FileName = stageFilenames[i]
 	}
 
 	// Zero out arrays and counts.
@@ -1359,67 +1363,88 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	outShader.Config.PoolSizes[1] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeCombinedImageSampler, DescriptorCount: 4096} // HACK: max number of image sampler descriptor sets.
 
 	// Global descriptor set Config.
+	descriptorSetCount := 0
 	if outShader.GlobalUniformCount > 0 || outShader.GlobalUniformSamplerCount > 0 {
 		// Global descriptor set Config.
-		setConfig := outShader.Config.DescriptorSets[outShader.Config.DescriptorSetCount]
+		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
+
+		if len(setConfig.Bindings) == 0 {
+			// we do not know the size in advance
+			setConfig.Bindings = make([]vk.DescriptorSetLayoutBinding, 1)
+		}
 
 		// Global UBO binding is first, if present.
 		if outShader.GlobalUniformCount > 0 {
-			binding_index := setConfig.BindingCount
-			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
-			setConfig.Bindings[binding_index].DescriptorCount = 1
-			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeUniformBuffer
-			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
+				Binding:         uint32(setConfig.BindingCount),
+				DescriptorCount: 1,
+				DescriptorType:  vk.DescriptorTypeUniformBuffer,
+				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+			}
 			setConfig.BindingCount++
 		}
 
 		// Add a binding for Samplers if used.
 		if outShader.GlobalUniformSamplerCount > 0 {
-			binding_index := setConfig.BindingCount
-			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
-			setConfig.Bindings[binding_index].DescriptorCount = uint32(outShader.GlobalUniformSamplerCount) // One descriptor per sampler.
-			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeCombinedImageSampler
-			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
-			setConfig.SamplerBindingIndex = binding_index
+			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
+				Binding:         uint32(setConfig.BindingCount),
+				DescriptorCount: uint32(outShader.GlobalUniformSamplerCount), // One descriptor per sampler.
+				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
+				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+			}
+			setConfig.SamplerBindingIndex = setConfig.BindingCount
 			setConfig.BindingCount++
 		}
 
 		// Increment the set counter.
-		outShader.Config.DescriptorSetCount++
+		descriptorSetCount++
 	}
 
 	// If using instance uniforms, add a UBO descriptor set.
 	if outShader.InstanceUniformCount > 0 || outShader.InstanceUniformSamplerCount > 0 {
 		// In that set, add a binding for UBO if used.
-		setConfig := outShader.Config.DescriptorSets[outShader.Config.DescriptorSetCount]
+		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
+
+		if len(setConfig.Bindings) == 0 {
+			// we do not know the size in advance
+			setConfig.Bindings = make([]vk.DescriptorSetLayoutBinding, 1)
+		}
 
 		if outShader.InstanceUniformCount > 0 {
-			binding_index := setConfig.BindingCount
-			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
-			setConfig.Bindings[binding_index].DescriptorCount = 1
-			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeUniformBuffer
-			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
+			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
+				Binding:         uint32(setConfig.BindingCount),
+				DescriptorCount: 1,
+				DescriptorType:  vk.DescriptorTypeUniformBuffer,
+				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+			}
 			setConfig.BindingCount++
 		}
 
 		// Add a binding for Samplers if used.
 		if outShader.InstanceUniformSamplerCount > 0 {
-			binding_index := setConfig.BindingCount
-			setConfig.Bindings[binding_index].Binding = uint32(binding_index)
-			setConfig.Bindings[binding_index].DescriptorCount = uint32(outShader.InstanceUniformSamplerCount) // One descriptor per sampler.
-			setConfig.Bindings[binding_index].DescriptorType = vk.DescriptorTypeCombinedImageSampler
-			setConfig.Bindings[binding_index].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
-			setConfig.SamplerBindingIndex = binding_index
+			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
+				Binding:         uint32(setConfig.BindingCount),
+				DescriptorCount: uint32(outShader.InstanceUniformSamplerCount), // One descriptor per sampler.
+				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
+				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+			}
+			setConfig.SamplerBindingIndex = setConfig.BindingCount
 			setConfig.BindingCount++
 		}
 
 		// Increment the set counter.
-		outShader.Config.DescriptorSetCount++
+		descriptorSetCount++
 	}
 
 	// Invalidate all instance states.
 	// TODO: dynamic
 	for i := 0; i < 1024; i++ {
+		if outShader.InstanceStates[i] == nil {
+			outShader.InstanceStates[i] = &VulkanShaderInstanceState{
+				ID: metadata.InvalidID,
+			}
+			continue
+		}
 		outShader.InstanceStates[i].ID = metadata.InvalidID
 	}
 
@@ -1441,7 +1466,7 @@ func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) {
 		vk_allocator := vr.context.Allocator
 
 		// Descriptor set layouts.
-		for i := uint32(0); i < uint32(shader.Config.DescriptorSetCount); i++ {
+		for i := 0; i < len(shader.Config.DescriptorSets); i++ {
 			if shader.DescriptorSetLayouts[i] != vk.NullDescriptorSetLayout {
 				vk.DestroyDescriptorSetLayout(logical_device, shader.DescriptorSetLayouts[i], vk_allocator)
 				shader.DescriptorSetLayouts[i] = nil
@@ -1462,7 +1487,7 @@ func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) {
 		shader.Pipeline.Destroy(vr.context)
 
 		// Shader modules
-		for i := 0; i < int(shader.Config.StageCount); i++ {
+		for i := 0; i < len(shader.Config.Stages); i++ {
 			vk.DestroyShaderModule(vr.context.Device.LogicalDevice, shader.Stages[i].Handle, vr.context.Allocator)
 		}
 
@@ -1496,7 +1521,10 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	// Create a module for each stage.
 	s.Stages = make([]*VulkanShaderStage, VULKAN_SHADER_MAX_STAGES)
 
-	for i := 0; i < len(s.Stages); i++ {
+	for i := 0; i < len(s.Config.Stages); i++ {
+		if s.Stages[i] == nil {
+			s.Stages[i] = &VulkanShaderStage{}
+		}
 		if err := vr.createModule(s, s.Config.Stages[i], s.Stages[i]); err != nil {
 			core.LogError("Unable to create %s shader module for '%s'. Shader will be destroyed", s.Config.Stages[i].FileName, shader.Name)
 			return err
@@ -1530,15 +1558,17 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	}
 
 	// Create descriptor pool.
-	result := vk.CreateDescriptorPool(logical_device, &pool_info, vk_allocator, &s.DescriptorPool)
+	var pDescriptorPool vk.DescriptorPool
+	result := vk.CreateDescriptorPool(logical_device, &pool_info, vk_allocator, &pDescriptorPool)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 		return err
 	}
+	s.DescriptorPool = pDescriptorPool
 
 	// Create descriptor set layouts.
 	s.DescriptorSetLayouts = make([]vk.DescriptorSetLayout, 2)
-	for i := uint32(0); i < uint32(s.Config.DescriptorSetCount); i++ {
+	for i := 0; i < len(s.Config.DescriptorSets); i++ {
 		layout_info := vk.DescriptorSetLayoutCreateInfo{
 			SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
 			BindingCount: uint32(s.Config.DescriptorSets[i].BindingCount),
@@ -1575,8 +1605,8 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		},
 	}
 
-	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, VULKAN_SHADER_MAX_STAGES)
-	for i := uint32(0); i < uint32(s.Config.StageCount); i++ {
+	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, len(s.Config.Stages))
+	for i := 0; i < len(s.Config.Stages); i++ {
 		stage_create_infos[i] = s.Stages[i].ShaderStageCreateInfo
 	}
 
@@ -1584,11 +1614,11 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		vr.context,
 		s.Renderpass,
 		uint32(shader.AttributeStride),
-		uint32(len(shader.Attributes)),
+		uint32(len(s.Config.Attributes)),
 		s.Config.Attributes, // shader.attributes,
-		uint32(s.Config.DescriptorSetCount),
+		uint32(len(s.DescriptorSetLayouts)),
 		s.DescriptorSetLayouts,
-		uint32(len(s.Config.Stages)),
+		uint32(len(stage_create_infos)),
 		stage_create_infos,
 		viewport,
 		scissor,
@@ -1596,7 +1626,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		false,
 		true,
 		uint32(shader.PushConstantRangeCount),
-		shader.PushConstantRanges[:],
+		shader.PushConstantRanges,
 	)
 	s.Pipeline = pipeline
 
@@ -1606,6 +1636,8 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	}
 
 	// Grab the UBO alignment requirement from the device.
+	vr.context.Device.Properties.Deref()
+	vr.context.Device.Properties.Limits.Deref()
 	shader.RequiredUboAlignment = uint64(vr.context.Device.Properties.Limits.MinUniformBufferOffsetAlignment)
 
 	// Make sure the UBO is aligned according to device requirements.
@@ -1665,25 +1697,30 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShader
 
 	shader_stage.CreateInfo = vk.ShaderModuleCreateInfo{
 		SType:    vk.StructureTypeShaderModuleCreateInfo,
-		CodeSize: binary_resource.DataSize,
+		CodeSize: binary_resource.DataSize * 4,
 		PCode:    binary_resource.Data.([]uint32),
 	}
 
-	result := vk.CreateShaderModule(vr.context.Device.LogicalDevice, &shader_stage.CreateInfo, vr.context.Allocator, &shader_stage.Handle)
+	var shaderModule vk.ShaderModule
+	result := vk.CreateShaderModule(vr.context.Device.LogicalDevice, &shader_stage.CreateInfo, vr.context.Allocator, &shaderModule)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return err
 	}
+	shader_stage.Handle = shaderModule
 
 	// Release the resource.
 	vr.assetManager.UnloadAsset(binary_resource)
 
 	// Shader stage info
 	shader_stage.ShaderStageCreateInfo = vk.PipelineShaderStageCreateInfo{
-		SType:  vk.StructureTypePipelineShaderStageCreateInfo,
-		Stage:  config.Stage,
-		Module: shader_stage.Handle,
-		PName:  "main",
+		SType:               vk.StructureTypePipelineShaderStageCreateInfo,
+		Stage:               config.Stage,
+		Module:              shader_stage.Handle,
+		PName:               VulkanSafeString("main"),
+		PSpecializationInfo: nil,
+		PNext:               vk.NullHandle,
+		Flags:               0,
 	}
 
 	return nil

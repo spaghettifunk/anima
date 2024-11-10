@@ -120,7 +120,6 @@ func NewGraphicsPipeline(
 	}
 
 	// Dynamic state
-	dynamic_state_count := uint32(3)
 	dynamic_states := []vk.DynamicState{
 		vk.DynamicStateViewport,
 		vk.DynamicStateScissor,
@@ -129,7 +128,7 @@ func NewGraphicsPipeline(
 
 	dynamic_state_create_info := vk.PipelineDynamicStateCreateInfo{
 		SType:             vk.StructureTypePipelineDynamicStateCreateInfo,
-		DynamicStateCount: dynamic_state_count,
+		DynamicStateCount: uint32(len(dynamic_states)),
 		PDynamicStates:    dynamic_states,
 	}
 
@@ -158,7 +157,9 @@ func NewGraphicsPipeline(
 
 	// Pipeline layout
 	pipeline_layout_create_info := vk.PipelineLayoutCreateInfo{
-		SType: vk.StructureTypePipelineLayoutCreateInfo,
+		SType:          vk.StructureTypePipelineLayoutCreateInfo,
+		SetLayoutCount: descriptor_set_layout_count,
+		PSetLayouts:    descriptor_set_layouts,
 	}
 
 	// Push constants
@@ -182,20 +183,18 @@ func NewGraphicsPipeline(
 		pipeline_layout_create_info.PPushConstantRanges = nil
 	}
 
-	// Descriptor set layouts
-	pipeline_layout_create_info.SetLayoutCount = descriptor_set_layout_count
-	pipeline_layout_create_info.PSetLayouts = descriptor_set_layouts
-
 	// Create the pipeline layout.
+	var pPipelineLayout vk.PipelineLayout
 	result := vk.CreatePipelineLayout(
 		context.Device.LogicalDevice,
 		&pipeline_layout_create_info,
 		context.Allocator,
-		&out_pipeline.PipelineLayout)
+		&pPipelineLayout)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("vkCreatePipelineLayout failed with %s", VulkanResultString(result, true))
 		return nil, err
 	}
+	out_pipeline.PipelineLayout = pPipelineLayout
 
 	// Pipeline create
 	pipeline_create_info := vk.GraphicsPipelineCreateInfo{
@@ -214,7 +213,7 @@ func NewGraphicsPipeline(
 		Layout:              out_pipeline.PipelineLayout,
 		RenderPass:          renderpass.Handle,
 		Subpass:             0,
-		BasePipelineHandle:  vk.Pipeline(vk.NullHandle),
+		BasePipelineHandle:  vk.NullPipeline,
 		BasePipelineIndex:   -1,
 	}
 
@@ -224,7 +223,7 @@ func NewGraphicsPipeline(
 
 	result = vk.CreateGraphicsPipelines(
 		context.Device.LogicalDevice,
-		vk.PipelineCache(vk.NullHandle),
+		vk.NullPipelineCache,
 		1,
 		[]vk.GraphicsPipelineCreateInfo{pipeline_create_info},
 		context.Allocator,
