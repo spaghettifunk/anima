@@ -1279,10 +1279,10 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 		case metadata.ShaderStageVertex:
 			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageVertexBit)
 		case metadata.ShaderStageGeometry:
-			core.LogWarn("vulkan_renderer_shader_create: VK_SHADER_STAGE_GEOMETRY_BIT is set but not yet supported.")
+			core.LogWarn("func ShaderCreate: VK_SHADER_STAGE_GEOMETRY_BIT is set but not yet supported.")
 			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageGeometryBit)
 		case metadata.ShaderStageCompute:
-			core.LogWarn("vulkan_renderer_shader_create: SHADER_STAGE_COMPUTE is set but not yet supported.")
+			core.LogWarn("func ShaderCreate: SHADER_STAGE_COMPUTE is set but not yet supported.")
 			vkStages[i] = vk.ShaderStageFlags(vk.ShaderStageComputeBit)
 		default:
 			core.LogError("Unsupported stage type: %d", stages[i])
@@ -1299,7 +1299,7 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	// initialize descriptorsets
 	for i := range outShader.Config.DescriptorSets {
 		outShader.Config.DescriptorSets[i] = &VulkanDescriptorSetConfig{
-			Bindings: []vk.DescriptorSetLayoutBinding{},
+			Bindings: make([]vk.DescriptorSetLayoutBinding, VULKAN_SHADER_MAX_BINDINGS),
 		}
 	}
 
@@ -1338,6 +1338,7 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	outShader.InstanceUniformCount = 0
 	outShader.InstanceUniformSamplerCount = 0
 	outShader.LocalUniformCount = 0
+
 	totalCount := len(config.Uniforms)
 	for i := 0; i < totalCount; i++ {
 		switch config.Uniforms[i].Scope {
@@ -1362,17 +1363,18 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	outShader.Config.PoolSizes[0] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeUniformBuffer, DescriptorCount: 1024}        // HACK: max number of ubo descriptor sets.
 	outShader.Config.PoolSizes[1] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeCombinedImageSampler, DescriptorCount: 4096} // HACK: max number of image sampler descriptor sets.
 
+	outShader.Config.PoolSizes[0].Deref()
+	outShader.Config.PoolSizes[1].Deref()
+
 	// Global descriptor set Config.
 	descriptorSetCount := 0
 	if outShader.GlobalUniformCount > 0 || outShader.GlobalUniformSamplerCount > 0 {
 		// Global descriptor set Config.
 		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
-
 		if len(setConfig.Bindings) == 0 {
 			// we do not know the size in advance
-			setConfig.Bindings = make([]vk.DescriptorSetLayoutBinding, 1)
+			setConfig.Bindings = []vk.DescriptorSetLayoutBinding{{}}
 		}
-
 		// Global UBO binding is first, if present.
 		if outShader.GlobalUniformCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
@@ -1381,9 +1383,9 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 				DescriptorType:  vk.DescriptorTypeUniformBuffer,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
+			setConfig.Bindings[setConfig.BindingCount].Deref()
 			setConfig.BindingCount++
 		}
-
 		// Add a binding for Samplers if used.
 		if outShader.GlobalUniformSamplerCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
@@ -1392,10 +1394,10 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
+			setConfig.Bindings[setConfig.BindingCount].Deref()
 			setConfig.SamplerBindingIndex = setConfig.BindingCount
 			setConfig.BindingCount++
 		}
-
 		// Increment the set counter.
 		descriptorSetCount++
 	}
@@ -1404,7 +1406,6 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	if outShader.InstanceUniformCount > 0 || outShader.InstanceUniformSamplerCount > 0 {
 		// In that set, add a binding for UBO if used.
 		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
-
 		if len(setConfig.Bindings) == 0 {
 			// we do not know the size in advance
 			setConfig.Bindings = make([]vk.DescriptorSetLayoutBinding, 1)
@@ -1417,9 +1418,9 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 				DescriptorType:  vk.DescriptorTypeUniformBuffer,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
+			setConfig.Bindings[setConfig.BindingCount].Deref()
 			setConfig.BindingCount++
 		}
-
 		// Add a binding for Samplers if used.
 		if outShader.InstanceUniformSamplerCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
@@ -1428,10 +1429,10 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
+			setConfig.Bindings[setConfig.BindingCount].Deref()
 			setConfig.SamplerBindingIndex = setConfig.BindingCount
 			setConfig.BindingCount++
 		}
-
 		// Increment the set counter.
 		descriptorSetCount++
 	}
@@ -1541,6 +1542,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 			Offset:   offset,
 			Format:   shaderAttributeFormats[shader.Attributes[i].ShaderUniformAttributeType],
 		}
+		attribute.Deref()
 
 		// Push into the config's attribute collection and add to the stride.
 		s.Config.Attributes[i] = attribute
@@ -1556,6 +1558,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		MaxSets:       uint32(s.Config.MaxDescriptorSetCount),
 		Flags:         vk.DescriptorPoolCreateFlags(vk.DescriptorPoolCreateFreeDescriptorSetBit),
 	}
+	pool_info.Deref()
 
 	// Create descriptor pool.
 	var pDescriptorPool vk.DescriptorPool
@@ -1574,11 +1577,15 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 			BindingCount: uint32(s.Config.DescriptorSets[i].BindingCount),
 			PBindings:    s.Config.DescriptorSets[i].Bindings,
 		}
-		result = vk.CreateDescriptorSetLayout(logical_device, &layout_info, vk_allocator, &s.DescriptorSetLayouts[i])
+		layout_info.Deref()
+
+		var pSetLayout vk.DescriptorSetLayout
+		result = vk.CreateDescriptorSetLayout(logical_device, &layout_info, vk_allocator, &pSetLayout)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 			return err
 		}
+		s.DescriptorSetLayouts[i] = pSetLayout
 	}
 
 	// TODO: This feels wrong to have these here, at least in this fashion. Should probably
@@ -1592,6 +1599,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		MinDepth: 0.0,
 		MaxDepth: 1.0,
 	}
+	viewport.Deref()
 
 	// Scissor
 	scissor := vk.Rect2D{
@@ -1604,10 +1612,12 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 			Height: vr.context.FramebufferHeight,
 		},
 	}
+	scissor.Deref()
 
 	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, len(s.Config.Stages))
 	for i := 0; i < len(s.Config.Stages); i++ {
 		stage_create_infos[i] = s.Stages[i].ShaderStageCreateInfo
+		stage_create_infos[i].Deref()
 	}
 
 	pipeline, err := NewGraphicsPipeline(
@@ -1675,6 +1685,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		DescriptorSetCount: 3,
 		PSetLayouts:        global_layouts,
 	}
+	alloc_info.Deref()
 
 	s.GlobalDescriptorSets = make([]vk.DescriptorSet, 3)
 	for _, gds := range s.GlobalDescriptorSets {

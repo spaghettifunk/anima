@@ -46,6 +46,7 @@ func NewGraphicsPipeline(
 		ScissorCount:  1,
 		PScissors:     []vk.Rect2D{scissor},
 	}
+	viewport_state.Deref()
 
 	// Rasterizer
 	rasterizer_create_info := vk.PipelineRasterizationStateCreateInfo{
@@ -75,6 +76,7 @@ func NewGraphicsPipeline(
 	rasterizer_create_info.DepthBiasConstantFactor = 0.0
 	rasterizer_create_info.DepthBiasClamp = 0.0
 	rasterizer_create_info.DepthBiasSlopeFactor = 0.0
+	rasterizer_create_info.Deref()
 
 	// Multisampling.
 	multisampling_create_info := vk.PipelineMultisampleStateCreateInfo{
@@ -86,6 +88,7 @@ func NewGraphicsPipeline(
 		AlphaToCoverageEnable: vk.False,
 		AlphaToOneEnable:      vk.False,
 	}
+	multisampling_create_info.Deref()
 
 	// Depth and stencil testing.
 	depth_stencil := vk.PipelineDepthStencilStateCreateInfo{
@@ -98,6 +101,7 @@ func NewGraphicsPipeline(
 		depth_stencil.DepthBoundsTestEnable = vk.False
 		depth_stencil.StencilTestEnable = vk.False
 	}
+	depth_stencil.Deref()
 
 	color_blend_attachment_state := vk.PipelineColorBlendAttachmentState{
 		BlendEnable:         vk.True,
@@ -110,6 +114,7 @@ func NewGraphicsPipeline(
 		ColorWriteMask: vk.ColorComponentFlags(vk.ColorComponentRBit) | vk.ColorComponentFlags(vk.ColorComponentGBit) |
 			vk.ColorComponentFlags(vk.ColorComponentBBit) | vk.ColorComponentFlags(vk.ColorComponentABit),
 	}
+	color_blend_attachment_state.Deref()
 
 	color_blend_state_create_info := vk.PipelineColorBlendStateCreateInfo{
 		SType:           vk.StructureTypePipelineColorBlendStateCreateInfo,
@@ -118,6 +123,7 @@ func NewGraphicsPipeline(
 		AttachmentCount: 1,
 		PAttachments:    []vk.PipelineColorBlendAttachmentState{color_blend_attachment_state},
 	}
+	color_blend_state_create_info.Deref()
 
 	// Dynamic state
 	dynamic_states := []vk.DynamicState{
@@ -131,6 +137,7 @@ func NewGraphicsPipeline(
 		DynamicStateCount: uint32(len(dynamic_states)),
 		PDynamicStates:    dynamic_states,
 	}
+	dynamic_state_create_info.Deref()
 
 	// Vertex input
 	binding_description := vk.VertexInputBindingDescription{
@@ -138,6 +145,7 @@ func NewGraphicsPipeline(
 		Stride:    stride,
 		InputRate: vk.VertexInputRateVertex, // Move to next data entry for each vertex.
 	}
+	binding_description.Deref()
 
 	// Attributes
 	vertex_input_info := vk.PipelineVertexInputStateCreateInfo{
@@ -147,6 +155,7 @@ func NewGraphicsPipeline(
 		VertexAttributeDescriptionCount: attribute_count,
 		PVertexAttributeDescriptions:    attributes,
 	}
+	vertex_input_info.Deref()
 
 	// Input assembly
 	input_assembly := vk.PipelineInputAssemblyStateCreateInfo{
@@ -154,6 +163,7 @@ func NewGraphicsPipeline(
 		Topology:               vk.PrimitiveTopologyTriangleList,
 		PrimitiveRestartEnable: vk.False,
 	}
+	input_assembly.Deref()
 
 	// Pipeline layout
 	pipeline_layout_create_info := vk.PipelineLayoutCreateInfo{
@@ -175,6 +185,7 @@ func NewGraphicsPipeline(
 			ranges[i].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
 			ranges[i].Offset = uint32(push_constant_ranges[i].Offset)
 			ranges[i].Size = uint32(push_constant_ranges[i].Size)
+			ranges[i].Deref()
 		}
 		pipeline_layout_create_info.PushConstantRangeCount = push_constant_range_count
 		pipeline_layout_create_info.PPushConstantRanges = ranges
@@ -182,6 +193,7 @@ func NewGraphicsPipeline(
 		pipeline_layout_create_info.PushConstantRangeCount = 0
 		pipeline_layout_create_info.PPushConstantRanges = nil
 	}
+	pipeline_layout_create_info.Deref()
 
 	// Create the pipeline layout.
 	var pPipelineLayout vk.PipelineLayout
@@ -216,6 +228,7 @@ func NewGraphicsPipeline(
 		BasePipelineHandle:  vk.NullPipeline,
 		BasePipelineIndex:   -1,
 	}
+	pipeline_create_info.Deref()
 
 	if !depth_test_enabled {
 		pipeline_create_info.PDepthStencilState = nil

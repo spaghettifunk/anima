@@ -2,6 +2,7 @@ package systems
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
@@ -366,15 +367,11 @@ func (shaderSystem *ShaderSystem) BindInstance(instanceID uint32) bool {
 func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.ShaderAttributeConfig) bool {
 	size := uint32(0)
 	switch config.ShaderAttributeType {
-	case metadata.ShaderAttribTypeInt8:
-	case metadata.ShaderAttribTypeUint8:
+	case metadata.ShaderAttribTypeInt8, metadata.ShaderAttribTypeUint8:
 		size = 1
-	case metadata.ShaderAttribTypeInt16:
-	case metadata.ShaderAttribTypeUint16:
+	case metadata.ShaderAttribTypeInt16, metadata.ShaderAttribTypeUint16:
 		size = 2
-	case metadata.ShaderAttribTypeFloat32:
-	case metadata.ShaderAttribTypeInt32:
-	case metadata.ShaderAttribTypeUint32:
+	case metadata.ShaderAttribTypeFloat32, metadata.ShaderAttribTypeInt32, metadata.ShaderAttribTypeUint32:
 		size = 4
 	case metadata.ShaderAttribTypeFloat32_2:
 		size = 8
@@ -383,7 +380,7 @@ func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.Sh
 	case metadata.ShaderAttribTypeFloat32_4:
 		size = 16
 	default:
-		core.LogError("Unrecognized type %d, defaulting to size of 4. This probably is not what is desired.", size)
+		core.LogError("unrecognized type %d, defaulting to size of 4. This probably is not what is desired", size)
 		size = 4
 	}
 
@@ -512,13 +509,15 @@ func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_na
 	if scope != metadata.ShaderScopeLocal {
 		entry.SetIndex = uint8(scope)
 		entry.Offset = 0
-		entry.Size = 0
-		if is_global {
-			entry.Offset = shader.GlobalUboSize
-		} else {
-			entry.Offset = shader.UboSize
+		if !is_sampler {
+			if is_global {
+				entry.Offset = shader.GlobalUboSize
+			} else {
+				entry.Offset = shader.UboSize
+			}
 		}
-		if is_sampler {
+		entry.Size = 0
+		if !is_sampler {
 			entry.Size = uint16(size)
 		}
 	} else {
@@ -530,6 +529,9 @@ func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_na
 		entry.Size = uint16(r.Size)
 
 		// Track in configuration for use in initialization.
+		if len(shader.PushConstantRanges) == 0 {
+			shader.PushConstantRanges = make([]*metadata.MemoryRange, int(math.Max(1, float64(shader.PushConstantRangeCount))))
+		}
 		shader.PushConstantRanges[shader.PushConstantRangeCount] = r
 		shader.PushConstantRangeCount++
 
@@ -537,12 +539,7 @@ func (shaderSystem *ShaderSystem) uniformAdd(shader *metadata.Shader, uniform_na
 		shader.PushConstantSize += r.Size
 	}
 
-	id, ok := shader.UniformLookup[uniform_name]
-	if !ok {
-		core.LogError("Failed to add uniform.")
-		return false
-	}
-	entry.Index = id
+	shader.UniformLookup[uniform_name] = entry.Index
 	shader.Uniforms = append(shader.Uniforms, entry)
 
 	if !is_sampler {
