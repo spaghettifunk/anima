@@ -12,48 +12,28 @@ const (
 	EVENT_CODE_APPLICATION_QUIT EventCode = 0x01
 
 	// Keyboard key pressed.
-	/* Context usage:
-	 * u16 key_code = data.data.u16[0];
-	 */
 	EVENT_CODE_KEY_PRESSED EventCode = 0x02
 
 	// Keyboard key released.
-	/* Context usage:
-	 * u16 key_code = data.data.u16[0];
-	 */
 	EVENT_CODE_KEY_RELEASED EventCode = 0x03
 
 	// Mouse button pressed.
-	/* Context usage:
-	 * u16 button = data.data.u16[0];
-	 */
 	EVENT_CODE_BUTTON_PRESSED EventCode = 0x04
 
 	// Mouse button released.
-	/* Context usage:
-	 * u16 button = data.data.u16[0];
-	 */
 	EVENT_CODE_BUTTON_RELEASED EventCode = 0x05
 
 	// Mouse moved.
-	/* Context usage:
-	 * u16 x = data.data.u16[0];
-	 * u16 y = data.data.u16[1];
-	 */
 	EVENT_CODE_MOUSE_MOVED EventCode = 0x06
 
 	// Mouse moved.
-	/* Context usage:
-	 * u8 z_delta = data.data.u8[0];
-	 */
 	EVENT_CODE_MOUSE_WHEEL EventCode = 0x07
 
 	// Resized/resolution changed from the OS.
-	/* Context usage:
-	 * u16 width = data.data.u16[0];
-	 * u16 height = data.data.u16[1];
-	 */
 	EVENT_CODE_RESIZED EventCode = 0x08
+
+	// Change the render mode for debugging purposes.
+	EVENT_CODE_SET_RENDER_MODE EventCode = 0x0A
 
 	MAX_EVENT_CODE EventCode = 0xFF
 )

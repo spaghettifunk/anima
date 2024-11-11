@@ -21,6 +21,14 @@ type RendererBackendConfig struct {
 	OnRenderTargetRefreshRequired OnRenderTargetRefreshRequired
 }
 
+type RendererDebugViewMode uint32
+
+const (
+	RENDERER_VIEW_MODE_DEFAULT  RendererDebugViewMode = 0
+	RENDERER_VIEW_MODE_LIGHTING RendererDebugViewMode = 1
+	RENDERER_VIEW_MODE_NORMALS  RendererDebugViewMode = 2
+)
+
 /** @brief Represents a render target, which is used for rendering to a texture or set of textures. */
 type RenderTarget struct {
 	/** @brief Indicates if this render target should be updated on window resize. */
@@ -286,7 +294,7 @@ type RenderViewPacket struct {
 	/** @brief The number of geometries to be drawn. */
 	GeometryCount uint32
 	/** @brief The Geometries to be drawn. */
-	Geometries *GeometryRenderData
+	Geometries []*GeometryRenderData
 	/** @brief The name of the custom shader to use, if applicable. Otherwise 0. */
 	CustomShadername string
 	/** @brief Holds a pointer to freeform data, typically understood both by the object and consuming view. */

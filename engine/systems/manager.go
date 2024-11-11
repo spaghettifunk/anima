@@ -61,16 +61,16 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		return nil, err
 	}
 
-	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
-		MaxViewCount: 251,
-	}, renderer, ssys, cs)
+	ms, err := NewMaterialSystem(&MaterialSystemConfig{
+		MaxMaterialCount: 4096,
+	}, ssys, ts, am, renderer)
 	if err != nil {
 		return nil, err
 	}
 
-	ms, err := NewMaterialSystem(&MaterialSystemConfig{
-		MaxMaterialCount: 4096,
-	}, ssys, ts, am, renderer)
+	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
+		MaxViewCount: 251,
+	}, renderer, ssys, cs, ms)
 	if err != nil {
 		return nil, err
 	}

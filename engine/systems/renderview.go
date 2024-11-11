@@ -19,17 +19,17 @@ type RenderViewSystem struct {
 	MaxViewCount    uint32
 	RegisteredViews []*metadata.RenderView
 	// subsystems
-	renderer     *RendererSystem
-	shaderSystem *ShaderSystem
-	cameraSystem *CameraSystem
+	renderer       *RendererSystem
+	shaderSystem   *ShaderSystem
+	cameraSystem   *CameraSystem
+	materialSystem *MaterialSystem
 }
 
-func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shaderSystem *ShaderSystem, cs *CameraSystem) (*RenderViewSystem, error) {
+func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shaderSystem *ShaderSystem, cs *CameraSystem, ms *MaterialSystem) (*RenderViewSystem, error) {
 	if config.MaxViewCount == 0 {
 		core.LogError("render_view_system_initialize - config.MaxViewCount must be > 0.")
 		return nil, nil
 	}
-
 	rvs := &RenderViewSystem{
 		MaxViewCount:    uint32(config.MaxViewCount),
 		Lookup:          make(map[string]uint16, config.MaxViewCount),
@@ -37,6 +37,7 @@ func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shade
 		renderer:        r,
 		cameraSystem:    cs,
 		shaderSystem:    shaderSystem,
+		materialSystem:  ms,
 	}
 	// Fill the array with invalid entries.
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
@@ -112,11 +113,25 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 	// TODO: Factory pattern (with register, etc. for each type)?
 
 	uniforms := map[string]uint16{}
-	if config.RenderViewType == metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD {
-		view.View = &views.RenderViewWorld{}
-	} else if config.RenderViewType == metadata.RENDERER_VIEW_KNOWN_TYPE_UI {
-		view.View = &views.RenderViewUI{}
-	} else if config.RenderViewType == metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX {
+	switch config.RenderViewType {
+	case metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD:
+		shader, err := rvs.shaderSystem.GetShader("Shader.Builtin.Material")
+		if err != nil {
+			return err
+		}
+		c := rvs.cameraSystem.GetDefault()
+		view.View = views.NewRenderViewSkybox(shader, c)
+	case metadata.RENDERER_VIEW_KNOWN_TYPE_UI:
+		shader, err := rvs.shaderSystem.GetShader("Shader.Builtin.UI")
+		if err != nil {
+			return err
+		}
+		view.View = views.NewRenderViewUI(shader)
+
+		uniforms["diffuse_texture"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_texture")
+		uniforms["diffuse_colour"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_colour")
+		uniforms["model"] = rvs.shaderSystem.GetUniformIndex(shader, "model")
+	case metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX:
 		shader, err := rvs.shaderSystem.GetShader("Shader.Builtin.Skybox")
 		if err != nil {
 			return err
@@ -127,7 +142,11 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 		uniforms["projection"] = rvs.shaderSystem.GetUniformIndex(shader, "projection")
 		uniforms["view"] = rvs.shaderSystem.GetUniformIndex(shader, "view")
 		uniforms["cube_texture"] = rvs.shaderSystem.GetUniformIndex(shader, "cube_texture")
+	default:
+		err := fmt.Errorf("not a valid render view type")
+		return err
 	}
+
 	// save current configuration
 	view.ViewConfig = config
 
@@ -215,13 +234,22 @@ func (rvs *RenderViewSystem) BuildPacket(view *metadata.RenderView, data interfa
  * @param render_target_index The current render target index for renderers that use multiple render targets at once (i.e. Vulkan).
  * @return True on success; otherwise false.
  */
-func (rvs *RenderViewSystem) OnRender(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) bool {
+func (rvs *RenderViewSystem) OnRender(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) error {
 	if view != nil && packet != nil {
-
-		return view.View.OnRenderRenderView(view, packet, frameNumber, renderTargetIndex)
+		switch view.ViewConfig.RenderViewType {
+		case metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD:
+			return rvs.worldOnRenderView(view, packet, frameNumber, renderTargetIndex)
+		case metadata.RENDERER_VIEW_KNOWN_TYPE_UI:
+			return rvs.uiOnRenderView(view, packet, frameNumber, renderTargetIndex)
+		case metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX:
+			return rvs.skyboxOnRenderView(view, packet, frameNumber, renderTargetIndex)
+		default:
+			err := fmt.Errorf("not a valid render view type")
+			return err
+		}
 	}
-	core.LogError("render_view_system_on_render requires a valid pointer to a data.")
-	return false
+	err := fmt.Errorf("render_view_system_on_render requires a valid pointer to a data")
+	return err
 }
 
 func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) error {
@@ -230,16 +258,15 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 	skybox_data := packet.ExtendedData.(*metadata.SkyboxPacketData)
 
 	for p := 0; p < int(view.RenderpassCount); p++ {
-
 		pass := view.Passes[p]
 
 		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
-			err := fmt.Errorf("render_view_skybox_on_render pass index %u failed to start.", p)
+			err := fmt.Errorf("render_view_skybox_on_render pass index %d failed to start", p)
 			return err
 		}
 
 		if !rvs.shaderSystem.useByID(vs.ShaderID) {
-			err := fmt.Errorf("Failed to use skybox shader. Render frame failed.")
+			err := fmt.Errorf("failed to use skybox shader. Render frame failed")
 			return err
 		}
 
@@ -296,9 +323,78 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 		rvs.renderer.DrawGeometry(render_data)
 
 		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_skybox_on_render pass index %u failed to end.", p)
+			err := fmt.Errorf("render_view_skybox_on_render pass index %d failed to end", p)
 			return err
 		}
 	}
+	return nil
+}
+
+func (rvs *RenderViewSystem) uiOnRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) error {
+	return nil
+}
+
+func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frameNumber, renderTargetIndex uint64) error {
+	data := view.View.(*views.RenderViewWorld)
+
+	for p := uint32(0); p < uint32(view.RenderpassCount); p++ {
+		pass := view.Passes[p]
+		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
+			err := fmt.Errorf("render_view_world_on_render pass index %d failed to start", p)
+			return err
+		}
+
+		if !rvs.shaderSystem.useByID(data.ShaderID) {
+			err := fmt.Errorf("Failed to use material shader. Render frame failed.")
+			return err
+		}
+
+		// Apply globals
+		// TODO: Find a generic way to request data such as ambient colour (which should be from a scene),
+		// and mode (from the renderer)
+		if !rvs.materialSystem.ApplyGlobal(data.ShaderID, frameNumber, packet.ProjectionMatrix, packet.ViewMatrix, packet.AmbientColour.ToVec3(), packet.ViewPosition, uint32(data.RenderMode)) {
+			err := fmt.Errorf("failed to use apply globals for material shader. Render frame failed")
+			return err
+		}
+
+		// Draw geometries.
+		count := packet.GeometryCount
+		for i := uint32(0); i < count; i++ {
+			material := &metadata.Material{}
+			if packet.Geometries[i].Geometry.Material != nil {
+				material = packet.Geometries[i].Geometry.Material
+			} else {
+				material = rvs.materialSystem.DefaultMaterial
+			}
+
+			// Update the material if it hasn't already been this frame. This keeps the
+			// same material from being updated multiple times. It still needs to be bound
+			// either way, so this check result gets passed to the backend which either
+			// updates the internal shader bindings and binds them, or only binds them.
+			needs_update := material.RenderFrameNumber != uint32(frameNumber)
+			if !rvs.materialSystem.ApplyInstance(material, needs_update) {
+				core.LogWarn("failed to apply material '%s'. Skipping draw", material.Name)
+				continue
+			} else {
+				// Sync the frame number.
+				material.RenderFrameNumber = uint32(frameNumber)
+			}
+
+			// Apply the locals
+			if !rvs.materialSystem.ApplyLocal(material, packet.Geometries[i].Model) {
+				err := fmt.Errorf("failed to apply local for material system")
+				return err
+			}
+
+			// Draw it.
+			rvs.renderer.DrawGeometry(packet.Geometries[i])
+		}
+
+		if !rvs.renderer.RenderPassEnd(pass) {
+			err := fmt.Errorf("render_view_world_on_render pass index %u failed to end.", p)
+			return err
+		}
+	}
+
 	return nil
 }

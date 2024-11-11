@@ -45,11 +45,6 @@ func NewTextureSystem(config *TextureSystemConfig, js *JobSystem, am *assets.Ass
 
 	// Invalidate all textures in the array.
 	for i := uint32(0); i < config.MaxTextureCount; i++ {
-		ts.RegisteredTextureTable[metadata.GenerateNewHash()] = &metadata.TextureReference{
-			AutoRelease:    false,
-			Handle:         metadata.InvalidID, // Primary reason for needing default values.
-			ReferenceCount: 0,
-		}
 		ts.RegisteredTextures[i] = &metadata.Texture{
 			ID:         metadata.InvalidID,
 			Generation: metadata.InvalidID,
@@ -315,119 +310,113 @@ func (ts *TextureSystem) DestroyTexture(texture *metadata.Texture) {
 func (ts *TextureSystem) ProcessTextureReference(name string, textureType metadata.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, bool) {
 	outTextureID := metadata.InvalidID
 
-	ref, ok := ts.RegisteredTextureTable[name]
-	if ok {
-		// If the reference count starts off at zero, one of two things can be
-		// true. If incrementing references, this means the entry is new. If
-		// decrementing, then the texture doesn't exist _if_ not auto-releasing.
-		if ref.ReferenceCount == 0 && referenceDiff > 0 {
-			if referenceDiff > 0 {
-				// This can only be changed the first time a texture is loaded.
-				ref.AutoRelease = autoRelease
-			} else {
-				if ref.AutoRelease {
-					core.LogWarn("Tried to release non-existent texture: '%s'", name)
-					return 0, false
-				} else {
-					core.LogWarn("Tried to release a texture where autorelease=false, but references was already 0.")
-					// Still count this as a success, but warn about it.
-					return 0, true
-				}
-			}
-		}
+	ts.RegisteredTextureTable[name] = &metadata.TextureReference{
+		Handle: metadata.InvalidID,
+	}
+	ref := ts.RegisteredTextureTable[name]
 
-		ref.ReferenceCount += uint64(referenceDiff)
-
-		// Take a copy of the name since it would be wiped out if destroyed,
-		// (as passed in name is generally a pointer to the actual texture's name).
-		name_copy := name
-
-		// If decrementing, this means a release.
-		if referenceDiff < 0 {
-			// Check if the reference count has reached 0. If it has, and the reference
-			// is set to auto-release, destroy the texture.
-			if ref.ReferenceCount == 0 && ref.AutoRelease {
-				t := ts.RegisteredTextures[ref.Handle]
-
-				// Destroy/reset texture.
-				ts.DestroyTexture(t)
-
-				// Reset the reference.
-				ref.Handle = metadata.InvalidID
-				ref.AutoRelease = false
-				// KTRACE("Released texture '%s'., Texture unloaded because reference count=0 and AutoRelease=true.", name_copy);
-			} else {
-				// KTRACE("Released texture '%s', now has a reference count of '%i' (AutoRelease=%s).", name_copy, ref.reference_count, ref.AutoRelease ? "true" : "false");
-			}
-
+	// If the reference count starts off at zero, one of two things can be
+	// true. If incrementing references, this means the entry is new. If
+	// decrementing, then the texture doesn't exist _if_ not auto-releasing.
+	if ref.ReferenceCount == 0 && referenceDiff > 0 {
+		if referenceDiff > 0 {
+			// This can only be changed the first time a texture is loaded.
+			ref.AutoRelease = autoRelease
 		} else {
-			// Incrementing. Check if the handle is new or not.
-			if ref.Handle == metadata.InvalidID {
-				// This means no texture exists here. Find a free index first.
-				count := ts.Config.MaxTextureCount
-
-				for i := uint32(0); i < count; i++ {
-					if ts.RegisteredTextures[i].ID == metadata.InvalidID {
-						// A free slot has been found. Use its index as the handle.
-						ref.Handle = i
-						outTextureID = i
-						break
-					}
-				}
-
-				// An empty slot was not found, bleat about it and boot out.
-				if outTextureID == metadata.InvalidID {
-					core.LogError("process_texture_reference - Texture system cannot hold anymore textures. Adjust configuration to allow more.")
-					return 0, false
-				} else {
-					t := ts.RegisteredTextures[ref.Handle]
-					t.TextureType = textureType
-					// Create new texture.
-					if skipLoad {
-						// KTRACE("Load skipped for texture '%s'. This is expected behaviour.");
-					} else {
-						if textureType == metadata.TextureTypeCube {
-							texture_names := make([]string, 6)
-
-							// +X,-X,+Y,-Y,+Z,-Z in _cubemap_ space, which is LH y-down
-							texture_names[0] = fmt.Sprintf("%s_r", name) // Right texture
-							texture_names[1] = fmt.Sprintf("%s_l", name) // Left texture
-							texture_names[2] = fmt.Sprintf("%s_u", name) // Up texture
-							texture_names[3] = fmt.Sprintf("%s_d", name) // Down texture
-							texture_names[4] = fmt.Sprintf("%s_f", name) // Front texture
-							texture_names[5] = fmt.Sprintf("%s_b", name) // Back texture
-
-							if !ts.LoadCubeTextures(name, texture_names, t) {
-								outTextureID = metadata.InvalidID
-								core.LogError("Failed to load cube texture '%s'.", name)
-								return 0, false
-							}
-						} else {
-							if !ts.LoadTexture(name, t) {
-								outTextureID = metadata.InvalidID
-								core.LogError("Failed to load texture '%s'.", name)
-								return 0, false
-							}
-						}
-						t.ID = ref.Handle
-					}
-					// KTRACE("Texture '%s' does not yet exist. Created, and ref_count is now %i.", name, ref.reference_count);
-				}
+			if ref.AutoRelease {
+				core.LogWarn("Tried to release non-existent texture: '%s'", name)
+				return 0, false
 			} else {
-				outTextureID = ref.Handle
-				// KTRACE("Texture '%s' already exists, ref_count increased to %i.", name, ref.reference_count);
+				core.LogWarn("Tried to release a texture where autorelease=false, but references was already 0.")
+				// Still count this as a success, but warn about it.
+				return 0, true
 			}
 		}
-
-		// Either way, update the entry.
-		ts.RegisteredTextureTable[name_copy] = ref
-
-		return outTextureID, true
 	}
 
-	// NOTE: This would only happen in the event something went wrong with the state.
-	core.LogError("process_texture_reference failed to acquire id for name '%s'. metadata.InvalidID returned.", name)
-	return 0, false
+	ref.ReferenceCount += uint64(referenceDiff)
+
+	// If decrementing, this means a release.
+	if referenceDiff < 0 {
+		// Check if the reference count has reached 0. If it has, and the reference
+		// is set to auto-release, destroy the texture.
+		if ref.ReferenceCount == 0 && ref.AutoRelease {
+			t := ts.RegisteredTextures[ref.Handle]
+
+			// Destroy/reset texture.
+			ts.DestroyTexture(t)
+
+			// Reset the reference.
+			ref.Handle = metadata.InvalidID
+			ref.AutoRelease = false
+			// KTRACE("Released texture '%s'., Texture unloaded because reference count=0 and AutoRelease=true.", name_copy);
+		} else {
+			// KTRACE("Released texture '%s', now has a reference count of '%i' (AutoRelease=%s).", name_copy, ref.reference_count, ref.AutoRelease ? "true" : "false");
+		}
+
+	} else {
+		// Incrementing. Check if the handle is new or not.
+		if ref.Handle == metadata.InvalidID {
+			// This means no texture exists here. Find a free index first.
+			count := ts.Config.MaxTextureCount
+
+			for i := uint32(0); i < count; i++ {
+				if ts.RegisteredTextures[i].ID == metadata.InvalidID {
+					// A free slot has been found. Use its index as the handle.
+					ref.Handle = i
+					outTextureID = i
+					break
+				}
+			}
+
+			// An empty slot was not found, bleat about it and boot out.
+			if outTextureID == metadata.InvalidID {
+				core.LogError("process_texture_reference - Texture system cannot hold anymore textures. Adjust configuration to allow more.")
+				return 0, false
+			} else {
+				t := ts.RegisteredTextures[ref.Handle]
+				t.TextureType = textureType
+				// Create new texture.
+				if skipLoad {
+					// KTRACE("Load skipped for texture '%s'. This is expected behaviour.");
+				} else {
+					if textureType == metadata.TextureTypeCube {
+						texture_names := make([]string, 6)
+
+						// +X,-X,+Y,-Y,+Z,-Z in _cubemap_ space, which is LH y-down
+						texture_names[0] = fmt.Sprintf("%s_r", name) // Right texture
+						texture_names[1] = fmt.Sprintf("%s_l", name) // Left texture
+						texture_names[2] = fmt.Sprintf("%s_u", name) // Up texture
+						texture_names[3] = fmt.Sprintf("%s_d", name) // Down texture
+						texture_names[4] = fmt.Sprintf("%s_f", name) // Front texture
+						texture_names[5] = fmt.Sprintf("%s_b", name) // Back texture
+
+						if !ts.LoadCubeTextures(name, texture_names, t) {
+							outTextureID = metadata.InvalidID
+							core.LogError("Failed to load cube texture '%s'.", name)
+							return 0, false
+						}
+					} else {
+						if !ts.LoadTexture(name, t) {
+							outTextureID = metadata.InvalidID
+							core.LogError("Failed to load texture '%s'.", name)
+							return 0, false
+						}
+					}
+					t.ID = ref.Handle
+				}
+				// KTRACE("Texture '%s' does not yet exist. Created, and ref_count is now %i.", name, ref.reference_count);
+			}
+		} else {
+			outTextureID = ref.Handle
+			// KTRACE("Texture '%s' already exists, ref_count increased to %i.", name, ref.reference_count);
+		}
+	}
+
+	// Either way, update the entry.
+	ts.RegisteredTextureTable[name] = ref
+
+	return outTextureID, true
 }
 
 func (ts *TextureSystem) TextureLoadJobSuccess(paramsChan <-chan interface{}) {

@@ -336,7 +336,7 @@ func (ms *MaterialSystem) GetDefault() *metadata.Material {
  * @param render_mode The render mode.
  * @return True on success; otherwise false.
  */
-func (ms *MaterialSystem) ApplyGlobal(shaderID uint32, renderer_frame_number uint64, projection []math.Mat4, view []math.Mat4, ambient_colour []math.Vec3, view_position []math.Vec3, render_mode uint32) bool {
+func (ms *MaterialSystem) ApplyGlobal(shaderID uint32, renderer_frame_number uint64, projection math.Mat4, view math.Mat4, ambient_colour math.Vec3, view_position math.Vec3, render_mode uint32) bool {
 	shader, err := ms.shaderSystem.GetShaderByID(shaderID)
 	if err != nil {
 		core.LogError(err.Error())
@@ -435,7 +435,7 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
  * @param model A constant pointer to the model matrix to be applied.
  * @return True on success; otherwise false.
  */
-func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model [][]math.Mat4) bool {
+func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model math.Mat4) bool {
 	if material.ShaderID == ms.MaterialShaderID {
 		return ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Model, model)
 	} else if material.ShaderID == ms.UIShaderID {

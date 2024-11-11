@@ -560,13 +560,13 @@ func (v Vec3) Transform(m Mat4) Vec3 {
  * @param w The w value.
  * @return A new 4-element vector.
  */
-func NewVec4Create(x, y, z, w float32) Vec4 {
-	out_vector := Vec4{}
-	out_vector.X = x
-	out_vector.Y = y
-	out_vector.Z = z
-	out_vector.W = w
-	return out_vector
+func NewVec4(x, y, z, w float32) Vec4 {
+	v := Vec4{}
+	v.X = x
+	v.Y = y
+	v.Z = z
+	v.W = w
+	return v
 }
 
 /**
@@ -779,8 +779,9 @@ func (v Vec4) Compare(other Vec4, tolerance float32) bool {
  * @return A new identity matrix
  */
 func NewMat4Identity() Mat4 {
-	out_matrix := Mat4{}
-	// kzero_memory(out_matrix.Data, sizeof(f32) * 16);
+	out_matrix := Mat4{
+		Data: [16]float32{0},
+	}
 	out_matrix.Data[0] = 1.0
 	out_matrix.Data[5] = 1.0
 	out_matrix.Data[10] = 1.0

@@ -337,11 +337,11 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 	}
 
 	config := &metadata.GeometryConfig{
-		VertexSize:  0,
+		VertexSize:  uint32(unsafe.Sizeof(math.Vertex3D{})),
 		VertexCount: 4 * 6, // 4 verts per side, 6 side
 		Vertices:    make([]math.Vertex3D, 4*6),
-		IndexSize:   4,     // number of bytes of a uint32
-		IndexCount:  6 * 6, // 6 indices per side, 6 side
+		IndexSize:   uint32(unsafe.Sizeof(uint32(1))), // number of bytes of a uint32
+		IndexCount:  6 * 6,                            // 6 indices per side, 6 side
 		Indices:     make([]uint32, 6*6),
 	}
 

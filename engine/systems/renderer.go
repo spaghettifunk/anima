@@ -77,24 +77,24 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 				Name:        SkyboxRenderPassName,
 				PrevName:    "",
 				NextName:    WorldRenderPassName,
-				RenderArea:  math.NewVec4Create(0, 0, 1280, 720),
-				ClearColour: math.NewVec4Create(0.0, 0.0, 0.2, 1.0),
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
 				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG,
 			},
 			{
 				Name:        WorldRenderPassName,
 				PrevName:    SkyboxRenderPassName,
 				NextName:    UIRenderPassName,
-				RenderArea:  math.NewVec4Create(0, 0, 1280, 720),
-				ClearColour: math.NewVec4Create(0.0, 0.0, 0.2, 1.0),
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
 				ClearFlags:  metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG,
 			},
 			{
 				Name:        UIRenderPassName,
 				PrevName:    WorldRenderPassName,
 				NextName:    "",
-				RenderArea:  math.NewVec4Create(0, 0, 1280, 720),
-				ClearColour: math.NewVec4Create(0.0, 0.0, 0.2, 1.0),
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
 				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
 			},
 		},
@@ -270,9 +270,8 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 
 		// Render each view.
 		for i := 0; i < len(packet.Views); i++ {
-			if !renderViewSystem.OnRender(packet.Views[i].View, packet.Views[i], r.backend.FrameNumber, attachmentIndex) {
-				err := fmt.Errorf("error rendering view index %d", i)
-				core.LogError(err.Error())
+			if err := renderViewSystem.OnRender(packet.Views[i].View, packet.Views[i], r.backend.FrameNumber, attachmentIndex); err != nil {
+				core.LogError("error rendering view index %d", i)
 				return err
 			}
 		}

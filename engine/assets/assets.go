@@ -22,7 +22,7 @@ type AssetInfo struct {
 }
 
 type AssetManager struct {
-	assets  map[string]AssetInfo
+	assets  map[string]*AssetInfo
 	loaders map[metadata.ResourceType]Loader
 
 	mutex sync.RWMutex
@@ -41,7 +41,7 @@ func NewAssetManager() (*AssetManager, error) {
 	}
 
 	return &AssetManager{
-		assets:   make(map[string]AssetInfo),
+		assets:   make(map[string]*AssetInfo),
 		loaders:  make(map[metadata.ResourceType]Loader),
 		fsnotify: fsWatch,
 		events:   make(chan fsnotify.Event),
@@ -61,6 +61,7 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	am.registerLoader(metadata.ResourceTypeShader, &loaders.ShaderLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.TextureLoader{})
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
+	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
 
 	return nil
 }
@@ -102,31 +103,39 @@ func (am *AssetManager) registerLoader(assetType metadata.ResourceType, loader L
 	am.loaders[assetType] = loader
 }
 
+var imageExtensions = []string{".tga", ".png", ".jpg", ".bmp"}
+
 // Load an asset using the appropriate loader
 func (am *AssetManager) LoadAsset(filename string, resourceType metadata.ResourceType, params interface{}) (*metadata.Resource, error) {
+	var asset *AssetInfo
 	var path string
 	switch resourceType {
+	case metadata.ResourceTypeImage:
+		found := false
+		for i := 0; i < len(imageExtensions); i++ {
+			path = fmt.Sprintf("assets/textures/%s%s", filename, imageExtensions[i])
+			asset = am.assetExists(path)
+			if asset != nil {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("asset with name %s not found", filename)
+		}
 	case metadata.ResourceTypeShader:
 		path = fmt.Sprintf("assets/shaders/%s.shadercfg", filename)
+		asset = am.assetExists(path)
 	case metadata.ResourceTypeBinary:
 		path = fmt.Sprintf("assets/%s", filename)
 		params = map[string]string{
 			"name": filename,
 		}
+		asset = am.assetExists(path)
 	default:
 		err := fmt.Errorf("unknown resource type")
 		return nil, err
 	}
-
-	am.mutex.RLock()
-	asset, exists := am.assets[path]
-	am.mutex.RUnlock()
-	if !exists {
-		return nil, fmt.Errorf("asset not found: %s", path)
-	}
-	// Load or reload asset from disk if necessary
-	asset.LastLoaded = time.Now()
-	am.assets[path] = asset // Update the loaded time
 
 	loader, loaderExists := am.loaders[asset.Type]
 	if !loaderExists {
@@ -134,6 +143,20 @@ func (am *AssetManager) LoadAsset(filename string, resourceType metadata.Resourc
 	}
 
 	return loader.Load(path, resourceType, params)
+}
+
+func (am *AssetManager) assetExists(path string) *AssetInfo {
+	am.mutex.RLock()
+	asset, exists := am.assets[path]
+	am.mutex.RUnlock()
+	if !exists {
+		return nil
+	}
+	// Load or reload asset from disk if necessary
+	asset.LastLoaded = time.Now()
+	am.assets[path] = asset // Update the loaded time
+
+	return asset
 }
 
 func (am *AssetManager) UnloadAsset(asset *metadata.Resource) error {
@@ -216,7 +239,7 @@ func (am *AssetManager) handleFileEvent(path string) {
 	if assetType == metadata.ResourceTypeNone {
 		return
 	}
-	am.assets[path] = AssetInfo{
+	am.assets[path] = &AssetInfo{
 		Path:       path,
 		Type:       assetType,
 		LastLoaded: time.Now(),

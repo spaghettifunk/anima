@@ -2080,12 +2080,15 @@ func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.Textu
 		MinLod:                  0.0,
 		MaxLod:                  0.0,
 	}
+	sampler_info.Deref()
 
-	result := vk.CreateSampler(vr.context.Device.LogicalDevice, &sampler_info, vr.context.Allocator, texture_map.InternalData.(*vk.Sampler))
+	var pSampler vk.Sampler
+	result := vk.CreateSampler(vr.context.Device.LogicalDevice, &sampler_info, vr.context.Allocator, &pSampler)
 	if !VulkanResultIsSuccess(result) {
 		core.LogError("Error creating texture sampler: %s", VulkanResultString(result, true))
 		return false
 	}
+	texture_map.InternalData = pSampler
 
 	return true
 }
