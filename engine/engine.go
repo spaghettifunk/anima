@@ -123,53 +123,53 @@ func (e *Engine) Initialize() error {
 	}
 
 	// START: temporary stuff
-	// skyboxConfig := &metadata.RenderViewConfig{
-	// 	RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-	// 	Width:          0,
-	// 	Height:         0,
-	// 	Name:           "skybox",
-	// 	PassCount:      1,
-	// 	Passes: []metadata.RenderViewPassConfig{
-	// 		{
-	// 			Name: "Renderpass.Builtin.Skybox",
-	// 		},
-	// 	},
-	// 	ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	// }
-	// if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
-	// 	core.LogFatal(err.Error())
-	// 	return err
-	// }
+	skyboxConfig := &metadata.RenderViewConfig{
+		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
+		Width:          0,
+		Height:         0,
+		Name:           "skybox",
+		PassCount:      1,
+		Passes: []metadata.RenderViewPassConfig{
+			{
+				Name: "Renderpass.Builtin.Skybox",
+			},
+		},
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	}
+	if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
+		core.LogFatal(err.Error())
+		return err
+	}
 
-	// opaqueWorldConfig := &metadata.RenderViewConfig{
-	// 	RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-	// 	Width:          0,
-	// 	Height:         0,
-	// 	Name:           "world_opaque",
-	// 	PassCount:      1,
-	// 	Passes: []metadata.RenderViewPassConfig{
-	// 		{
-	// 			Name: "Renderpass.Builtin.World",
-	// 		},
-	// 	},
-	// 	ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	// }
-	// if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
-	// 	core.LogFatal(err.Error())
-	// 	return err
-	// }
+	opaqueWorldConfig := &metadata.RenderViewConfig{
+		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
+		Width:          0,
+		Height:         0,
+		Name:           "world_opaque",
+		PassCount:      1,
+		Passes: []metadata.RenderViewPassConfig{
+			{
+				Name: "Renderpass.Builtin.World",
+			},
+		},
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	}
+	if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
+		core.LogFatal(err.Error())
+		return err
+	}
 
-	// // Skybox
-	// e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
-	// e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
-	// e.skybox.Cubemap.RepeatU = metadata.TextureRepeatClampToEdge
-	// e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
-	// e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
-	// e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
-	// if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
-	// 	err := fmt.Errorf("unable to acquire resources for cube map texture")
-	// 	return err
-	// }
+	// Skybox
+	e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
+	e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
+	e.skybox.Cubemap.RepeatU = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
+	e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
+	if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
+		err := fmt.Errorf("unable to acquire resources for cube map texture")
+		return err
+	}
 
 	// t, err := e.systemManager.TextureSystem.AcquireCube("skybox", true)
 	// if err != nil {

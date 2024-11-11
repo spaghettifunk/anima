@@ -1,10 +1,10 @@
 package systems
 
 import (
-	"fmt"
 	"runtime"
 
 	"github.com/spaghettifunk/anima/engine/assets"
+	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
@@ -31,28 +31,26 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
+
 	js, err := NewJobSystem(MaxNumberOfWorkers, 25)
 	if err != nil {
 		return nil, err
 	}
+
 	cs, err := NewCameraSystem(&CameraSystemConfig{
 		MaxCameraCount: 61,
 	})
 	if err != nil {
 		return nil, err
 	}
-	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
-		MaxViewCount: 251,
-	}, renderer)
-	if err != nil {
-		return nil, err
-	}
+
 	ts, err := NewTextureSystem(&TextureSystemConfig{
 		MaxTextureCount: 65536,
 	}, js, am, renderer)
 	if err != nil {
 		return nil, err
 	}
+
 	ssys, err := NewShaderSystem(&ShaderSystemConfig{
 		MaxShaderCount:      1024,
 		MaxUniformCount:     uint8(128),
@@ -62,18 +60,28 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
+
+	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
+		MaxViewCount: 251,
+	}, renderer, ssys, cs)
+	if err != nil {
+		return nil, err
+	}
+
 	ms, err := NewMaterialSystem(&MaterialSystemConfig{
 		MaxMaterialCount: 4096,
 	}, ssys, ts, am, renderer)
 	if err != nil {
 		return nil, err
 	}
+
 	gs, err := NewGeometrySystem(&GeometrySystemConfig{
 		MaxGeometryCount: 4096,
 	}, ms, renderer)
 	if err != nil {
 		return nil, err
 	}
+
 	mls, err := NewMeshLoaderSystem(gs, am)
 	if err != nil {
 		return nil, err
@@ -123,8 +131,8 @@ func (sm *SystemManager) OnResize(width, height uint16) error {
 }
 
 func (sm *SystemManager) RenderViewCreate(config *metadata.RenderViewConfig) error {
-	if !sm.RenderViewSystem.Create(config) {
-		err := fmt.Errorf("failed to create the renderview with name `%s`", config.Name)
+	if err := sm.RenderViewSystem.Create(config); err != nil {
+		core.LogDebug("failed to create the renderview with name `%s`", config.Name)
 		return err
 	}
 	return nil

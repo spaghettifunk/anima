@@ -102,7 +102,7 @@ func (cs *CameraSystem) Acquire(name string) (*components.Camera, error) {
 		}
 
 		// Create/register the new camera.
-		core.LogDebug("Creating new camera named '%s'...")
+		core.LogDebug("Creating new camera named '%s'...", name)
 		cs.Cameras[id].Camera = components.NewCamera()
 		cs.Cameras[id].ID = id
 

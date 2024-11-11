@@ -2,24 +2,28 @@ package views
 
 import "github.com/spaghettifunk/anima/engine/renderer/metadata"
 
-func RenderViewWorldOnCreate() bool {
+type RenderViewWorld struct{}
+
+func (vw *RenderViewWorld) OnCreateRenderView(uniforms map[string]uint16) bool {
 	return false
 }
 
-func RenderViewWorldOnDestroy() error {
+func (vw *RenderViewWorld) OnDestroyRenderView() error {
 	return nil
 }
 
-func RenderViewWorldOnResize(width, height uint32) {}
+func (vw *RenderViewWorld) OnResizeRenderView(width, height uint32) {
 
-func RenderViewWorldOnBuildPacket(data interface{}) (*metadata.RenderViewPacket, error) {
+}
+
+func (vw *RenderViewWorld) OnBuildPacketRenderView(data interface{}) (*metadata.RenderViewPacket, error) {
 	return nil, nil
 }
 
-func RenderViewWorldOnDestroyPacket(packet *metadata.RenderViewPacket) {
+func (vw *RenderViewWorld) OnDestroyPacketRenderView(packet *metadata.RenderViewPacket) {
 
 }
 
-func RenderViewWorldOnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
+func (vw *RenderViewWorld) OnRenderRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
 	return false
 }

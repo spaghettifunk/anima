@@ -1954,22 +1954,22 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 	}
 
 	// Allocate some space in the UBO - by the stride, not the size.
-	// size := shader.UboStride;
-	// if (size > 0) {
-	//     if (!renderer_renderbuffer_allocate(&internal.uniform_buffer, size, &instance_state.offset)) {
-	//         core.LogError("vulkan_material_shader_acquire_resources failed to acquire ubo space");
-	//         return false;
-	//     }
-	// }
-
+	internal.UniformBuffer = &metadata.RenderBuffer{
+		Buffer: make([]interface{}, uint32(m.Max(1, float64(shader.UboStride)))),
+	}
 	set_state := instance_state.DescriptorSetState
 
 	// Each descriptor binding in the set
 	binding_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].BindingCount
 	for i := uint32(0); i < uint32(binding_count); i++ {
-		for j := uint32(0); j < 3; j++ {
-			set_state.DescriptorStates[i].Generations[j] = metadata.InvalidIDUint8
-			set_state.DescriptorStates[i].IDs[j] = metadata.InvalidID
+		if len(set_state.DescriptorStates) == 0 {
+			set_state.DescriptorStates = make([]*VulkanDescriptorState, 3)
+		}
+		if set_state.DescriptorStates[i] == nil {
+			set_state.DescriptorStates[i] = &VulkanDescriptorState{
+				Generations: [3]uint8{metadata.InvalidIDUint8, metadata.InvalidIDUint8, metadata.InvalidIDUint8},
+				IDs:         [3]uint32{metadata.InvalidID, metadata.InvalidID, metadata.InvalidID},
+			}
 		}
 	}
 
@@ -1986,12 +1986,16 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 		DescriptorSetCount: uint32(len(layouts)),
 		PSetLayouts:        layouts,
 	}
-	for _, ds := range instance_state.DescriptorSetState.DescriptorSets {
-		result := vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &ds)
+	alloc_info.Deref()
+
+	for i := 0; i < len(instance_state.DescriptorSetState.DescriptorSets); i++ {
+		var pDescriptorSets vk.DescriptorSet
+		result := vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &pDescriptorSets)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("error allocating instance descriptor sets in shader: '%s'", VulkanResultString(result, true))
 			return 0, err
 		}
+		instance_state.DescriptorSetState.DescriptorSets[i] = pDescriptorSets
 	}
 
 	return out_instance_id, nil
@@ -2451,12 +2455,13 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	return true
 }
 
-// func (vr *VulkanRenderer) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) (out_offset uint64) {
-// 	return 0
-// }
-
 func (vr *VulkanRenderer) RenderBufferFree(buffer *metadata.RenderBuffer, size, offset uint64) bool {
-	return false
+	if buffer != nil {
+		buffer.Buffer = make([]interface{}, size)
+		buffer.InternalData = nil
+		buffer.TotalSize = 0
+	}
+	return true
 }
 
 func (vr *VulkanRenderer) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
