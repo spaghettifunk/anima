@@ -826,10 +826,12 @@ func (vr *VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Textur
 
 func (vr *VulkanRenderer) TextureDestroy(texture *metadata.Texture) {
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
-	image := texture.InternalData.(*VulkanImage)
-	if image != nil {
-		image.Destroy(vr.context)
-		texture.InternalData = nil
+	if texture.InternalData != nil {
+		image := texture.InternalData.(*VulkanImage)
+		if image != nil {
+			image.Destroy(vr.context)
+			texture.InternalData = nil
+		}
 	}
 	texture = nil
 }

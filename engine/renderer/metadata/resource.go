@@ -18,8 +18,6 @@ const (
 	ResourceTypeMesh
 	/** @brief Model resource type */
 	ResourceTypeModel
-	/** @brief Texture resource type */
-	ResourceTypeTexture
 	/** @brief Bitmap font resource type. */
 	ResourceTypeBitmapFont
 	/** @brief System font resource type. */

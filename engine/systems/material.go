@@ -91,18 +91,11 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 		textureSystem:           ts,
 		assetManager:            am,
 		renderer:                r,
-	}
-
-	// Fill the hashtable with invalid references to use as a default.
-	invalid_ref := &metadata.MaterialReference{
-		AutoRelease:    false,
-		Handle:         metadata.InvalidID,
-		ReferenceCount: 0,
+		Config:                  config,
 	}
 
 	// Invalidate all materials in the array.
 	for i := uint32(0); i < config.MaxMaterialCount; i++ {
-		ms.RegisteredMaterialTable[metadata.GenerateNewHash()] = invalid_ref
 		ms.RegisteredMaterials[i] = &metadata.Material{
 			ID:                metadata.InvalidID,
 			Generation:        metadata.InvalidID,
@@ -177,7 +170,7 @@ func (ms *MaterialSystem) Acquire(name string) (*metadata.Material, error) {
 		return nil, err
 	}
 
-	if m != nil {
+	if m == nil {
 		err := fmt.Errorf("failed to load material resource, returning nullptr")
 		core.LogError(err.Error())
 		return nil, err
@@ -200,7 +193,9 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 		return ms.DefaultMaterial, nil
 	}
 
-	ref := ms.RegisteredMaterialTable[config.Name]
+	ref := &metadata.MaterialReference{
+		Handle: metadata.InvalidID,
+	}
 
 	// This can only be changed the first time a material is loaded.
 	if ref.ReferenceCount == 0 {
@@ -446,26 +441,38 @@ func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model math.Mat
 }
 
 func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metadata.Material, error) {
-	material := &metadata.Material{}
-
-	material.Name = config.Name
-
-	material.ShaderID = ms.shaderSystem.GetShaderID(config.ShaderName)
-
-	// Diffuse colour
-	material.DiffuseColour = config.DiffuseColour
-	material.Shininess = config.Shininess
+	material := &metadata.Material{
+		Name:          config.Name,
+		ShaderID:      ms.shaderSystem.GetShaderID(config.ShaderName),
+		DiffuseColour: config.DiffuseColour,
+		Shininess:     config.Shininess,
+		DiffuseMap: &metadata.TextureMap{
+			FilterMinify:  metadata.TextureFilterModeLinear,
+			FilterMagnify: metadata.TextureFilterModeLinear,
+			RepeatU:       metadata.TextureRepeatRepeat,
+			RepeatV:       metadata.TextureRepeatRepeat,
+			RepeatW:       metadata.TextureRepeatRepeat,
+		},
+		SpecularMap: &metadata.TextureMap{
+			FilterMinify:  metadata.TextureFilterModeLinear,
+			FilterMagnify: metadata.TextureFilterModeLinear,
+			RepeatU:       metadata.TextureRepeatRepeat,
+			RepeatV:       metadata.TextureRepeatRepeat,
+			RepeatW:       metadata.TextureRepeatRepeat,
+			InternalData:  new(interface{}),
+		},
+		NormalMap: &metadata.TextureMap{
+			FilterMinify:  metadata.TextureFilterModeLinear,
+			FilterMagnify: metadata.TextureFilterModeLinear,
+			RepeatU:       metadata.TextureRepeatRepeat,
+			RepeatV:       metadata.TextureRepeatRepeat,
+			RepeatW:       metadata.TextureRepeatRepeat,
+		},
+	}
 
 	// Diffuse map
-	// TODO: Make this configurable.
-	// TODO: DRY
-	material.DiffuseMap.FilterMinify = metadata.TextureFilterModeLinear
-	material.DiffuseMap.FilterMagnify = metadata.TextureFilterModeLinear
-	material.DiffuseMap.RepeatU = metadata.TextureRepeatRepeat
-	material.DiffuseMap.RepeatV = metadata.TextureRepeatRepeat
-	material.DiffuseMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.DiffuseMap) {
-		err := fmt.Errorf("Unable to acquire resources for diffuse texture map.")
+		err := fmt.Errorf("unable to acquire resources for diffuse texture map")
 		return nil, err
 	}
 	if len(config.DiffuseMapName) > 0 {
@@ -477,7 +484,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 		material.DiffuseMap.Texture = t
 		if material.DiffuseMap.Texture == nil {
 			// Configured, but not found.
-			core.LogWarn("Unable to load texture '%s' for material '%s', using default.", config.DiffuseMapName, material.Name)
+			core.LogWarn("unable to load texture '%s' for material '%s', using default", config.DiffuseMapName, material.Name)
 			material.DiffuseMap.Texture = ms.textureSystem.GetDefaultTexture()
 		}
 	} else {
@@ -487,14 +494,8 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// Specular map
-	// TODO: Make this configurable.
-	material.SpecularMap.FilterMinify = metadata.TextureFilterModeLinear
-	material.SpecularMap.FilterMagnify = metadata.TextureFilterModeLinear
-	material.SpecularMap.RepeatU = metadata.TextureRepeatRepeat
-	material.SpecularMap.RepeatV = metadata.TextureRepeatRepeat
-	material.SpecularMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.SpecularMap) {
-		err := fmt.Errorf("Unable to acquire resources for specular texture map.")
+		err := fmt.Errorf("unable to acquire resources for specular texture map")
 		return nil, err
 	}
 	if len(config.SpecularMapName) > 0 {
@@ -505,7 +506,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 		}
 		material.SpecularMap.Texture = t
 		if material.SpecularMap.Texture == nil {
-			core.LogWarn("Unable to load specular texture '%s' for material '%s', using default.", config.SpecularMapName, material.Name)
+			core.LogWarn("unable to load specular texture '%s' for material '%s', using default", config.SpecularMapName, material.Name)
 			material.SpecularMap.Texture = ms.textureSystem.GetDefaultSpecularTexture()
 		}
 	} else {
@@ -515,14 +516,8 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// Normal map
-	// TODO: Make this configurable.
-	material.NormalMap.FilterMinify = metadata.TextureFilterModeLinear
-	material.NormalMap.FilterMagnify = metadata.TextureFilterModeLinear
-	material.NormalMap.RepeatU = metadata.TextureRepeatRepeat
-	material.NormalMap.RepeatV = metadata.TextureRepeatRepeat
-	material.NormalMap.RepeatW = metadata.TextureRepeatRepeat
 	if !ms.renderer.TextureMapAcquireResources(material.NormalMap) {
-		err := fmt.Errorf("Unable to acquire resources for normal texture map.")
+		err := fmt.Errorf("unable to acquire resources for normal texture map")
 		return nil, err
 	}
 	if len(config.NormalMapName) > 0 {
@@ -543,7 +538,6 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// TODO: other maps
-
 	// Send it off to the renderer to acquire resources.
 	shader, err := ms.shaderSystem.GetShader(config.ShaderName)
 	if err != nil {

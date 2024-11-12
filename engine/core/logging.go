@@ -26,6 +26,8 @@ func getLogger() *logger {
 					TimeFormat:      time.RFC3339,
 					Prefix:          "Engine 🏎️ ",
 				})
+				// TODO: configurable
+				l.SetLevel(log.DebugLevel)
 				singleton = &logger{l}
 			})
 	}

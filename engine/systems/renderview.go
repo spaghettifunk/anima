@@ -120,7 +120,7 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 			return err
 		}
 		c := rvs.cameraSystem.GetDefault()
-		view.View = views.NewRenderViewSkybox(shader, c)
+		view.View = views.NewRenderViewWorld(shader, c)
 	case metadata.RENDERER_VIEW_KNOWN_TYPE_UI:
 		shader, err := rvs.shaderSystem.GetShader("Shader.Builtin.UI")
 		if err != nil {

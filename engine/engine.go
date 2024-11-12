@@ -217,8 +217,9 @@ func (e *Engine) Initialize() error {
 	meshCount := 0
 
 	// Load up a cube configuration, and load geometry from it.
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	cubeMesh1 := e.meshes[meshCount]
+	cubeMesh1.GeometryCount = 1
+	cubeMesh1.Geometries = make([]*metadata.Geometry, 1)
 	gConfig, err := e.systemManager.GeometrySystem.GenerateCubeConfig(10.0, 10.0, 10.0, 1.0, 1.0, "test_cube", "test_material")
 	if err != nil {
 		return err
@@ -227,16 +228,18 @@ func (e *Engine) Initialize() error {
 	if err != nil {
 		return err
 	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformCreate()
+	cubeMesh1.Geometries[0] = c
+	cubeMesh1.Transform = math.TransformCreate()
+	cubeMesh1.Generation = 0
 	meshCount++
-	e.meshes[meshCount].Generation = 0
+
 	// Clean up the allocations for the geometry config.
 	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
 	// A second cube
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	cubeMesh2 := e.meshes[meshCount]
+	cubeMesh2.GeometryCount = 1
+	cubeMesh2.Geometries = make([]*metadata.Geometry, 1)
 	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(5.0, 5.0, 5.0, 1.0, 1.0, "test_cube_2", "test_material")
 	if err != nil {
 		return err
@@ -245,18 +248,20 @@ func (e *Engine) Initialize() error {
 	if err != nil {
 		return err
 	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(10.0, 0.0, 1.0))
+	cubeMesh2.Geometries[0] = c
+	cubeMesh2.Transform = math.TransformFromPosition(math.NewVec3(10.0, 0.0, 1.0))
 	// Set the first cube as the parent to the second.
-	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	cubeMesh2.Transform.Parent = cubeMesh1.Transform
+	cubeMesh2.Generation = 0
 	meshCount++
-	e.meshes[meshCount].Generation = 0
+
 	// Clean up the allocations for the geometry config.
 	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
 	// A third cube!
-	e.meshes[meshCount].GeometryCount = 1
-	e.meshes[meshCount].Geometries = make([]*metadata.Geometry, 1)
+	cubeMesh3 := e.meshes[meshCount]
+	cubeMesh3.GeometryCount = 1
+	cubeMesh3.Geometries = make([]*metadata.Geometry, 1)
 	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_2", "test_material")
 	if err != nil {
 		return err
@@ -265,12 +270,13 @@ func (e *Engine) Initialize() error {
 	if err != nil {
 		return err
 	}
-	e.meshes[meshCount].Geometries[0] = c
-	e.meshes[meshCount].Transform = math.TransformFromPosition(math.NewVec3(5.0, 0.0, 1.0))
+	cubeMesh3.Geometries[0] = c
+	cubeMesh3.Transform = math.TransformFromPosition(math.NewVec3(5.0, 0.0, 1.0))
 	// Set the second cube as the parent to the third.
-	e.meshes[meshCount].Transform.Parent = e.meshes[meshCount].Transform
+	cubeMesh3.Transform.Parent = cubeMesh2.Transform
+	cubeMesh3.Generation = 0
 	meshCount++
-	e.meshes[meshCount].Generation = 0
+
 	// Clean up the allocations for the geometry config.
 	e.systemManager.GeometrySystem.ConfigDispose(gConfig)
 
@@ -354,10 +360,10 @@ func (e *Engine) Run() error {
 			packet.Views[0] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
 
 			// World
-			meshes := []*metadata.Mesh{}
-			for _, m := range e.meshes {
+			meshes := make([]*metadata.Mesh, len(e.meshes))
+			for i, m := range e.meshes {
 				if m.Generation != metadata.InvalidIDUint8 {
-					meshes = append(meshes, m)
+					meshes[i] = m
 				}
 			}
 			worldMeshData := &metadata.MeshPacketData{

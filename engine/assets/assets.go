@@ -59,7 +59,6 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 
 	// Register loaders
 	am.registerLoader(metadata.ResourceTypeShader, &loaders.ShaderLoader{})
-	am.registerLoader(metadata.ResourceTypeImage, &loaders.TextureLoader{})
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
 	am.registerLoader(metadata.ResourceTypeMaterial, &loaders.MaterialLoader{})
@@ -260,13 +259,11 @@ func (am *AssetManager) removeAsset(path string) {
 
 func determineAssetType(path string) metadata.ResourceType {
 	switch filepath.Ext(path) {
-	case ".tga":
-		return metadata.ResourceTypeTexture
 	case ".shadercfg":
 		return metadata.ResourceTypeShader
 	case ".spv":
 		return metadata.ResourceTypeBinary
-	case ".png", ".jpg":
+	case ".png", ".jpg", ".tga":
 		return metadata.ResourceTypeImage
 	case ".obj", ".ksm":
 		return metadata.ResourceTypeModel

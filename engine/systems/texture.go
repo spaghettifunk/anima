@@ -467,7 +467,9 @@ func (ts *TextureSystem) TextureLoadJobFail(paramsChan <-chan interface{}) {
 }
 
 func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan<- interface{}) error {
-	loadParams := params.(*metadata.TextureLoadParams)
+	tmpParams := params.([]interface{})
+
+	loadParams := tmpParams[0].(*metadata.TextureLoadParams)
 
 	resource_params := &metadata.ImageResourceParams{
 		FlipY: true,
@@ -479,6 +481,9 @@ func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan
 		resultChan <- loadParams
 		return err
 	}
+
+	core.LogDebug("texture asset load successful")
+
 	loadParams.ImageResource = result
 
 	resourceData := loadParams.ImageResource.Data.(*metadata.ImageResourceData)
@@ -502,6 +507,8 @@ func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan
 		}
 	}
 
+	core.LogDebug("texture load pixel successful")
+
 	// Take a copy of the name.
 	loadParams.TempTexture.Name = loadParams.ResourceName
 	loadParams.TempTexture.Generation = metadata.InvalidID
@@ -509,6 +516,8 @@ func (ts *TextureSystem) TextureLoadJobStart(params interface{}, resultChan chan
 	if hasTransparency {
 		loadParams.TempTexture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
 	}
+
+	core.LogDebug("texture load successful")
 
 	resultChan <- loadParams
 
