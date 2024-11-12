@@ -56,7 +56,7 @@ func (il *ImageLoader) Load(path string, assetType metadata.ResourceType, params
 			Height:       uint32(height),
 			Pixels:       goData,
 		},
-	}, nil // Return the decoded image object
+	}, nil
 }
 
 func (il *ImageLoader) Unload(*metadata.Resource) error {

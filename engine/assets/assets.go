@@ -62,6 +62,7 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.TextureLoader{})
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
+	am.registerLoader(metadata.ResourceTypeMaterial, &loaders.MaterialLoader{})
 
 	return nil
 }
@@ -131,6 +132,9 @@ func (am *AssetManager) LoadAsset(filename string, resourceType metadata.Resourc
 		params = map[string]string{
 			"name": filename,
 		}
+		asset = am.assetExists(path)
+	case metadata.ResourceTypeMaterial:
+		path = fmt.Sprintf("assets/materials/%s.amt", filename)
 		asset = am.assetExists(path)
 	default:
 		err := fmt.Errorf("unknown resource type")
@@ -264,10 +268,10 @@ func determineAssetType(path string) metadata.ResourceType {
 		return metadata.ResourceTypeBinary
 	case ".png", ".jpg":
 		return metadata.ResourceTypeImage
-	case ".kmt":
-		return metadata.ResourceTypeMaterial
-	case ".obj", ".ksm", ".mtl":
+	case ".obj", ".ksm":
 		return metadata.ResourceTypeModel
+	case ".amt":
+		return metadata.ResourceTypeMaterial
 	default:
 		return metadata.ResourceTypeNone
 	}

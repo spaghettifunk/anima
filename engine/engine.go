@@ -204,7 +204,13 @@ func (e *Engine) Initialize() error {
 	}
 
 	// Invalidate all meshes.
+	if len(e.meshes) == 0 {
+		e.meshes = make([]*metadata.Mesh, 10)
+	}
 	for i := 0; i < 10; i++ {
+		if e.meshes[i] == nil {
+			e.meshes[i] = &metadata.Mesh{}
+		}
 		e.meshes[i].Generation = metadata.InvalidIDUint8
 	}
 

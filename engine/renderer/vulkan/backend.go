@@ -694,39 +694,39 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 	}
 
 	// Check if this is a re-upload. If it is, need to free old data afterward.
-	isReupload := geometry.InternalID != metadata.InvalidID
-	oldRange := &VulkanGeometryData{}
+	// isReupload := geometry.InternalID != metadata.InvalidID
+	// oldRange := &VulkanGeometryData{}
 
 	var internalData *VulkanGeometryData
-	if isReupload {
-		internalData = vr.context.Geometries[geometry.InternalID]
+	// if isReupload {
+	// 	internalData = vr.context.Geometries[geometry.InternalID]
 
-		// Take a copy of the old range.
-		oldRange.IndexBufferOffset = internalData.IndexBufferOffset
-		oldRange.IndexCount = internalData.IndexCount
-		oldRange.IndexElementSize = internalData.IndexElementSize
-		oldRange.VertexBufferOffset = internalData.VertexBufferOffset
-		oldRange.VertexCount = internalData.VertexCount
-		oldRange.VertexElementSize = internalData.VertexElementSize
-	} else {
-		// Mark all geometries as invalid
-		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-			if vr.context.Geometries[i] == nil {
-				vr.context.Geometries[i] = &VulkanGeometryData{
-					ID: metadata.InvalidID,
-				}
-			}
-		}
-		for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
-			if vr.context.Geometries[i].ID == metadata.InvalidID {
-				// Found a free index.
-				geometry.InternalID = i
-				vr.context.Geometries[i].ID = i
-				internalData = vr.context.Geometries[i]
-				break
+	// 	// Take a copy of the old range.
+	// 	oldRange.IndexBufferOffset = internalData.IndexBufferOffset
+	// 	oldRange.IndexCount = internalData.IndexCount
+	// 	oldRange.IndexElementSize = internalData.IndexElementSize
+	// 	oldRange.VertexBufferOffset = internalData.VertexBufferOffset
+	// 	oldRange.VertexCount = internalData.VertexCount
+	// 	oldRange.VertexElementSize = internalData.VertexElementSize
+	// } else {
+	// Mark all geometries as invalid
+	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
+		if vr.context.Geometries[i] == nil {
+			vr.context.Geometries[i] = &VulkanGeometryData{
+				ID: metadata.InvalidID,
 			}
 		}
 	}
+	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
+		if vr.context.Geometries[i].ID == metadata.InvalidID {
+			// Found a free index.
+			geometry.InternalID = i
+			vr.context.Geometries[i].ID = i
+			internalData = vr.context.Geometries[i]
+			break
+		}
+	}
+	// }
 	if internalData == nil {
 		core.LogFatal("vulkan_renderer_create_geometry failed to find a free index for a new geometry upload. Adjust config to allow for more.")
 		return false
@@ -761,21 +761,23 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		internalData.Generation++
 	}
 
-	if isReupload {
-		// Free vertex data
-		if !vr.RenderBufferFree(vr.context.ObjectVertexBuffer, uint64(oldRange.VertexElementSize*oldRange.VertexCount), oldRange.VertexBufferOffset) {
-			core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of vertex data.")
-			return false
-		}
+	// at the contrary of C, data is overwritten correctly and we don't have to
+	// release memory based on offset and size. The go compiler will take care of it
+	// if isReupload {
+	// // Free vertex data
+	// if !vr.RenderBufferFree(vr.context.ObjectVertexBuffer, uint64(oldRange.VertexElementSize*oldRange.VertexCount), oldRange.VertexBufferOffset) {
+	// 	core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of vertex data.")
+	// 	return false
+	// }
 
-		// Free index data, if applicable
-		if oldRange.IndexElementSize > 0 {
-			if !vr.RenderBufferFree(vr.context.ObjectIndexBuffer, uint64(oldRange.IndexElementSize*oldRange.IndexCount), oldRange.IndexBufferOffset) {
-				core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of index data.")
-				return false
-			}
-		}
-	}
+	// // Free index data, if applicable
+	// if oldRange.IndexElementSize > 0 {
+	// 	if !vr.RenderBufferFree(vr.context.ObjectIndexBuffer, uint64(oldRange.IndexElementSize*oldRange.IndexCount), oldRange.IndexBufferOffset) {
+	// 		core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of index data.")
+	// 		return false
+	// 	}
+	// }
+	// }
 
 	return true
 }
@@ -2195,16 +2197,21 @@ func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBuf
 		Usage:       internal_buffer.Usage,
 		SharingMode: vk.SharingModeExclusive, // NOTE: Only used in one queue.
 	}
+	buffer_info.Deref()
 
-	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &internal_buffer.Handle)
+	var pBuffer vk.Buffer
+	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &pBuffer)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
 	}
+	internal_buffer.Handle = pBuffer
 
 	// Gather memory requirements.
-	vk.GetBufferMemoryRequirements(vr.context.Device.LogicalDevice, internal_buffer.Handle, &internal_buffer.MemoryRequirements)
-	internal_buffer.MemoryRequirements.Deref()
+	var pMemoryRequirements vk.MemoryRequirements
+	vk.GetBufferMemoryRequirements(vr.context.Device.LogicalDevice, internal_buffer.Handle, &pMemoryRequirements)
+	pMemoryRequirements.Deref()
+	internal_buffer.MemoryRequirements = pMemoryRequirements
 
 	internal_buffer.MemoryIndex = vr.context.FindMemoryIndex(internal_buffer.MemoryRequirements.MemoryTypeBits, internal_buffer.MemoryPropertyFlags)
 	if internal_buffer.MemoryIndex == -1 {
@@ -2218,6 +2225,7 @@ func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBuf
 		AllocationSize:  internal_buffer.MemoryRequirements.Size,
 		MemoryTypeIndex: uint32(internal_buffer.MemoryIndex),
 	}
+	allocate_info.Deref()
 
 	// Allocate the memory.
 	var mem vk.DeviceMemory
@@ -2259,6 +2267,7 @@ func (vr *VulkanRenderer) RenderBufferBind(buffer *metadata.RenderBuffer, offset
 		return err
 	}
 	internal_buffer := buffer.InternalData.(*VulkanBuffer)
+
 	result := vk.BindBufferMemory(vr.context.Device.LogicalDevice, internal_buffer.Handle, internal_buffer.Memory, vk.DeviceSize(offset))
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))

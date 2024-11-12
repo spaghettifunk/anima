@@ -64,6 +64,7 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *Rend
 				ID:         metadata.InvalidID,
 				InternalID: metadata.InvalidID,
 				Generation: metadata.InvalidIDUint16,
+				Material:   ms.DefaultMaterial,
 			},
 		}
 	}
