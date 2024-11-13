@@ -234,18 +234,26 @@ func NewGraphicsPipeline(
 		pipeline_create_info.PDepthStencilState = nil
 	}
 
+	pPipelines := []vk.Pipeline{out_pipeline.Handle}
 	result = vk.CreateGraphicsPipelines(
 		context.Device.LogicalDevice,
 		vk.NullPipelineCache,
 		1,
 		[]vk.GraphicsPipelineCreateInfo{pipeline_create_info},
 		context.Allocator,
-		[]vk.Pipeline{out_pipeline.Handle})
+		pPipelines)
 
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("vkCreateGraphicsPipelines failed with %s", VulkanResultString(result, true))
 		return nil, err
 	}
+
+	if len(pPipelines) <= 0 {
+		err := fmt.Errorf("vulkan pipeline handle is nil")
+		return nil, err
+	}
+
+	out_pipeline.Handle = pPipelines[0]
 
 	core.LogDebug("Graphics pipeline created!")
 	return out_pipeline, nil

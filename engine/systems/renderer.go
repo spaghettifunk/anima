@@ -319,8 +319,8 @@ func (r *RendererSystem) DrawGeometry(data *metadata.GeometryRenderData) {
 	r.backend.DrawGeometry(data)
 }
 
-func (r *RendererSystem) RenderPassCreate(depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
-	return r.backend.RenderPassCreate(depth, stencil, has_prev_pass, has_next_pass)
+func (r *RendererSystem) RenderPassCreate(renderPass *metadata.RenderPass, depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
+	return r.backend.RenderPassCreate(renderPass, depth, stencil, has_prev_pass, has_next_pass)
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {

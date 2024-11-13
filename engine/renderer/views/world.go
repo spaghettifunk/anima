@@ -100,7 +100,6 @@ func (vw *RenderViewWorld) OnBuildPacketRenderView(data interface{}) (*metadata.
 	}
 
 	// Obtain all geometries from the current scene.
-
 	geometry_distances := []*GeometryDistance{}
 
 	for i := uint32(0); i < mesh_data.MeshCount; i++ {

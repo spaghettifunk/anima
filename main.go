@@ -17,7 +17,7 @@ import (
 func main() {
 	tb := testbed.NewTestGame()
 
-	engine, err := engine.New(tb)
+	engine, err := engine.New(tb.Game)
 	if err != nil {
 		panic(err)
 	}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -10,46 +11,63 @@ import (
 
 var once sync.Once
 
+// LogLevel is a logging level.
+type LogLevel int32
+
+const (
+	// DebugLevel is the debug level.
+	DebugLevel LogLevel = -4
+	// InfoLevel is the info level.
+	InfoLevel LogLevel = 0
+	// WarnLevel is the warn level.
+	WarnLevel LogLevel = 4
+	// ErrorLevel is the error level.
+	ErrorLevel LogLevel = 8
+	// FatalLevel is the fatal level.
+	FatalLevel LogLevel = 12
+	// noLevel is used with log.Print.
+	noLevel LogLevel = math.MaxInt32
+)
+
 type logger struct {
 	*log.Logger
 }
 
 var singleton *logger
 
-func getLogger() *logger {
-	if singleton == nil {
-		once.Do(
-			func() {
-				l := log.NewWithOptions(os.Stderr, log.Options{
-					ReportCaller:    true,
-					ReportTimestamp: true,
-					TimeFormat:      time.RFC3339,
-					Prefix:          "Engine 🏎️ ",
-				})
-				// TODO: configurable
-				l.SetLevel(log.DebugLevel)
-				singleton = &logger{l}
+func InitializeLogger(level LogLevel) error {
+	once.Do(
+		func() {
+			l := log.NewWithOptions(os.Stderr, log.Options{
+				ReportCaller:    true,
+				ReportTimestamp: true,
+				TimeFormat:      time.RFC3339,
+				Prefix:          "Engine 🏎️ ",
 			})
-	}
-	return singleton
+			// TODO: configurable
+			l.SetLevel(log.Level(level))
+			singleton = &logger{l}
+		},
+	)
+	return nil
 }
 
 func LogDebug(msg string, args ...interface{}) {
-	getLogger().Debugf(msg, args...)
+	singleton.Debugf(msg, args...)
 }
 
 func LogInfo(msg string, args ...interface{}) {
-	getLogger().Infof(msg, args...)
+	singleton.Infof(msg, args...)
 }
 
 func LogWarn(msg string, args ...interface{}) {
-	getLogger().Warnf(msg, args...)
+	singleton.Warnf(msg, args...)
 }
 
 func LogError(msg string, args ...interface{}) {
-	getLogger().Errorf(msg, args...)
+	singleton.Errorf(msg, args...)
 }
 
 func LogFatal(msg string, args ...interface{}) {
-	getLogger().Fatalf(msg, args...)
+	singleton.Fatalf(msg, args...)
 }

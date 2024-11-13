@@ -165,12 +165,14 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 		err := fmt.Errorf("unsupported layout transition")
 		return err
 	}
+	barrier.Deref()
 
+	pImageMemoryBarriers := []vk.ImageMemoryBarrier{barrier}
 	vk.CmdPipelineBarrier(commandBuffer.Handle, sourceStage, destStage,
 		0,
 		0, nil,
 		0, nil,
-		1, []vk.ImageMemoryBarrier{barrier},
+		1, pImageMemoryBarriers,
 	)
 
 	return nil
@@ -208,7 +210,7 @@ func (image *VulkanImage) ImageCopyFromBuffer(context *VulkanContext, textureTyp
 		1,
 		[]vk.BufferImageCopy{region},
 	)
-	
+
 	return nil
 }
 

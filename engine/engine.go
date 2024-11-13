@@ -53,6 +53,9 @@ type Engine struct {
 }
 
 func New(g *Game) (*Engine, error) {
+	// initialize the logger immediately
+	core.InitializeLogger(g.ApplicationConfig.LogLevel)
+
 	p := platform.New()
 
 	am, err := assets.NewAssetManager()
@@ -66,6 +69,8 @@ func New(g *Game) (*Engine, error) {
 		core.LogError(err.Error())
 		return nil, err
 	}
+
+	g.SystemManager = sm
 
 	return &Engine{
 		currentStage:  EngineStageUninitialized,
@@ -262,7 +267,7 @@ func (e *Engine) Initialize() error {
 	cubeMesh3 := e.meshes[meshCount]
 	cubeMesh3.GeometryCount = 1
 	cubeMesh3.Geometries = make([]*metadata.Geometry, 1)
-	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_2", "test_material")
+	gConfig, err = e.systemManager.GeometrySystem.GenerateCubeConfig(2.0, 2.0, 2.0, 1.0, 1.0, "test_cube_3", "test_material")
 	if err != nil {
 		return err
 	}
@@ -349,8 +354,8 @@ func (e *Engine) Run() error {
 
 			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
-				ViewCount: 3,
-				Views:     make([]*metadata.RenderViewPacket, 3),
+				ViewCount: 2,
+				Views:     make([]*metadata.RenderViewPacket, 2),
 			}
 
 			// skybox
@@ -360,14 +365,16 @@ func (e *Engine) Run() error {
 			packet.Views[0] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
 
 			// World
-			meshes := make([]*metadata.Mesh, len(e.meshes))
-			for i, m := range e.meshes {
-				if m.Generation != metadata.InvalidIDUint8 {
-					meshes[i] = m
+			meshCount := 0
+			meshes := make([]*metadata.Mesh, 10)
+			for i := 0; i < 10; i++ {
+				if e.meshes[i].Generation != metadata.InvalidIDUint8 {
+					meshes[meshCount] = e.meshes[i]
+					meshCount++
 				}
 			}
 			worldMeshData := &metadata.MeshPacketData{
-				MeshCount: uint32(len(meshes)),
+				MeshCount: uint32(meshCount),
 				Meshes:    meshes,
 			}
 			packet.Views[1] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world_opaque"), worldMeshData)
@@ -377,7 +384,7 @@ func (e *Engine) Run() error {
 			pos := worldCamera.GetPosition()
 			rot := worldCamera.GetEulerRotation()
 
-			core.LogInfo(fmt.Sprintf("Camera Pos: [%.3f, %.3f, %.3f]\nCamera Rot: [%.3f, %.3f, %.3f]", pos.X, pos.Y, pos.Z, math.RadToDeg(rot.X), math.RadToDeg(rot.Y), math.RadToDeg(rot.Z)))
+			core.LogInfo(fmt.Sprintf("Camera Pos: [%.3f, %.3f, %.3f] - Camera Rot: [%.3f, %.3f, %.3f]", pos.X, pos.Y, pos.Z, math.RadToDeg(rot.X), math.RadToDeg(rot.Y), math.RadToDeg(rot.Z)))
 
 			// Draw freame
 			e.systemManager.DrawFrame(packet)

@@ -1,13 +1,15 @@
 package engine
 
+import "github.com/spaghettifunk/anima/engine/systems"
+
 type Game struct {
 	ApplicationConfig *ApplicationConfig
+	SystemManager     *systems.SystemManager
 	State             interface{}
-	// pointers to functions
-	FnInitialize Initialize
-	FnUpdate     Update
-	FnRender     Render
-	FnOnResize   OnResize
+	FnInitialize      Initialize
+	FnUpdate          Update
+	FnRender          Render
+	FnOnResize        OnResize
 }
 
 type Initialize func() error

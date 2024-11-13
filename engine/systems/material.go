@@ -265,9 +265,10 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 
 		// Also use the handle as the material id.
 		material.ID = ref.Handle
-		// KTRACE("Material '%s' does not yet exist. Created, and ref_count is now %i.", config.name, ref.ReferenceCount);
+		ms.RegisteredMaterials[ref.Handle] = material
+		core.LogDebug("material '%s' does not yet exist. Created, and ref_count is now %d", config.Name, ref.ReferenceCount)
 	} else {
-		// KTRACE("Material '%s' already exists, ref_count increased to %i.", config.name, ref.ReferenceCount);
+		core.LogDebug("material '%s' already exists, ref_count increased to %d", config.Name, ref.ReferenceCount)
 	}
 
 	// Update the entry.
