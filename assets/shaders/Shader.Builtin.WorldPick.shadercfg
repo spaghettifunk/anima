@@ -2,48 +2,49 @@
 # Different extension to determine which Go structure to invoke to populate the data
 
 version = "1.0"
-cull_mode = "front"
-name = "Shader.Builtin.Skybox"
-renderpass = "Renderpass.Builtin.Skybox"
+name = "Shader.Builtin.WorldPick"
+renderpass = "Renderpass.Builtin.Pick"
 stages = ["vertex", "fragment"]
-stagefiles = ["shaders/Builtin.SkyboxShader.vert.spv", "shaders/Builtin.SkyboxShader.frag.spv"]
-depth_test = 0
-depth_write = 0
+stagefiles = ["shaders/Builtin.WorldPickShader.vert.spv", "shaders/Builtin.WorldPickShader.frag.spv"]
+depth_test = 1
+depth_write = 1
 
-# Attributes
-[[attribute]]
+[[attributes]]
 type = "vec3"
 name = "in_position"
 
-[[attribute]]
+[[attributes]]
 type = "vec3"
 name = "in_normal"
 
-[[attribute]]
+[[attributes]]
 type = "vec2"
 name = "in_texcoord"
 
-[[attribute]]
+[[attributes]]
 type = "vec4"
 name = "in_colour"
 
-[[attribute]]
+[[attributes]]
 type = "vec3"
 name = "in_tangent"
 
-# Uniforms
-# Scope: 0=global, 1=instance, 2=local
-[[uniform]]
+[[uniforms]]
 type = "mat4"
 scope = 0
 name = "projection"
 
-[[uniform]]
+[[uniforms]]
 type = "mat4"
 scope = 0
 name = "view"
 
-[[uniform]]
-type = "samp"
+[[uniforms]]
+type = "vec3"
 scope = 1
-name = "cube_texture"
+name = "id_colour"
+
+[[uniforms]]
+type = "mat4"
+scope = 2
+name = "model"

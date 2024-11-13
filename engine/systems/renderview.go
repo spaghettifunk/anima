@@ -49,8 +49,19 @@ func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shade
 }
 
 func (rvs *RenderViewSystem) Shutdown() error {
-	rvs.Lookup = nil
-	rvs.RegisteredViews = nil
+	// Destroy all views in the system.
+	for i := 0; i < int(rvs.MaxViewCount); i++ {
+		view := rvs.RegisteredViews[i]
+		if view.ID != metadata.InvalidIDUint16 {
+			// Call its destroy routine first.
+			view.View.OnDestroyRenderView()
+			// Destroy its renderpasses.
+			for p := 0; p < int(view.RenderpassCount); p++ {
+				rvs.renderer.RenderPassDestroy(view.Passes[p])
+			}
+			view.ID = metadata.InvalidIDUint16
+		}
+	}
 	return nil
 }
 
@@ -94,23 +105,19 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 	view := rvs.RegisteredViews[id]
 	view.ID = id
 	view.RenderViewType = config.RenderViewType
-
-	// TODO: Leaking the name, create a destroy method and kill this.
 	view.Name = config.Name
 	view.CustomShaderName = config.CustomShaderName
 	view.RenderpassCount = config.PassCount
 	view.Passes = make([]*metadata.RenderPass, view.RenderpassCount)
 
 	for i := uint8(0); i < view.RenderpassCount; i++ {
-		view.Passes[i] = rvs.renderer.RenderPassGet(config.Passes[i].Name)
-		if view.Passes[i] == nil {
-			err := fmt.Errorf("render_view_system_create - renderpass not found: '%s'", config.Passes[i].Name)
+		p, err := rvs.renderer.RenderPassCreate(config.Passes[i])
+		if err != nil {
+			core.LogDebug("failed to create renderpass")
 			return err
 		}
+		view.Passes[i] = p
 	}
-
-	// TODO: Assign these function pointers to known functions based on the view type.
-	// TODO: Factory pattern (with register, etc. for each type)?
 
 	uniforms := map[string]uint16{}
 	switch config.RenderViewType {
@@ -156,6 +163,8 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 		rvs.RegisteredViews[id] = nil
 		return err
 	}
+
+	rvs.RegenerateRenderTargets(view)
 
 	// Update the hashtable entry.
 	rvs.Lookup[config.Name] = id
@@ -397,4 +406,53 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 	}
 
 	return nil
+}
+
+func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) {
+	// Create render targets for each. TODO: Should be configurable.
+
+	for r := uint32(0); r < uint32(view.RenderpassCount); r++ {
+		pass := view.Passes[r]
+
+		for i := uint8(0); i < pass.RenderTargetCount; i++ {
+			target := pass.Targets[i]
+
+			// Destroy the old first if it exists.
+			// TODO: check if a resize is actually needed for this target.
+			rvs.renderer.RenderTargetDestroy(target, false)
+
+			for a := 0; a < int(target.AttachmentCount); a++ {
+				attachment := target.Attachments[a]
+				if attachment.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT {
+					if attachment.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR {
+						attachment.Texture = rvs.renderer.backend.WindowAttachmentGet(i)
+					} else if attachment.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH {
+						attachment.Texture = rvs.renderer.backend.DepthAttachmentGet(i)
+					} else {
+						core.LogFatal("unsupported attachment type: 0x%d", attachment.RenderTargetAttachmentType)
+						continue
+					}
+				} else if attachment.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW {
+					if !view.View.RegenerateAttachmentTarget(view, r, attachment) {
+						core.LogError("view failed to regenerate attachment target for attachment type: 0x%d", attachment.RenderTargetAttachmentType)
+					}
+				}
+			}
+
+			// Create the render target.
+			tc, err := rvs.renderer.RenderTargetCreate(
+				target.AttachmentCount,
+				target.Attachments,
+				pass,
+				// NOTE: just going off the first attachment size here, but should be enough for most cases.
+				target.Attachments[0].Texture.Width,
+				target.Attachments[0].Texture.Height,
+			)
+			if err != nil {
+				core.LogError("failed to render target create with error %s", err.Error())
+				return
+			}
+			pass.Targets[i] = tc
+		}
+	}
 }

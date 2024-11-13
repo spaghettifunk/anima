@@ -18,23 +18,32 @@ type VulkanPipeline struct {
 	PipelineLayout vk.PipelineLayout
 }
 
-func NewGraphicsPipeline(
-	context *VulkanContext,
-	renderpass *VulkanRenderPass,
-	stride uint32,
-	attribute_count uint32,
-	attributes []vk.VertexInputAttributeDescription,
-	descriptor_set_layout_count uint32,
-	descriptor_set_layouts []vk.DescriptorSetLayout,
-	stage_count uint32,
-	stages []vk.PipelineShaderStageCreateInfo,
-	viewport vk.Viewport,
-	scissor vk.Rect2D,
-	cull_mode metadata.FaceCullMode,
-	is_wireframe bool,
-	depth_test_enabled bool,
-	push_constant_range_count uint32,
-	push_constant_ranges []*metadata.MemoryRange) (*VulkanPipeline, error) {
+type VulkanPipelineConfig struct {
+	/** @brief A pointer to the renderpass to associate with the pipeline. */
+	Renderpass *VulkanRenderPass
+	/** @brief The stride of the vertex data to be used (ex: sizeof(vertex_3d)) */
+	Stride uint32
+	/** @brief An array of attributes. */
+	Attributes []vk.VertexInputAttributeDescription
+	/** @brief An array of descriptor set layouts. */
+	DescriptorSetLayouts []vk.DescriptorSetLayout
+	/** @brief An VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BITarray of stages. */
+	Stages []vk.PipelineShaderStageCreateInfo
+	/** @brief The initial viewport configuration. */
+	Viewport vk.Viewport
+	/** @brief The initial scissor configuration. */
+	Scissor vk.Rect2D
+	/** @brief The face cull mode. */
+	CullMode metadata.FaceCullMode
+	/** @brief Indicates if this pipeline should use wireframe mode. */
+	IsWireframe bool
+	/** @brief The shader flags used for creating the pipeline. */
+	ShaderFlags metadata.ShaderFlagBits
+	/** @brief An array of push constant data ranges. */
+	PushConstantRanges []*metadata.MemoryRange
+}
+
+func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (*VulkanPipeline, error) {
 
 	out_pipeline := &VulkanPipeline{}
 
@@ -42,9 +51,9 @@ func NewGraphicsPipeline(
 	viewport_state := vk.PipelineViewportStateCreateInfo{
 		SType:         vk.StructureTypePipelineViewportStateCreateInfo,
 		ViewportCount: 1,
-		PViewports:    []vk.Viewport{viewport},
+		PViewports:    []vk.Viewport{config.Viewport},
 		ScissorCount:  1,
-		PScissors:     []vk.Rect2D{scissor},
+		PScissors:     []vk.Rect2D{config.Scissor},
 	}
 	viewport_state.Deref()
 
@@ -56,10 +65,10 @@ func NewGraphicsPipeline(
 		PolygonMode:             vk.PolygonModeLine,
 		LineWidth:               1.0,
 	}
-	if !is_wireframe {
+	if !config.IsWireframe {
 		rasterizer_create_info.PolygonMode = vk.PolygonModeFill
 	}
-	switch cull_mode {
+	switch config.CullMode {
 	case metadata.FaceCullModeNone:
 		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeNone)
 	case metadata.FaceCullModeFront:
@@ -94,7 +103,7 @@ func NewGraphicsPipeline(
 	depth_stencil := vk.PipelineDepthStencilStateCreateInfo{
 		SType: vk.StructureTypePipelineDepthStencilStateCreateInfo,
 	}
-	if depth_test_enabled {
+	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_TEST) != 0 {
 		depth_stencil.DepthTestEnable = vk.True
 		depth_stencil.DepthWriteEnable = vk.True
 		depth_stencil.DepthCompareOp = vk.CompareOpLess
@@ -142,7 +151,7 @@ func NewGraphicsPipeline(
 	// Vertex input
 	binding_description := vk.VertexInputBindingDescription{
 		Binding:   0, // Binding index
-		Stride:    stride,
+		Stride:    config.Stride,
 		InputRate: vk.VertexInputRateVertex, // Move to next data entry for each vertex.
 	}
 	binding_description.Deref()
@@ -152,8 +161,8 @@ func NewGraphicsPipeline(
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		VertexBindingDescriptionCount:   1,
 		PVertexBindingDescriptions:      []vk.VertexInputBindingDescription{binding_description},
-		VertexAttributeDescriptionCount: attribute_count,
-		PVertexAttributeDescriptions:    attributes,
+		VertexAttributeDescriptionCount: uint32(len(config.Attributes)),
+		PVertexAttributeDescriptions:    config.Attributes,
 	}
 	vertex_input_info.Deref()
 
@@ -168,26 +177,26 @@ func NewGraphicsPipeline(
 	// Pipeline layout
 	pipeline_layout_create_info := vk.PipelineLayoutCreateInfo{
 		SType:          vk.StructureTypePipelineLayoutCreateInfo,
-		SetLayoutCount: descriptor_set_layout_count,
-		PSetLayouts:    descriptor_set_layouts,
+		SetLayoutCount: uint32(len(config.DescriptorSetLayouts)),
+		PSetLayouts:    config.DescriptorSetLayouts,
 	}
 
 	// Push constants
-	if push_constant_range_count > 0 {
-		if push_constant_range_count > 32 {
-			err := fmt.Errorf("func NewGraphicsPipeline: cannot have more than 32 push constant ranges. Passed count: %d", push_constant_range_count)
+	if len(config.PushConstantRanges) > 0 {
+		if len(config.PushConstantRanges) > 32 {
+			err := fmt.Errorf("func NewGraphicsPipeline: cannot have more than 32 push constant ranges. Passed count: %d", len(config.PushConstantRanges))
 			return nil, err
 		}
 
 		// NOTE: 32 is the max number of ranges we can ever have, since spec only guarantees 128 bytes with 4-byte alignment.
 		ranges := make([]vk.PushConstantRange, 32)
-		for i := uint32(0); i < push_constant_range_count; i++ {
+		for i := 0; i < len(config.PushConstantRanges); i++ {
 			ranges[i].StageFlags = vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit)
-			ranges[i].Offset = uint32(push_constant_ranges[i].Offset)
-			ranges[i].Size = uint32(push_constant_ranges[i].Size)
+			ranges[i].Offset = uint32(config.PushConstantRanges[i].Offset)
+			ranges[i].Size = uint32(config.PushConstantRanges[i].Size)
 			ranges[i].Deref()
 		}
-		pipeline_layout_create_info.PushConstantRangeCount = push_constant_range_count
+		pipeline_layout_create_info.PushConstantRangeCount = uint32(len(config.PushConstantRanges))
 		pipeline_layout_create_info.PPushConstantRanges = ranges
 	} else {
 		pipeline_layout_create_info.PushConstantRangeCount = 0
@@ -211,8 +220,8 @@ func NewGraphicsPipeline(
 	// Pipeline create
 	pipeline_create_info := vk.GraphicsPipelineCreateInfo{
 		SType:               vk.StructureTypeGraphicsPipelineCreateInfo,
-		StageCount:          stage_count,
-		PStages:             stages,
+		StageCount:          uint32(len(config.Stages)),
+		PStages:             config.Stages,
 		PVertexInputState:   &vertex_input_info,
 		PInputAssemblyState: &input_assembly,
 		PViewportState:      &viewport_state,
@@ -223,14 +232,14 @@ func NewGraphicsPipeline(
 		PDynamicState:       &dynamic_state_create_info,
 		PTessellationState:  nil,
 		Layout:              out_pipeline.PipelineLayout,
-		RenderPass:          renderpass.Handle,
+		RenderPass:          config.Renderpass.Handle,
 		Subpass:             0,
 		BasePipelineHandle:  vk.NullPipeline,
 		BasePipelineIndex:   -1,
 	}
 	pipeline_create_info.Deref()
 
-	if !depth_test_enabled {
+	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_TEST) == 0 {
 		pipeline_create_info.PDepthStencilState = nil
 	}
 

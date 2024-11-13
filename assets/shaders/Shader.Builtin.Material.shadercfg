@@ -6,8 +6,8 @@ name = "Shader.Builtin.Material"
 renderpass = "Renderpass.Builtin.World"
 stages = ["vertex", "fragment"]
 stagefiles = ["shaders/Builtin.MaterialShader.vert.spv", "shaders/Builtin.MaterialShader.frag.spv"]
-use_instance = true
-use_local = true
+depth_test = 1
+depth_write = 1
 
 # Attributes
 [[attribute]]

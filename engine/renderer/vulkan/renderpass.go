@@ -16,12 +16,8 @@ const (
 )
 
 type VulkanRenderPass struct {
-	Handle vk.RenderPass
-	/** @brief Indicates if there is a previous renderpass. */
-	HasPrevPass bool
-	/** @brief Indicates if there is a next renderpass. */
-	HasNextPass bool
-	Depth       float32
-	Stencil     uint32
-	State       VulkanRenderPassState
+	Handle  vk.RenderPass
+	Depth   float32
+	Stencil uint32
+	State   VulkanRenderPassState
 }

@@ -2,46 +2,37 @@
 # Different extension to determine which Go structure to invoke to populate the data
 
 version = "1.0"
-name = "Shader.Builtin.UI"
-renderpass = "Renderpass.Builtin.UI"
+name = "Shader.Builtin.UIPick"
+renderpass = "Renderpass.Builtin.Pick"
 stages = ["vertex", "fragment"]
-stagefiles = ["shaders/Builtin.UIShader.vert.spv", "shaders/Builtin.UIShader.frag.spv"]
+stagefiles = ["shaders/Builtin.UIPickShader.vert.spv", "shaders/Builtin.UIPickShader.frag.spv"]
 depth_test = 0
 depth_write = 0
 
-# Attributes
-[[attribute]]
+[[attributes]]
 type = "vec2"
 name = "in_position"
 
-[[attribute]]
+[[attributes]]
 type = "vec2"
 name = "in_texcoord"
 
-# Uniforms
-# Scope: 0=global, 1=instance, 2=local
-[[uniform]]
+[[uniforms]]
 type = "mat4"
 scope = 0
 name = "projection"
 
-[[uniform]]
+[[uniforms]]
 type = "mat4"
 scope = 0
 name = "view"
 
-[[uniform]]
-type = "vec4"
+[[uniforms]]
+type = "vec3"
 scope = 1
-name = "diffuse_colour"
+name = "id_colour"
 
-[[uniform]]
-type = "samp"
-scope = 1
-name = "diffuse_texture"
-
-[[uniform]]
+[[uniforms]]
 type = "mat4"
 scope = 2
 name = "model"
-

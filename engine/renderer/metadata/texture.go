@@ -35,6 +35,8 @@ const (
 	TextureFlagIsWriteable TextureFlag = 0x2
 	/** @brief Indicates if the texture was created via wrapping vs traditional creation. */
 	TextureFlagIsWrapped TextureFlag = 0x4
+	/** @brief Indicates the texture is a depth texture. */
+	TextureFlagDepth TextureFlag = 0x8
 )
 
 /** @brief Holds bit flags for textures.. */

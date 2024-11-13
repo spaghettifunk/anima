@@ -2,7 +2,6 @@ package vulkan
 
 import (
 	"fmt"
-	m "math"
 	"strconv"
 	"strings"
 
@@ -19,7 +18,7 @@ type VulkanSwapchain struct {
 	ImageCount        uint32
 
 	RenderTextures []*metadata.Texture
-	DepthTexture   *metadata.Texture
+	DepthTextures  []*metadata.Texture
 	RenderTargets  []*metadata.RenderTarget
 }
 
@@ -128,7 +127,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 	// Swapchain extent
 	context.Device.SwapchainSupport.Capabilities.CurrentExtent.Deref()
-	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != m.MaxUint32 {
+	if context.Device.SwapchainSupport.Capabilities.CurrentExtent.Width != vk.MaxUint32 {
 		swapchainExtent = context.Device.SwapchainSupport.Capabilities.CurrentExtent
 	}
 
@@ -180,6 +179,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	swapchainCreateInfo.PresentMode = presentMode
 	swapchainCreateInfo.Clipped = vk.True
 	swapchainCreateInfo.OldSwapchain = nil
+	swapchainCreateInfo.Deref()
 
 	var swapchainHandle vk.Swapchain
 	if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchainHandle); res != vk.Success {
@@ -240,27 +240,19 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 			}
 		}
 	} else {
-		for i := uint32(0); i < swapchain.ImageCount; i++ {
+		for i := 0; i < int(swapchain.ImageCount); i++ {
 			// Just update the dimensions.
-			texture := swapchain.RenderTextures[i]
-			if texture != nil {
-				if (texture.Flags & metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)) == 0 {
-					err := fmt.Errorf("texture_system_resize should not be called on textures that are not writeable")
-					return nil, err
-				}
-				texture.Width = swapchainExtent.Width
-				texture.Height = swapchainExtent.Height
-				texture.Generation++
-			}
+			// texture_system_resize(&swapchain.render_textures[i], swapchain_extent.width, swapchain_extent.height, false);
 		}
 	}
-
-	swapchain_images := make([]vk.Image, 32)
-	if res := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain_images); res != vk.Success {
-		err := fmt.Errorf("failed to get swapchain images with error: `%s`", VulkanResultString(res, true))
+	var swapchain_images []vk.Image
+	result := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain_images)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("failed to swap-images with error %s", VulkanResultString(result, true))
 		return nil, err
 	}
-	for i := uint32(0); i < swapchain.ImageCount; i++ {
+
+	for i := 0; i < int(swapchain.ImageCount); i++ {
 		// Update the internal image for each.
 		image := swapchain.RenderTextures[i].InternalData.(*VulkanImage)
 		image.Handle = swapchain_images[i]
@@ -271,7 +263,8 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	// Views
 	for i := 0; i < int(swapchain.ImageCount); i++ {
 		image := swapchain.RenderTextures[i].InternalData.(*VulkanImage)
-		viewInfo := vk.ImageViewCreateInfo{
+
+		view_info := vk.ImageViewCreateInfo{
 			SType:    vk.StructureTypeImageViewCreateInfo,
 			Image:    image.Handle,
 			ViewType: vk.ImageViewType2d,
@@ -285,8 +278,9 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 			},
 		}
 
-		if res := vk.CreateImageView(context.Device.LogicalDevice, &viewInfo, context.Allocator, &image.View); res != vk.Success {
-			err := fmt.Errorf("failed to create image view with error: `%s`", VulkanResultString(res, true))
+		result = vk.CreateImageView(context.Device.LogicalDevice, &view_info, context.Allocator, &image.View)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("failed to create image view with error %s", VulkanResultString(result, true))
 			return nil, err
 		}
 	}
@@ -294,49 +288,54 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	// Depth resources
 	if !DeviceDetectDepthFormat(context.Device) {
 		context.Device.DepthFormat = vk.FormatUndefined
-		core.LogFatal("Failed to find a supported format!")
+		core.LogFatal("failed to find a supported format")
 	}
 
-	// Create depth image and its view.
-	image, err := ImageCreate(
-		context,
-		vk.ImageType2d,
-		swapchainExtent.Width,
-		swapchainExtent.Height,
-		context.Device.DepthFormat,
-		vk.ImageTilingOptimal,
-		vk.ImageUsageFlags(vk.ImageUsageDepthStencilAttachmentBit),
-		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
-		true,
-		vk.ImageAspectFlags(vk.ImageAspectDepthBit))
-	if err != nil {
-		core.LogError(err.Error())
-		return nil, err
+	if swapchain.DepthTextures == nil || len(swapchain.DepthTextures) == 0 {
+		swapchain.DepthTextures = make([]*metadata.Texture, swapchain.ImageCount)
 	}
 
-	texture := &metadata.Texture{
-		ID:           metadata.InvalidID,
-		TextureType:  metadata.TextureType2d,
-		Name:         "__kohi_default_depth_texture__",
-		Width:        width,
-		Height:       height,
-		ChannelCount: 4,
-		Generation:   metadata.InvalidID,
-		InternalData: image,
-		Flags:        0,
-	}
+	for i := 0; i < int(context.Swapchain.ImageCount); i++ {
+		image, err := ImageCreate(
+			context,
+			metadata.TextureType2d,
+			swapchainExtent.Width,
+			swapchainExtent.Height,
+			context.Device.DepthFormat,
+			vk.ImageTilingOptimal,
+			vk.ImageUsageFlags(vk.ImageUsageDepthStencilAttachmentBit),
+			vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
+			true,
+			vk.ImageAspectFlags(vk.ImageAspectDepthBit))
+		if err != nil {
+			core.LogError(err.Error())
+			return nil, err
+		}
 
-	hasTransparency := false
-	isWriteable := true
-	if hasTransparency {
-		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
-	}
-	if isWriteable {
-		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)
-	}
-	texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWrapped)
+		texture := &metadata.Texture{
+			ID:           metadata.InvalidID,
+			TextureType:  metadata.TextureType2d,
+			Name:         "__kohi_default_depth_texture__",
+			Width:        width,
+			Height:       height,
+			ChannelCount: 4,
+			Generation:   metadata.InvalidID,
+			InternalData: image,
+			Flags:        0,
+		}
 
-	swapchain.DepthTexture = texture
+		hasTransparency := false
+		isWriteable := true
+		if hasTransparency {
+			texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagHasTransparency)
+		}
+		if isWriteable {
+			texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWriteable)
+		}
+		texture.Flags |= metadata.TextureFlagBits(metadata.TextureFlagIsWrapped)
+
+		swapchain.DepthTextures[i] = texture
+	}
 
 	core.LogInfo("Swapchain created successfully.")
 
@@ -345,7 +344,12 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) {
 	vk.DeviceWaitIdle(context.Device.LogicalDevice)
-	vs.DepthTexture.InternalData.(*VulkanImage).Destroy(context)
+
+	for i := 0; i < int(context.Swapchain.ImageCount); i++ {
+		image := vs.DepthTextures[i].InternalData.(*VulkanImage)
+		image.Destroy(context)
+		vs.DepthTextures[i].InternalData = nil
+	}
 
 	// Only destroy the views, not the images, since those are owned by the swapchain and are thus
 	// destroyed when it is.

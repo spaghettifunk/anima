@@ -80,3 +80,7 @@ func (vs *RenderViewSkybox) OnDestroyPacketRenderView(packet *metadata.RenderVie
 func (vs *RenderViewSkybox) OnRenderRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
 	return true
 }
+
+func (vs *RenderViewSkybox) RegenerateAttachmentTarget(view *metadata.RenderView, passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
+	return true
+}

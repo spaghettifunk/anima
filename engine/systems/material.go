@@ -235,7 +235,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			return nil, err
 		}
 		// Save off the locations for known types for quick lookups.
-		if ms.MaterialShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_MATERIAL {
+		if ms.MaterialShaderID == metadata.InvalidID && config.ShaderName == "Shader.Builtin.Material" {
 			ms.MaterialShaderID = shader.ID
 			ms.MaterialLocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.MaterialLocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -248,7 +248,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			ms.MaterialLocations.Shininess = ms.shaderSystem.GetUniformIndex(shader, "shininess")
 			ms.MaterialLocations.Model = ms.shaderSystem.GetUniformIndex(shader, "model")
 			ms.MaterialLocations.RenderMode = ms.shaderSystem.GetUniformIndex(shader, "mode")
-		} else if ms.UIShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_UI {
+		} else if ms.UIShaderID == metadata.InvalidID && config.ShaderName == "Shader.Builtin.UI" {
 			ms.UIShaderID = shader.ID
 			ms.UILocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.UILocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -611,7 +611,7 @@ func (ms *MaterialSystem) createDefaultMaterial() bool {
 
 	texture_maps := []*metadata.TextureMap{ms.DefaultMaterial.DiffuseMap, ms.DefaultMaterial.SpecularMap, ms.DefaultMaterial.NormalMap}
 
-	shader, err := ms.shaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_MATERIAL)
+	shader, err := ms.shaderSystem.GetShader("Shader.Builtin.Material")
 	if err != nil {
 		core.LogError(err.Error())
 		return false
