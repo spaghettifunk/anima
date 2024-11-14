@@ -16,16 +16,20 @@ type RenderViewUI struct {
 	DiffuseColourLocation uint16
 	ModelLocation         uint16
 	Shader                *metadata.Shader
+	View                  *metadata.RenderView
 }
 
-func NewRenderViewUI(shader *metadata.Shader) *RenderViewUI {
-	return &RenderViewUI{
+func NewRenderViewUI(view *metadata.RenderView, shader *metadata.Shader) *RenderViewUI {
+	rui := &RenderViewUI{
 		ShaderID: shader.ID,
 		Shader:   shader,
+		View:     view,
 	}
+	view.InternalData = rui
+	return rui
 }
 
-func (vu *RenderViewUI) OnCreateRenderView(uniforms map[string]uint16) bool {
+func (vu *RenderViewUI) OnCreate(uniforms map[string]uint16) bool {
 	vu.DiffuseMapLocation = uniforms["diffuse_texture"]
 	vu.DiffuseColourLocation = uniforms["diffuse_colour"]
 	vu.ModelLocation = uniforms["model"]
@@ -40,15 +44,15 @@ func (vu *RenderViewUI) OnCreateRenderView(uniforms map[string]uint16) bool {
 	return false
 }
 
-func (vu *RenderViewUI) OnDestroyRenderView() error {
+func (vu *RenderViewUI) OnDestroy() error {
 	return nil
 }
 
-func (vu *RenderViewUI) OnResizeRenderView(width, height uint32) {
+func (vu *RenderViewUI) OnResize(width, height uint32) {
 	vu.ProjectionMatrix = math.NewMat4Orthographic(0.0, float32(width), float32(height), 0.0, vu.NearClip, vu.FarClip)
 }
 
-func (vu *RenderViewUI) OnBuildPacketRenderView(data interface{}) (*metadata.RenderViewPacket, error) {
+func (vu *RenderViewUI) OnBuildPacket(data interface{}) (*metadata.RenderViewPacket, error) {
 	// packet_data := data.(*metadata.UIPacketData);
 
 	// out_packet->geometries = darray_create(geometry_render_data);
@@ -78,14 +82,14 @@ func (vu *RenderViewUI) OnBuildPacketRenderView(data interface{}) (*metadata.Ren
 	return nil, nil
 }
 
-func (vu *RenderViewUI) OnDestroyPacketRenderView(packet *metadata.RenderViewPacket) {
+func (vu *RenderViewUI) OnDestroyPacket(packet *metadata.RenderViewPacket) {
 
 }
 
-func (vu *RenderViewUI) OnRenderRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
+func (vu *RenderViewUI) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
 	return false
 }
 
-func (vu *RenderViewUI) RegenerateAttachmentTarget(view *metadata.RenderView, passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
+func (vu *RenderViewUI) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
 	return true
 }

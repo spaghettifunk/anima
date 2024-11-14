@@ -12,6 +12,7 @@ type MeshLoadParams struct {
 }
 
 type Mesh struct {
+	UniqueID      uint32
 	Generation    uint8
 	GeometryCount uint16
 	Geometries    []*Geometry

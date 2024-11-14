@@ -127,44 +127,8 @@ func (e *Engine) Initialize() error {
 		return err
 	}
 
+	// initialize all the managers (including the rendering system)
 	if err := e.systemManager.Initialize(); err != nil {
-		return err
-	}
-
-	// START: temporary stuff
-	skyboxConfig := &metadata.RenderViewConfig{
-		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-		Width:          0,
-		Height:         0,
-		Name:           "skybox",
-		PassCount:      1,
-		Passes: []metadata.RenderViewPassConfig{
-			{
-				Name: "Renderpass.Builtin.Skybox",
-			},
-		},
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	}
-	if err := e.systemManager.RenderViewCreate(skyboxConfig); err != nil {
-		core.LogFatal(err.Error())
-		return err
-	}
-
-	opaqueWorldConfig := &metadata.RenderViewConfig{
-		RenderViewType: metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-		Width:          0,
-		Height:         0,
-		Name:           "world_opaque",
-		PassCount:      1,
-		Passes: []metadata.RenderViewPassConfig{
-			{
-				Name: "Renderpass.Builtin.World",
-			},
-		},
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-	}
-	if err := e.systemManager.RenderViewCreate(opaqueWorldConfig); err != nil {
-		core.LogFatal(err.Error())
 		return err
 	}
 
@@ -198,7 +162,7 @@ func (e *Engine) Initialize() error {
 	}
 	e.skybox.Geometry = g
 	e.skybox.RenderFrameNumber = metadata.InvalidIDUint64
-	skyboxShader, err := e.systemManager.ShaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_SKYBOX)
+	skyboxShader, err := e.systemManager.ShaderSystem.GetShader("Shader.Builtin.Skybox")
 	if err != nil {
 		return err
 	}
@@ -362,7 +326,11 @@ func (e *Engine) Run() error {
 			skyboxPacketData := &metadata.SkyboxPacketData{
 				Skybox: e.skybox,
 			}
-			packet.Views[0] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
+			rvp, err := e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
+			if err != nil {
+				return err
+			}
+			packet.Views[0] = rvp
 
 			// World
 			meshCount := 0
@@ -377,7 +345,11 @@ func (e *Engine) Run() error {
 				MeshCount: uint32(meshCount),
 				Meshes:    meshes,
 			}
-			packet.Views[1] = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world_opaque"), worldMeshData)
+			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world_opaque"), worldMeshData)
+			if err != nil {
+				return err
+			}
+			packet.Views[1] = rvp
 
 			// Update the bitmap text with camera position. NOTE: just using the default camera for now.
 			worldCamera := e.systemManager.CameraSystem.GetDefault()

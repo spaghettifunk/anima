@@ -138,7 +138,6 @@ func (g *TestGame) Update(deltaTime float64) error {
 		data := core.EventContext{}
 		core.EventFire(data)
 	}
-
 	// TODO: end temp
 
 	return nil

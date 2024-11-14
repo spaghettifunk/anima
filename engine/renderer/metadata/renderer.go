@@ -241,13 +241,13 @@ type RenderViewView interface {
 	 * @param self A pointer to the view being created.
 	 * @return True on success; otherwise false.
 	 */
-	OnCreateRenderView(uniforms map[string]uint16) bool
+	OnCreate(uniforms map[string]uint16) bool
 	/**
 	 * @brief A pointer to a function to be called when this view is destroyed.
 	 *
 	 * @param self A pointer to the view being destroyed.
 	 */
-	OnDestroyRenderView() error
+	OnDestroy() error
 	/**
 	 * @brief A pointer to a function to be called when the owner of this view (such
 	 * as the window) is resized.
@@ -256,7 +256,7 @@ type RenderViewView interface {
 	 * @param width The new width in pixels.
 	 * @param width The new height in pixels.
 	 */
-	OnResizeRenderView(width, height uint32)
+	OnResize(width, height uint32)
 	/**
 	 * @brief Builds a render view packet using the provided view and meshes.
 	 *
@@ -265,13 +265,13 @@ type RenderViewView interface {
 	 * @param out_packet A pointer to hold the generated packet.
 	 * @return True on success; otherwise false.
 	 */
-	OnBuildPacketRenderView(data interface{}) (*RenderViewPacket, error)
+	OnBuildPacket(data interface{}) (*RenderViewPacket, error)
 	/**
 	 * @brief Destroys the provided render view packet.
 	 * @param self A pointer to the view to use.
 	 * @param packet A pointer to the packet to be destroyed.
 	 */
-	OnDestroyPacketRenderView(packet *RenderViewPacket)
+	OnDestroyPacket(packet *RenderViewPacket)
 	/**
 	 * @brief Uses the given view and packet to render the contents therein.
 	 *
@@ -281,7 +281,7 @@ type RenderViewView interface {
 	 * @param render_target_index The current render target index for renderers that use multiple render targets at once (i.e. Vulkan).
 	 * @return True on success; otherwise false.
 	 */
-	OnRenderRenderView(view *RenderView, packet *RenderViewPacket, frame_number, render_target_index uint64) bool
+	OnRender(packet *RenderViewPacket, frame_number, render_target_index uint64) bool
 	/**
 	 * @brief Regenerates the resources for the given attachment at the provided pass index.
 	 *
@@ -290,7 +290,7 @@ type RenderViewView interface {
 	 * @param attachment A pointer to the attachment whose resources are to be regenerated.
 	 * @return True on success; otherwise false.
 	 */
-	RegenerateAttachmentTarget(view *RenderView, passIndex uint32, attachment *RenderTargetAttachment) bool
+	RegenerateAttachmentTarget(passIndex uint32, attachment *RenderTargetAttachment) bool
 }
 
 /**
@@ -316,8 +316,9 @@ type RenderView struct {
 	CustomShaderName string
 	/** @brief The internal, view-specific data for this view. */
 	InternalData interface{}
-	View         RenderViewView
-	ViewConfig   *RenderViewConfig
+
+	View       RenderViewView
+	ViewConfig *RenderViewConfig
 }
 
 /**
@@ -370,6 +371,9 @@ type PickPacketData struct {
 	// TODO: temp
 	TextCount uint32
 	// struct ui_text** texts;
+
+	// This is only neede for when we build the packet
+	RequiredInstanceCount uint32
 }
 
 type SkyboxPacketData struct {

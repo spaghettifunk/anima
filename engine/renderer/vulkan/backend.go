@@ -190,10 +190,6 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	// Debugger
 	if vr.debug {
 		core.LogDebug("Creating Vulkan debugger...")
-		// log_severity := vk.DebugUtilsMessageSeverityErrorBit |
-		// 	vk.DebugUtilsMessageSeverityWarningBit |
-		// 	vk.DebugUtilsMessageSeverityInfoBit //|
-		// 	//    VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
 
 		debugCreateInfo := vk.DebugReportCallbackCreateInfo{
 			SType:       vk.StructureTypeDebugReportCallbackCreateInfo,
@@ -967,14 +963,51 @@ func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) error 
 	return nil
 }
 
-func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*metadata.RenderPass, error) {
-	outRenderpass := &metadata.RenderPass{
-		InternalData: &VulkanRenderPass{
-			Depth:   config.Depth,
-			Stencil: config.Stencil,
-		},
+func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pass *metadata.RenderPass) (*metadata.RenderPass, error) {
+	if config == nil {
+		return nil, fmt.Errorf("renderpass config needs to be a valid pointer")
 	}
-	internalData := outRenderpass.InternalData.(*VulkanRenderPass)
+
+	if config.RenderTargetCount == 0 {
+		return nil, fmt.Errorf("cannot have a renderpass target count of 0")
+	}
+
+	if pass == nil {
+		pass = &metadata.RenderPass{
+			InternalData: &VulkanRenderPass{},
+		}
+	}
+
+	pass.RenderTargetCount = config.RenderTargetCount
+	pass.Targets = make([]*metadata.RenderTarget, config.RenderTargetCount)
+	pass.ClearColour = config.ClearColour
+	pass.ClearFlags = uint8(config.ClearFlags)
+	pass.RenderArea = config.RenderArea
+
+	// Copy over config for each target.
+	for t := 0; t < int(pass.RenderTargetCount); t++ {
+		target := pass.Targets[t]
+		if target == nil {
+			target = &metadata.RenderTarget{}
+		}
+		target.AttachmentCount = uint8(len(config.Target.Attachments))
+		target.Attachments = make([]*metadata.RenderTargetAttachment, len(config.Target.Attachments))
+
+		// Each attachment for the target.
+		for a := 0; a < int(target.AttachmentCount); a++ {
+			attachment := target.Attachments[a]
+			if attachment == nil {
+				attachment = &metadata.RenderTargetAttachment{}
+			}
+			attachment_config := config.Target.Attachments[a]
+
+			attachment.Source = attachment_config.Source
+			attachment.RenderTargetAttachmentType = attachment_config.RenderTargetAttachmentType
+			attachment.LoadOperation = attachment_config.LoadOperation
+			attachment.StoreOperation = attachment_config.StoreOperation
+			attachment.Texture = nil
+		}
+	}
 
 	// Main subpass
 	subpass := vk.SubpassDescription{
@@ -982,9 +1015,9 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	}
 
 	// Attachments.
-	attachmentDescriptions := make([]vk.AttachmentDescription, 1)
-	colourAttachmentDescs := make([]vk.AttachmentDescription, 1)
-	depthAttachmentDescs := make([]vk.AttachmentDescription, 1)
+	attachmentDescriptions := make([]vk.AttachmentDescription, 0)
+	colourAttachmentDescs := make([]vk.AttachmentDescription, 0)
+	depthAttachmentDescs := make([]vk.AttachmentDescription, 0)
 
 	// Can always just look at the first target since they are all the same (one per frame).
 	for i := 0; i < len(config.Target.Attachments); i++ {
@@ -993,7 +1026,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 		attachment_desc := vk.AttachmentDescription{}
 		if attachment_config.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR {
 			// Colour attachment.
-			do_clear_colour := (outRenderpass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG)) != 0
+			do_clear_colour := (pass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG)) != 0
 
 			if attachment_config.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT {
 				attachment_desc.Format = vr.context.Swapchain.ImageFormat.Format
@@ -1021,7 +1054,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 						attachment_desc.LoadOp = vk.AttachmentLoadOpLoad
 					}
 				} else {
-					core.LogFatal("Invalid and unsupported combination of load operation (0x%x) and clear flags (0x%x) for colour attachment.", attachment_desc.LoadOp, outRenderpass.ClearFlags)
+					core.LogFatal("Invalid and unsupported combination of load operation (0x%x) and clear flags (0x%x) for colour attachment.", attachment_desc.LoadOp, pass.ClearFlags)
 					return nil, nil
 				}
 			}
@@ -1056,7 +1089,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 			colourAttachmentDescs = append(colourAttachmentDescs, attachment_desc)
 		} else if attachment_config.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH {
 			// Depth attachment.
-			do_clear_depth := (outRenderpass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG)) != 0
+			do_clear_depth := (pass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG)) != 0
 
 			if attachment_config.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT {
 				attachment_desc.Format = vr.context.Device.DepthFormat
@@ -1083,7 +1116,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 						attachment_desc.LoadOp = vk.AttachmentLoadOpLoad
 					}
 				} else {
-					core.LogFatal("invalid and unsupported combination of load operation (0x%d) and clear flags (0x%d) for depth attachment.", attachment_desc.LoadOp, outRenderpass.ClearFlags)
+					core.LogFatal("invalid and unsupported combination of load operation (0x%d) and clear flags (0x%d) for depth attachment.", attachment_desc.LoadOp, pass.ClearFlags)
 					return nil, nil
 				}
 			}
@@ -1108,6 +1141,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 			}
 			// Final layout for depth stencil attachments is always this.
 			attachment_desc.FinalLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
+			attachment_desc.Deref()
 
 			// Push to colour attachments array.
 			depthAttachmentDescs = append(depthAttachmentDescs, attachment_desc)
@@ -1165,6 +1199,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	// Attachments not used in this subpass, but must be preserved for the next.
 	subpass.PreserveAttachmentCount = 0
 	subpass.PPreserveAttachments = nil
+	subpass.Deref()
 
 	// Render pass dependencies. TODO: make this configurable.
 	dependency := vk.SubpassDependency{
@@ -1176,6 +1211,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentReadBit) | vk.AccessFlags(vk.AccessColorAttachmentWriteBit),
 		DependencyFlags: 0,
 	}
+	dependency.Deref()
 
 	// Render pass create.
 	render_pass_create_info := vk.RenderPassCreateInfo{
@@ -1191,7 +1227,8 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	}
 	render_pass_create_info.Deref()
 
-	result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &render_pass_create_info, vr.context.Allocator, &internalData.Handle)
+	handle := pass.InternalData.(*VulkanRenderPass).Handle
+	result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &render_pass_create_info, vr.context.Allocator, &handle)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
@@ -1216,7 +1253,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 		depth_attachment_references = nil
 	}
 
-	return nil, nil
+	return pass, nil
 }
 
 func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {

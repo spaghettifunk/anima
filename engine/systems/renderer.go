@@ -5,6 +5,7 @@ import (
 
 	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/vulkan"
@@ -22,10 +23,6 @@ type RendererSystem struct {
 	// engine specific
 	Platform *platform.Platform
 
-	SkyboxShaderID   uint32
-	MaterialShaderID uint32
-	UIShaderID       uint32
-
 	// The number of render targets. Typically lines up with the amount of swapchain images.
 	WindowRenderTargetCount uint8
 	// The current window framebuffer width.
@@ -33,12 +30,6 @@ type RendererSystem struct {
 	// The current window framebuffer height.
 	FramebufferHeight uint32
 
-	// A pointer to the skybox renderpass. TODO: Configurable via views.
-	SkyboxRenderPass *metadata.RenderPass
-	// A pointer to the world renderpass. TODO: Configurable via views.
-	WorldRenderPass *metadata.RenderPass
-	// A pointer to the UI renderpass. TODO: Configurable via views.
-	UIRenderPass *metadata.RenderPass
 	// Indicates if the window is currently being resized.
 	Resizing bool
 	// The current number of frames since the last resize operation.'
@@ -57,17 +48,13 @@ func NewRendererSystem(appName string, appWidth, appHeight uint32, platform *pla
 	return renderer, nil
 }
 
-func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
+func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem *RenderViewSystem) error {
 	// Default framebuffer size. Overridden when window is created.
 	r.FramebufferWidth = 1280
 	r.FramebufferHeight = 720
 	r.Resizing = false
 	r.FramesSinceResize = 0
 	r.backend.FrameNumber = 0
-
-	SkyboxRenderPassName := "Renderpass.Builtin.Skybox"
-	WorldRenderPassName := "Renderpass.Builtin.World"
-	UIRenderPassName := "Renderpass.Builtin.UI"
 
 	rbc := &metadata.RendererBackendConfig{
 		ApplicationName: r.AppName,
@@ -77,255 +64,191 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 		return err
 	}
 
-	/*
-// Load render views
+	// Load render views
 
-    // Skybox view
-    render_view_config skybox_config = {};
-    skybox_config.type = RENDERER_VIEW_KNOWN_TYPE_SKYBOX;
-    skybox_config.width = 0;
-    skybox_config.height = 0;
-    skybox_config.name = "skybox";
-    skybox_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
+	// Skybox view
+	skybox_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
+		Width:            0,
+		Height:           0,
+		Name:             "skybox",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.Skybox",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
+	}
 
-    // Renderpass config.
-    skybox_config.pass_count = 1;
-    renderpass_config skybox_passes[1];
-    skybox_passes[0].name = "Renderpass.Builtin.Skybox";
-    skybox_passes[0].render_area = (vec4){0, 0, 1280, 720};  // Default render area resolution.
-    skybox_passes[0].clear_colour = (vec4){0.0f, 0.0f, 0.2f, 1.0f};
-    skybox_passes[0].clear_flags = RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG;
-    skybox_passes[0].depth = 1.0f;
-    skybox_passes[0].stencil = 0;
-
-    render_target_attachment_config skybox_target_attachment = {};
-    // Color attachment.
-    skybox_target_attachment.type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-    skybox_target_attachment.source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
-    skybox_target_attachment.load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE;
-    skybox_target_attachment.store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    skybox_target_attachment.present_after = false;
-
-    skybox_passes[0].target.attachment_count = 1;
-    skybox_passes[0].target.attachments = &skybox_target_attachment;
-    skybox_passes[0].render_target_count = renderer_window_attachment_count_get();
-
-    skybox_config.passes = skybox_passes;
-
-    if (!render_view_system_create(&skybox_config)) {
-        KFATAL("Failed to create skybox view. Aborting application.");
-        return false;
-    }
-
-    // World view.
-    render_view_config world_view_config = {};
-    world_view_config.type = RENDERER_VIEW_KNOWN_TYPE_WORLD;
-    world_view_config.width = 0;
-    world_view_config.height = 0;
-    world_view_config.name = "world";
-    world_view_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
-
-    // Renderpass config.
-    world_view_config.pass_count = 1;
-    renderpass_config world_passes[1] = {0};
-    world_passes[0].name = "Renderpass.Builtin.World";
-    world_passes[0].render_area = (vec4){0, 0, 1280, 720};  // Default render area resolution.
-    world_passes[0].clear_colour = (vec4){0.0f, 0.0f, 0.2f, 1.0f};
-    world_passes[0].clear_flags = RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG;
-    world_passes[0].depth = 1.0f;
-    world_passes[0].stencil = 0;
-
-    render_target_attachment_config world_target_attachments[2] = {0};
-    // Colour attachment
-    world_target_attachments[0].type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-    world_target_attachments[0].source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
-    world_target_attachments[0].load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD;
-    world_target_attachments[0].store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    world_target_attachments[0].present_after = false;
-    // Depth attachment
-    world_target_attachments[1].type = RENDER_TARGET_ATTACHMENT_TYPE_DEPTH;
-    world_target_attachments[1].source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
-    world_target_attachments[1].load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE;
-    world_target_attachments[1].store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    world_target_attachments[1].present_after = false;
-
-    world_passes[0].target.attachment_count = 2;
-    world_passes[0].target.attachments = world_target_attachments;
-    world_passes[0].render_target_count = renderer_window_attachment_count_get();
-
-    world_view_config.passes = world_passes;
-
-    if (!render_view_system_create(&world_view_config)) {
-        KFATAL("Failed to create world view. Aborting application.");
-        return false;
-    }
-
-    // UI view
-    render_view_config ui_view_config = {};
-    ui_view_config.type = RENDERER_VIEW_KNOWN_TYPE_UI;
-    ui_view_config.width = 0;
-    ui_view_config.height = 0;
-    ui_view_config.name = "ui";
-    ui_view_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
-
-    // Renderpass config
-    ui_view_config.pass_count = 1;
-    renderpass_config ui_passes[1];
-    ui_passes[0].name = "Renderpass.Builtin.UI";
-    ui_passes[0].render_area = (vec4){0, 0, 1280, 720};
-    ui_passes[0].clear_colour = (vec4){0.0f, 0.0f, 0.2f, 1.0f};
-    ui_passes[0].clear_flags = RENDERPASS_CLEAR_NONE_FLAG;
-    ui_passes[0].depth = 1.0f;
-    ui_passes[0].stencil = 0;
-
-    render_target_attachment_config ui_target_attachment = {};
-    // Colour attachment.
-    ui_target_attachment.type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-    ui_target_attachment.source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
-    ui_target_attachment.load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD;
-    ui_target_attachment.store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    ui_target_attachment.present_after = true;
-
-    ui_passes[0].target.attachment_count = 1;
-    ui_passes[0].target.attachments = &ui_target_attachment;
-    ui_passes[0].render_target_count = renderer_window_attachment_count_get();
-
-    ui_view_config.passes = ui_passes;
-
-    if (!render_view_system_create(&ui_view_config)) {
-        KFATAL("Failed to create ui view. Aborting application.");
-        return false;
-    }
-
-    // Pick pass.
-    render_view_config pick_view_config = {};
-    pick_view_config.type = RENDERER_VIEW_KNOWN_TYPE_PICK;
-    pick_view_config.width = 0;
-    pick_view_config.height = 0;
-    pick_view_config.name = "pick";
-    pick_view_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
-
-    pick_view_config.pass_count = 2;
-    renderpass_config pick_passes[2] = {0};
-
-    // World pass
-    pick_passes[0].name = "Renderpass.Builtin.WorldPick";
-    pick_passes[0].render_area = (vec4){0, 0, 1280, 720};
-    pick_passes[0].clear_colour = (vec4){1.0f, 1.0f, 1.0f, 1.0f};  // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id.
-    pick_passes[0].clear_flags = RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG;
-    pick_passes[0].depth = 1.0f;
-    pick_passes[0].stencil = 0;
-
-    render_target_attachment_config world_pick_target_attachments[2];
-    world_pick_target_attachments[0].type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-    world_pick_target_attachments[0].source = RENDER_TARGET_ATTACHMENT_SOURCE_VIEW;  // Obtain the attachment from the view.
-    world_pick_target_attachments[0].load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE;
-    world_pick_target_attachments[0].store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    world_pick_target_attachments[0].present_after = false;
-
-    world_pick_target_attachments[1].type = RENDER_TARGET_ATTACHMENT_TYPE_DEPTH;
-    world_pick_target_attachments[1].source = RENDER_TARGET_ATTACHMENT_SOURCE_VIEW;  // Obtain the attachment from the view.
-    world_pick_target_attachments[1].load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE;
-    world_pick_target_attachments[1].store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    world_pick_target_attachments[1].present_after = false;
-
-    pick_passes[0].target.attachment_count = 2;
-    pick_passes[0].target.attachments = world_pick_target_attachments;
-    pick_passes[0].render_target_count = 1;
-
-    pick_passes[1].name = "Renderpass.Builtin.UIPick";
-    pick_passes[1].render_area = (vec4){0, 0, 1280, 720};
-    pick_passes[1].clear_colour = (vec4){1.0f, 1.0f, 1.0f, 1.0f};
-    pick_passes[1].clear_flags = RENDERPASS_CLEAR_NONE_FLAG;
-    pick_passes[1].depth = 1.0f;
-    pick_passes[1].stencil = 0;
-
-    render_target_attachment_config ui_pick_target_attachments[1];
-    ui_pick_target_attachments[0].type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-    // Obtain the attachment from the view.
-    ui_pick_target_attachments[0].source = RENDER_TARGET_ATTACHMENT_SOURCE_VIEW;
-    ui_pick_target_attachments[0].load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD;
-    // Need to store it so it can be sampled afterward.
-    ui_pick_target_attachments[0].store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-    ui_pick_target_attachments[0].present_after = false;
-
-    pick_passes[1].target.attachment_count = 1;
-    pick_passes[1].target.attachments = ui_pick_target_attachments;
-    pick_passes[1].render_target_count = 1;
-
-    pick_view_config.passes = pick_passes;
-    if (!render_view_system_create(&pick_view_config)) {
-        KFATAL("Failed to create pick view. Aborting application.");
-        return false;
-    }	
-	
-	*/
-
-	// Shaders
-
-	// Builtin skybox shader.
-	config_resource, err := r.assetManager.LoadAsset("Shader.Builtin.Skybox", metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin skybox shader.")
+	if err := renderViewSystem.Create(skybox_config); err != nil {
+		core.LogError("Failed to create skybox view. Aborting application.")
 		return err
 	}
 
-	config := config_resource.Data.(*metadata.ShaderConfig)
-	skyboxShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin skybox shader.")
-		return err
-	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.SkyboxShaderID = shaderSystem.GetShaderID("Shader.Builtin.Skybox")
-
-	if r.SkyboxShaderID != skyboxShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
-		return err
-	}
-
-	// Builtin material shader.
-	config_resource, err = r.assetManager.LoadAsset("Shader.Builtin.Material", metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin material shader.")
-		return err
-	}
-
-	config = config_resource.Data.(*metadata.ShaderConfig)
-	materialShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin material shader.")
-		return err
-	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.MaterialShaderID = shaderSystem.GetShaderID("Shader.Builtin.Material")
-
-	if r.MaterialShaderID != materialShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
-		return err
-	}
-
-	// Builtin UI shader.
-	config_resource, err = r.assetManager.LoadAsset("Shader.Builtin.UI", metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin UI shader.")
-		return err
+	// World view.
+	world_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
+		Width:            0,
+		Height:           0,
+		Name:             "world",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.World",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						// Colour attachment
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+						{ // Depth attachment
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
 	}
 
-	config = config_resource.Data.(*metadata.ShaderConfig)
-	uiShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin UI shader.")
+	if err := renderViewSystem.Create(world_view_config); err != nil {
+		core.LogError("Failed to create world view. Aborting application.")
 		return err
 	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.UIShaderID = shaderSystem.GetShaderID("Shader.Builtin.UI")
 
-	if r.UIShaderID != uiShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
+	// UI view
+	// render_view_config ui_view_config = {};
+	// ui_view_config.type = RENDERER_VIEW_KNOWN_TYPE_UI;
+	// ui_view_config.width = 0;
+	// ui_view_config.height = 0;
+	// ui_view_config.name = "ui";
+	// ui_view_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
+
+	// // Renderpass config
+	// ui_view_config.pass_count = 1;
+	// renderpass_config ui_passes[1];
+	// ui_passes[0].name = "Renderpass.Builtin.UI";
+	// ui_passes[0].render_area = (vec4){0, 0, 1280, 720};
+	// ui_passes[0].clear_colour = (vec4){0.0f, 0.0f, 0.2f, 1.0f};
+	// ui_passes[0].clear_flags = RENDERPASS_CLEAR_NONE_FLAG;
+	// ui_passes[0].depth = 1.0f;
+	// ui_passes[0].stencil = 0;
+
+	// render_target_attachment_config ui_target_attachment = {};
+	// // Colour attachment.
+	// ui_target_attachment.type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
+	// ui_target_attachment.source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
+	// ui_target_attachment.load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD;
+	// ui_target_attachment.store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
+	// ui_target_attachment.present_after = true;
+
+	// ui_passes[0].target.attachment_count = 1;
+	// ui_passes[0].target.attachments = &ui_target_attachment;
+	// ui_passes[0].render_target_count = renderer_window_attachment_count_get();
+
+	// ui_view_config.passes = ui_passes;
+
+	// if (!render_view_system_create(&ui_view_config)) {
+	//     KFATAL("Failed to create ui view. Aborting application.");
+	//     return false;
+	// }
+
+	// Pick pass.
+	pick_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
+		Width:            0,
+		Height:           0,
+		Name:             "pick",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        2,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				// World pass
+				Name:        "Renderpass.Builtin.WorldPick",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0), // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id,
+				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: 1,
+			},
+			{
+				Name:        "Renderpass.Builtin.UIPick",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							// Obtain the attachment from the view.
+							Source:        metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW,
+							LoadOperation: metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							// Need to store it so it can be sampled afterward.
+							StoreOperation: metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:   false,
+						},
+					},
+				},
+				RenderTargetCount: 1,
+			},
+		},
+	}
+
+	if err := renderViewSystem.Create(pick_view_config); err != nil {
+		core.LogError("Failed to create pick view. Aborting application.")
 		return err
 	}
 
@@ -333,12 +256,6 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 }
 
 func (r *RendererSystem) Shutdown() error {
-	// Destroy render targets.
-	for i := 0; i < int(r.WindowRenderTargetCount); i++ {
-		r.backend.RenderTargetDestroy(r.SkyboxRenderPass.Targets[i], true)
-		r.backend.RenderTargetDestroy(r.WorldRenderPass.Targets[i], true)
-		r.backend.RenderTargetDestroy(r.UIRenderPass.Targets[i], true)
-	}
 	return r.backend.Shutdow()
 }
 
@@ -442,8 +359,8 @@ func (r *RendererSystem) DrawGeometry(data *metadata.GeometryRenderData) {
 	r.backend.DrawGeometry(data)
 }
 
-func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig) (*metadata.RenderPass, error) {
-	return r.backend.RenderPassCreate(config)
+func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig, pass *metadata.RenderPass) (*metadata.RenderPass, error) {
+	return r.backend.RenderPassCreate(config, pass)
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {

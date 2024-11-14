@@ -21,17 +21,21 @@ type RenderViewSkybox struct {
 	CubeMapLocation    uint16
 	// Shader
 	Shader *metadata.Shader
+	View   *metadata.RenderView
 }
 
-func NewRenderViewSkybox(shader *metadata.Shader, camera *components.Camera) *RenderViewSkybox {
-	return &RenderViewSkybox{
+func NewRenderViewSkybox(view *metadata.RenderView, shader *metadata.Shader, camera *components.Camera) *RenderViewSkybox {
+	rs := &RenderViewSkybox{
 		ShaderID:    shader.ID,
 		Shader:      shader,
 		WorldCamera: camera,
+		View:        view,
 	}
+	view.InternalData = rs
+	return rs
 }
 
-func (vs *RenderViewSkybox) OnCreateRenderView(uniforms map[string]uint16) bool {
+func (vs *RenderViewSkybox) OnCreate(uniforms map[string]uint16) bool {
 	vs.ProjectionLocation = uniforms["projection"]
 	vs.ViewLocation = uniforms["view"]
 	vs.CubeMapLocation = uniforms["cube_texture"]
@@ -46,16 +50,16 @@ func (vs *RenderViewSkybox) OnCreateRenderView(uniforms map[string]uint16) bool 
 	return true
 }
 
-func (vs *RenderViewSkybox) OnDestroyRenderView() error {
+func (vs *RenderViewSkybox) OnDestroy() error {
 	return nil
 }
 
-func (vs *RenderViewSkybox) OnResizeRenderView(width, height uint32) {
+func (vs *RenderViewSkybox) OnResize(width, height uint32) {
 	aspect := width / height
 	vs.ProjectionMatrix = math.NewMat4Perspective(vs.FOV, float32(aspect), vs.NearClip, vs.FarClip)
 }
 
-func (vs *RenderViewSkybox) OnBuildPacketRenderView(data interface{}) (*metadata.RenderViewPacket, error) {
+func (vs *RenderViewSkybox) OnBuildPacket(data interface{}) (*metadata.RenderViewPacket, error) {
 	if data == nil {
 		err := fmt.Errorf("render_view_skybox_on_build_packet requires valid pointer to view, packet, and data")
 		return nil, err
@@ -74,13 +78,13 @@ func (vs *RenderViewSkybox) OnBuildPacketRenderView(data interface{}) (*metadata
 	return out_packet, nil
 }
 
-func (vs *RenderViewSkybox) OnDestroyPacketRenderView(packet *metadata.RenderViewPacket) {
+func (vs *RenderViewSkybox) OnDestroyPacket(packet *metadata.RenderViewPacket) {
 }
 
-func (vs *RenderViewSkybox) OnRenderRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
+func (vs *RenderViewSkybox) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
 	return true
 }
 
-func (vs *RenderViewSkybox) RegenerateAttachmentTarget(view *metadata.RenderView, passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
+func (vs *RenderViewSkybox) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
 	return true
 }

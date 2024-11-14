@@ -51,7 +51,7 @@ func NewAssetManager() (*AssetManager, error) {
 }
 
 func (am *AssetManager) Initialize(assetsDir string) error {
-	go am.start()
+	// go am.start()
 
 	if err := am.addRecursive(assetsDir); err != nil {
 		return err

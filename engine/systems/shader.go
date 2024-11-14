@@ -68,6 +68,10 @@ func NewShaderSystem(config *ShaderSystemConfig, ts *TextureSystem, r *RendererS
 	return shaderSystem, nil
 }
 
+func (shaderSystem *ShaderSystem) Initialize() error {
+	return nil
+}
+
 /**
  * @brief Shuts down the shader system.
  *
@@ -93,7 +97,7 @@ func (shaderSystem *ShaderSystem) Shutdown() error {
  * @param config The configuration to be used when creating the shader.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*metadata.Shader, error) {
+func (shaderSystem *ShaderSystem) CreateShader(pass *metadata.RenderPass, config *metadata.ShaderConfig) (*metadata.Shader, error) {
 	id := shaderSystem.newShaderID()
 
 	shader := shaderSystem.Shaders[id]
@@ -129,10 +133,13 @@ func (shaderSystem *ShaderSystem) CreateShader(config *metadata.ShaderConfig) (*
 	shader.PushConstantStride = 128
 	shader.PushConstantSize = 0
 
-	pass := shaderSystem.renderer.RenderPassGet(config.RenderpassName)
-	if pass == nil {
-		core.LogError("Unable to find renderpass '%s'", config.RenderpassName)
-		return nil, nil
+	// Process flags.
+	shader.Flags = 0
+	if config.DepthTest {
+		shader.Flags |= metadata.ShaderFlagBits(metadata.SHADER_FLAG_DEPTH_TEST)
+	}
+	if config.DepthTest {
+		shader.Flags |= metadata.ShaderFlagBits(metadata.SHADER_FLAG_DEPTH_WRITE)
 	}
 
 	if !shaderSystem.renderer.ShaderCreate(shader, config, pass, uint8(len(config.Stages)), config.StageFilenames, config.Stages) {

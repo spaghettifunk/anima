@@ -1456,3 +1456,69 @@ func DegToRad(degrees float32) float32 {
 func RadToDeg(radians float32) float32 {
 	return radians * K_RAD2DEG_MULTIPLIER
 }
+
+/**
+ * @brief Converts value from the "old" range to the "new" range.
+ *
+ * @param value The value to be converted.
+ * @param from_min The minimum value from the old range.
+ * @param from_max The maximum value from the old range.
+ * @param to_min The minimum value from the new range.
+ * @param to_max The maximum value from the new range.
+ * @return The converted value.
+ */
+func RangeConvertFloat32(value, old_min, old_max, new_min, new_max float32) float32 {
+	return (((value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
+}
+
+/*
+* @brief Converts rgb int values [0-255] to a single 32-bit integer.
+*
+* @param r The red value [0-255].
+* @param g The green value [0-255].
+* @param b The blue value [0-255].
+* @param out_u32 A pointer to hold the resulting integer.
+ */
+func RGBUToUInt32(r, g, b uint32) uint32 {
+	return (((r & 0x0FF) << 16) | ((g & 0x0FF) << 8) | (b & 0x0FF))
+}
+
+/**
+ * @brief Converts the given 32-bit integer to rgb values [0-255].
+ *
+ * @param rgbu The integer holding a rgb value.
+ * @param out_r A pointer to hold the red value.
+ * @param out_g A pointer to hold the green value.
+ * @param out_b A pointer to hold the blue value.
+ */
+func UInt32ToRGB(rgbu uint32) (uint32, uint32, uint32) {
+	out_r := (rgbu >> 16) & 0x0FF
+	out_g := (rgbu >> 8) & 0x0FF
+	out_b := (rgbu) & 0x0FF
+
+	return out_r, out_g, out_b
+}
+
+/**
+ * @brief Converts rgb integer values [0-255] to a vec3 of floating-point values [0.0-1.0]
+ *
+ * @param r The red value [0-255].
+ * @param g The green value [0-255].
+ * @param b The blue value [0-255].
+ * @param out_v A pointer to hold the vector of floating-point values.
+ */
+func RGBUInt32ToVec3(r, g, b uint32) Vec3 {
+	return NewVec3(float32(r/255.0), float32(g/255.0), float32(b/255.0))
+}
+
+/**
+ * @brief Converts a vec3 of rgbvalues [0.0-1.0] to integer rgb values [0-255].
+ *
+ * @param v The vector of rgb values [0.0-1.0] to be converted.
+ * @param out_r A pointer to hold the red value.
+ * @param out_g A pointer to hold the green value.
+ * @param out_b A pointer to hold the blue value.
+ */
+func Vec3ToRGBUInt32(v Vec3) (uint32, uint32, uint32) {
+	return uint32(v.X * 255), uint32(v.Y * 255), uint32(v.Z * 255)
+}

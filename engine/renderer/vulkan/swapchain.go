@@ -245,7 +245,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 			// texture_system_resize(&swapchain.render_textures[i], swapchain_extent.width, swapchain_extent.height, false);
 		}
 	}
-	var swapchain_images []vk.Image
+	swapchain_images := make([]vk.Image, swapchain.ImageCount)
 	result := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain_images)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("failed to swap-images with error %s", VulkanResultString(result, true))
@@ -291,11 +291,11 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		core.LogFatal("failed to find a supported format")
 	}
 
-	if swapchain.DepthTextures == nil || len(swapchain.DepthTextures) == 0 {
+	if len(swapchain.DepthTextures) == 0 {
 		swapchain.DepthTextures = make([]*metadata.Texture, swapchain.ImageCount)
 	}
 
-	for i := 0; i < int(context.Swapchain.ImageCount); i++ {
+	for i := 0; i < int(swapchain.ImageCount); i++ {
 		image, err := ImageCreate(
 			context,
 			metadata.TextureType2d,

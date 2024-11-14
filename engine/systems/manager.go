@@ -101,7 +101,7 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 }
 
 func (sm *SystemManager) Initialize() error {
-	if err := sm.RendererSystem.Initialize(sm.ShaderSystem); err != nil {
+	if err := sm.RendererSystem.Initialize(sm.ShaderSystem, sm.RenderViewSystem); err != nil {
 		return err
 	}
 	if err := sm.TextureSystem.Initialize(); err != nil {
