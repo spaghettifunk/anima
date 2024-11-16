@@ -10,6 +10,14 @@ import (
 
 type Run mg.Namespace
 
+func (Run) StaticAnalysis() error {
+	fmt.Println("Run static analysis...")
+	if _, err := executeCmd("nilaway", withArgs("-pretty-print=true", "./..."), withStream()); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Runs go mod download and then installs the binary.
 func (Run) Engine() error {
 	if err := buildShaders(); err != nil {
