@@ -256,9 +256,8 @@ func (shaderSystem *ShaderSystem) GetUniformIndex(shader *metadata.Shader, unifo
 		core.LogError("func GetUniformIndex called with invalid shader.")
 		return metadata.InvalidIDUint16
 	}
-
-	index := shaderSystem.Lookup[uniformName]
-	if index == uint32(metadata.InvalidIDUint16) {
+	index := shader.UniformLookup[uniformName]
+	if index == metadata.InvalidIDUint16 {
 		core.LogError("Shader '%s' does not have a registered uniform named '%s'", shader.Name, uniformName)
 		return metadata.InvalidIDUint16
 	}

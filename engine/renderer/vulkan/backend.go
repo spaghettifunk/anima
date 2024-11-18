@@ -231,7 +231,7 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	vr.TextureCreate(vr.defaultTexture.NormalTexturePixels, vr.defaultTexture.DefaultNormalTexture)
 
 	// Swapchain
-	sc, err := SwapchainCreate(vr.context, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
+	sc, err := SwapchainCreate(vr.context, vr.FramebufferWidth, vr.FramebufferHeight)
 	if err != nil {
 		return nil
 	}
@@ -1006,7 +1006,10 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 			attachment.LoadOperation = attachment_config.LoadOperation
 			attachment.StoreOperation = attachment_config.StoreOperation
 			attachment.Texture = nil
+
+			target.Attachments[a] = attachment
 		}
+		pass.Targets[t] = target
 	}
 
 	// Main subpass
@@ -1227,12 +1230,13 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 	}
 	render_pass_create_info.Deref()
 
-	handle := pass.InternalData.(*VulkanRenderPass).Handle
+	var handle vk.RenderPass
 	result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &render_pass_create_info, vr.context.Allocator, &handle)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
 	}
+	pass.InternalData.(*VulkanRenderPass).Handle = handle
 
 	// Cleanup
 	if len(attachmentDescriptions) > 0 {
@@ -2331,8 +2335,9 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments
 
 	// Take a copy of the attachments and count.
 	out_target := &metadata.RenderTarget{
-		AttachmentCount: attachment_count,
-		Attachments:     attachments,
+		AttachmentCount:     attachment_count,
+		Attachments:         attachments,
+		InternalFramebuffer: new(vk.Framebuffer),
 	}
 
 	framebuffer_create_info := vk.FramebufferCreateInfo{
@@ -2344,10 +2349,10 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments
 		Height:          height,
 		Layers:          1,
 	}
+	framebuffer_create_info.Deref()
 
-	// fb := out_target.InternalFramebuffer
-	var fb vk.Framebuffer
-	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, &fb)
+	fb := out_target.InternalFramebuffer.(*vk.Framebuffer)
+	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, fb)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err

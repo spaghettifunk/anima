@@ -3,6 +3,7 @@ package vulkan
 import (
 	"fmt"
 	"runtime"
+	"unsafe"
 
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
@@ -113,7 +114,7 @@ func DeviceCreate(context *VulkanContext) error {
 		SamplerAnisotropy: vk.True, // Request anistrophy
 	}
 
-	portabilityRequired := false
+	dynamicRenderingRequired := false
 	var availableExtensionCount uint32 = 0
 	var availableExtensions []vk.ExtensionProperties
 
@@ -135,41 +136,45 @@ func DeviceCreate(context *VulkanContext) error {
 			availableExtensions[i].Deref()
 			core.LogInfo("Available Extension: `%s`", string(availableExtensions[i].ExtensionName[:]))
 			end := FindFirstZeroInByteArray(availableExtensions[i].ExtensionName[:])
-			if vk.ToString(availableExtensions[i].ExtensionName[:end+1]) == "VK_KHR_portability_subset" {
+			if vk.ToString(availableExtensions[i].ExtensionName[:end+1]) == vk.KhrPortabilitySubsetExtensionName {
 				core.LogInfo("Adding required extension 'VK_KHR_portability_subset'.")
-				portabilityRequired = true
-				break
+			}
+			if vk.ToString(availableExtensions[i].ExtensionName[:end+1]) == vk.KhrDynamicRenderingExtensionName {
+				core.LogInfo("Adding required extension 'VK_KHR_dynamic_rendering'.")
+				dynamicRenderingRequired = true
 			}
 		}
 	}
 
-	// availableExtensions = nil
-
-	extensionCount := 2
-	if !portabilityRequired {
-		extensionCount = 1
+	if !dynamicRenderingRequired {
+		err := fmt.Errorf("dynamic rendering extension must be available")
+		return err
 	}
 
-	extensionNames := []string{}
-	if portabilityRequired {
-		extensionNames = append(extensionNames, vk.KhrSwapchainExtensionName, "VK_KHR_portability_subset")
-	} else {
-		extensionNames = append(extensionNames, vk.KhrSwapchainExtensionName)
+	extensionNames := []string{vk.KhrPortabilitySubsetExtensionName, vk.KhrSwapchainExtensionName, vk.KhrDynamicRenderingExtensionName}
+
+	dynamicRenderingFeatures := vk.PhysicalDeviceDynamicRenderingFeatures{
+		SType:            vk.StructureTypePhysicalDeviceDynamicRenderingFeatures,
+		DynamicRendering: vk.True,
 	}
+	dynamicRenderingFeatures.Deref()
 
 	deviceCreateInfo := vk.DeviceCreateInfo{
 		SType:                   vk.StructureTypeDeviceCreateInfo,
 		QueueCreateInfoCount:    uint32(indexCount),
 		PQueueCreateInfos:       queueCreateInfos,
 		PEnabledFeatures:        []vk.PhysicalDeviceFeatures{deviceFeatures},
-		EnabledExtensionCount:   uint32(extensionCount),
+		EnabledExtensionCount:   uint32(len(extensionNames)),
 		PpEnabledExtensionNames: VulkanSafeStrings(extensionNames),
+		PNext:                   unsafe.Pointer(&dynamicRenderingFeatures),
 	}
+	deviceCreateInfo.Deref()
 
 	// Create the device.
 	var device vk.Device
 	if res := vk.CreateDevice(context.Device.PhysicalDevice, &deviceCreateInfo, context.Allocator, &device); res != vk.Success {
-		return nil
+		err := fmt.Errorf("%s", VulkanResultString(res, true))
+		return err
 	}
 	context.Device.LogicalDevice = device
 

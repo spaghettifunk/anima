@@ -69,8 +69,8 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// Skybox view
 	skybox_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-		Width:            0,
-		Height:           0,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
 		Name:             "skybox",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        1,
@@ -106,8 +106,8 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// World view.
 	world_view_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-		Width:            0,
-		Height:           0,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
 		Name:             "world",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        1,
@@ -188,8 +188,8 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// Pick pass.
 	pick_view_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
-		Width:            0,
-		Height:           0,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
 		Name:             "pick",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        2,

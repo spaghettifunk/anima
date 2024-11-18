@@ -101,14 +101,19 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 
 	// Depth and stencil testing.
 	depth_stencil := vk.PipelineDepthStencilStateCreateInfo{
-		SType: vk.StructureTypePipelineDepthStencilStateCreateInfo,
+		SType:             vk.StructureTypePipelineDepthStencilStateCreateInfo,
+		DepthTestEnable:   vk.False,
+		DepthWriteEnable:  vk.False,
+		StencilTestEnable: vk.False,
 	}
 	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_TEST) != 0 {
 		depth_stencil.DepthTestEnable = vk.True
-		depth_stencil.DepthWriteEnable = vk.True
 		depth_stencil.DepthCompareOp = vk.CompareOpLess
 		depth_stencil.DepthBoundsTestEnable = vk.False
 		depth_stencil.StencilTestEnable = vk.False
+	}
+	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_WRITE) != 0 {
+		depth_stencil.DepthWriteEnable = vk.True
 	}
 	depth_stencil.Deref()
 
