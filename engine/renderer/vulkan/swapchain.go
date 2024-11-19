@@ -343,7 +343,9 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 }
 
 func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) {
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	for i := 0; i < int(context.Swapchain.ImageCount); i++ {
 		image := vs.DepthTextures[i].InternalData.(*VulkanImage)

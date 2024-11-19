@@ -4,6 +4,7 @@ import (
 	"fmt"
 	m "math"
 	"runtime"
+	"sync"
 	"unsafe"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -35,6 +36,8 @@ type VulkanRenderer struct {
 
 	debug bool
 }
+
+var queueMutex sync.Mutex
 
 func New(p *platform.Platform, am *assets.AssetManager) *VulkanRenderer {
 	defaultTextures := metadata.NewDefaultTexture()
@@ -320,7 +323,9 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 }
 
 func (vr *VulkanRenderer) Shutdow() error {
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Destroy in the opposite order of creation.
 	// Destroy buffers
@@ -405,7 +410,9 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Check if recreating swap chain and boot out.
 	if vr.context.RecreatingSwapchain {
+		queueMutex.Lock()
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
+		queueMutex.Unlock()
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (1) failed: '%s'", VulkanResultString(result, true))
 			return err
@@ -416,7 +423,9 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Check if the framebuffer has been resized. If so, a new swapchain must be created.
 	if vr.context.FramebufferSizeGeneration != vr.context.FramebufferSizeLastGeneration {
+		queueMutex.Lock()
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
+		queueMutex.Unlock()
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (2) failed: '%s'", VulkanResultString(result, true))
 			return err
@@ -512,11 +521,12 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	flags := vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit)
 	submit_info.PWaitDstStageMask = []vk.PipelineStageFlags{flags}
 
+	queueMutex.Lock()
 	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, vr.context.InFlightFences[vr.context.CurrentFrame]); result != vk.Success {
 		err := fmt.Errorf("vkQueueSubmit failed with result: %s", VulkanResultString(result, true))
-		core.LogError(err.Error())
 		return err
 	}
+	queueMutex.Unlock()
 
 	commandBuffer.UpdateSubmitted()
 	// End queue submission
@@ -606,7 +616,9 @@ func (vr *VulkanRenderer) recreateSwapchain() bool {
 	vr.context.RecreatingSwapchain = true
 
 	// Wait for any operations to complete.
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Clear these out just in case.
 	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
@@ -757,7 +769,9 @@ func (vr *VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Textur
 }
 
 func (vr *VulkanRenderer) TextureDestroy(texture *metadata.Texture) {
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 	if texture.InternalData != nil {
 		image := texture.InternalData.(*VulkanImage)
 		if image != nil {
@@ -914,7 +928,10 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 
 func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) error {
 	if geometry != nil && geometry.InternalID != metadata.InvalidID {
-		if !VulkanResultIsSuccess(vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)) {
+		queueMutex.Lock()
+		res := vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+		queueMutex.Unlock()
+		if !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to wait for device")
 			return err
 		}
@@ -2233,7 +2250,9 @@ func (vr *VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader
 	instance_state := internal.InstanceStates[instance_id]
 
 	// Wait for any pending operations using the descriptor set to finish.
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Free 3 descriptor sets (one per frame)
 	for _, ds := range instance_state.DescriptorSetState.DescriptorSets {
@@ -2320,7 +2339,9 @@ func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.Textu
 func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {
 	if texture_map != nil {
 		// Make sure there's no way this is in use.
+		queueMutex.Lock()
 		vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+		queueMutex.Unlock()
 		vk.DestroySampler(vr.context.Device.LogicalDevice, texture_map.InternalData.(vk.Sampler), vr.context.Allocator)
 		texture_map.InternalData = 0
 	}
@@ -2559,7 +2580,7 @@ func (vr *VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offse
 
 func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (interface{}, error) {
 	if buffer == nil || buffer.InternalData == nil {
-		err := fmt.Errorf("vulkan_buffer_read requires a valid pointer to a buffer and out_memory, and the size must be nonzero.")
+		err := fmt.Errorf("vulkan_buffer_read requires a valid pointer to a buffer and out_memory, and the size must be nonzero")
 		return nil, err
 	}
 
@@ -2609,7 +2630,6 @@ func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset
 		// kcopy_memory(*out_memory, data_ptr, size);
 		vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
 	}
-
 	return out_memory, nil
 }
 
@@ -2630,6 +2650,10 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 
 	var new_buffer vk.Buffer
 	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &new_buffer)
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("failed to create buffer with error %s", VulkanResultString(result, true))
+		return false
+	}
 
 	// Gather memory requirements.
 	requirements := vk.MemoryRequirements{}
@@ -2641,6 +2665,7 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 		AllocationSize:  requirements.Size,
 		MemoryTypeIndex: uint32(internal_buffer.MemoryIndex),
 	}
+	allocate_info.Deref()
 
 	// Allocate the memory.
 	var new_memory vk.DeviceMemory
@@ -2658,11 +2683,13 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	}
 
 	// Copy over the data.
-	vr.vulkan_buffer_copy_range_internal(internal_buffer.Handle, 0, new_buffer, 0, buffer.TotalSize)
+	vr.vulkanBufferCopyRangeInternal(internal_buffer.Handle, 0, new_buffer, 0, buffer.TotalSize)
 
 	// Make sure anything potentially using these is finished.
 	// NOTE: We could use vkQueueWaitIdle here if we knew what queue this buffer would be used with...
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Destroy the old
 	if internal_buffer.Memory != nil {
@@ -2749,7 +2776,7 @@ func (vr *VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, s
 		return false
 	}
 
-	return vr.vulkan_buffer_copy_range_internal(
+	return vr.vulkanBufferCopyRangeInternal(
 		(source.InternalData.(*VulkanBuffer)).Handle,
 		source_offset,
 		(dest.InternalData.(*VulkanBuffer)).Handle,
@@ -2773,10 +2800,14 @@ func (vr *VulkanRenderer) vulkanBufferIsHostCoherent(buffer *VulkanBuffer) bool 
 	return (buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyHostCoherentBit)) == uint32(vk.MemoryPropertyHostCoherentBit)
 }
 
-func (vr *VulkanRenderer) vulkan_buffer_copy_range_internal(source vk.Buffer, source_offset uint64, dest vk.Buffer, dest_offset, size uint64) bool {
+func (vr *VulkanRenderer) vulkanBufferCopyRangeInternal(source vk.Buffer, source_offset uint64, dest vk.Buffer, dest_offset, size uint64) bool {
 	// TODO: Assuming queue and pool usage here. Might want dedicated queue.
 	queue := vr.context.Device.GraphicsQueue
+
+	queueMutex.Lock()
 	vk.QueueWaitIdle(queue)
+	queueMutex.Unlock()
+
 	// Create a one-time-use command buffer.
 	temp_command_buffer, err := AllocateAndBeginSingleUse(vr.context, vr.context.Device.GraphicsCommandPool)
 	if err != nil {

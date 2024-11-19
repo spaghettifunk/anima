@@ -119,9 +119,7 @@ func ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.Im
 	return &view, nil
 }
 
-func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureType metadata.TextureType,
-	commandBuffer *VulkanCommandBuffer, format vk.Format, oldLayout, newLayout vk.ImageLayout,
-) error {
+func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureType metadata.TextureType, commandBuffer *VulkanCommandBuffer, format vk.Format, oldLayout, newLayout vk.ImageLayout) error {
 	lc := uint32(1)
 	if textureType == metadata.TextureTypeCube {
 		lc = 6

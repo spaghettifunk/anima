@@ -58,6 +58,13 @@ func parseAMTFile(filename string) (*metadata.MaterialConfig, error) {
 
 		// Parse each field based on the key
 		switch key {
+		case "version":
+			v, err := strconv.ParseFloat(value, 32)
+			if err != nil {
+				err := fmt.Errorf("invalid version: %s", line)
+				return nil, err
+			}
+			materialConfig.Version = float32(v)
 		case "name":
 			materialConfig.Name = value
 		case "shader":
