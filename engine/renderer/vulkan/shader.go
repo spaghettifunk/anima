@@ -86,7 +86,7 @@ type VulkanShaderInstanceState struct {
 	 * @brief Instance texture map pointers, which are used during rendering. These
 	 * are set by calls to set_sampler.
 	 */
-	InstanceTextureMaps []metadata.TextureMap
+	InstanceTextureMaps []*metadata.TextureMap
 }
 
 /**

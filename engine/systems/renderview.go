@@ -424,7 +424,12 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 
 		// Apply globals
 		// TODO: This is terrible. Need to bind by id.
-		if !rvs.renderer.ShaderBindGlobals(vs.Shader) {
+		shader, err := rvs.shaderSystem.GetShaderByID(vs.ShaderID)
+		if err != nil {
+			return err
+		}
+
+		if !rvs.renderer.ShaderBindGlobals(shader) {
 			err := fmt.Errorf("failed to bind shader globals")
 			return err
 		}

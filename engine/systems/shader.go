@@ -305,7 +305,7 @@ func (shaderSystem *ShaderSystem) SetTextureSampler(samplerName string, texture 
  * @return True on success; otherwise false.
  */
 func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interface{}) bool {
-	shader := shaderSystem.Shaders[index]
+	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
 	uniform := shader.Uniforms[index]
 	if shader.BoundScope != uniform.Scope {
 		if uniform.Scope == metadata.ShaderScopeGlobal {

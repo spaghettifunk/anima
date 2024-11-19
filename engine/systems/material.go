@@ -390,27 +390,27 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
 	if needsUpdate {
 		if material.ShaderID == ms.MaterialShaderID {
 			// Material shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, &material.DiffuseColour); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, material.DiffuseColour); !ok {
 				return ms.materialFail("msState.MaterialLocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, &material.DiffuseMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, material.DiffuseMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.DiffuseTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, &material.SpecularMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, material.SpecularMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.SpecularTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, &material.NormalMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, material.NormalMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.NormalTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, &material.Shininess); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, material.Shininess); !ok {
 				return ms.materialFail("msState.MaterialLocations.Shininess")
 			}
 		} else if material.ShaderID == ms.UIShaderID {
 			// UI shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, &material.DiffuseColour); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, material.DiffuseColour); !ok {
 				return ms.materialFail("msState.UILocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, &material.DiffuseMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, material.DiffuseMap); !ok {
 				return ms.materialFail("msState.UILocations.DiffuseTexture")
 			}
 		} else {

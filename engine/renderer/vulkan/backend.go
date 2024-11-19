@@ -2189,11 +2189,13 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 
 	// Only setup if the shader actually requires it.
 	if shader.InstanceTextureCount > 0 {
-		instance_state.InstanceTextureMaps = make([]metadata.TextureMap, shader.InstanceTextureCount)
+		instance_state.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
 		for i := uint32(0); i < instance_texture_count; i++ {
 			if maps[i].Texture != nil {
-				instance_state.InstanceTextureMaps[i].Texture = vr.defaultTexture.DefaultTexture
-				instance_state.InstanceTextureMaps[i].InternalData = *new(vk.Sampler)
+				instance_state.InstanceTextureMaps[i] = &metadata.TextureMap{
+					Texture:      vr.defaultTexture.DefaultTexture,
+					InternalData: *new(vk.Sampler),
+				}
 			}
 		}
 	}
@@ -2280,15 +2282,42 @@ func (vr *VulkanRenderer) SetUniform(shader *metadata.Shader, uniform metadata.S
 		if uniform.Scope == metadata.ShaderScopeGlobal {
 			shader.GlobalTextureMaps[uniform.Location] = value.(*metadata.TextureMap)
 		} else {
-			internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[uniform.Location] = value.(metadata.TextureMap)
+			internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[uniform.Location] = value.(*metadata.TextureMap)
 		}
 	} else {
 		if uniform.Scope == metadata.ShaderScopeLocal {
 			// Is local, using push constants. Do this immediately.
 			command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex].Handle
-			vk.CmdPushConstants(command_buffer, internal.Pipeline.PipelineLayout, vk.ShaderStageFlags(vk.ShaderStageVertexBit)|vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
-				uint32(uniform.Offset), uint32(uniform.Size), unsafe.Pointer(&value),
+
+			var dataPtr unsafe.Pointer
+			var dataSize int
+			switch v := value.(type) {
+			case math.Mat4:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v.Data[0])
+			case math.Vec3:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v)
+			case float32:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v)
+			default:
+				core.LogError("unsupported push constant type: %T", value)
+				return false
+			}
+
+			// Check size consistency
+			if dataSize != int(uniform.Size) {
+				core.LogDebug("size mismatch: expected %d, got %d", uniform.Size, dataSize)
+				return false
+			}
+
+			vk.CmdPushConstants(command_buffer, internal.Pipeline.PipelineLayout,
+				vk.ShaderStageFlags(vk.ShaderStageVertexBit)|vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+				uint32(uniform.Offset), uint32(uniform.Size), dataPtr,
 			)
+			// Ensure the Go pointer is kept alive during the Vulkan call
+			runtime.KeepAlive(value)
 		} else {
 			// Map the appropriate memory location and copy the data over.
 			addr := internal.MappedUniformBufferBlock.(uint64)

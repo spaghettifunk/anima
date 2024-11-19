@@ -201,12 +201,14 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 	barrier.Deref()
 
 	pImageMemoryBarriers := []vk.ImageMemoryBarrier{barrier}
+	queueMutex.Lock()
 	vk.CmdPipelineBarrier(commandBuffer.Handle, sourceStage, destStage,
 		0,
 		0, nil,
 		0, nil,
 		1, pImageMemoryBarriers,
 	)
+	queueMutex.Unlock()
 
 	return nil
 }
