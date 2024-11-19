@@ -44,7 +44,6 @@ type VulkanPipelineConfig struct {
 }
 
 func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (*VulkanPipeline, error) {
-
 	out_pipeline := &VulkanPipeline{}
 
 	// Viewport state
@@ -64,6 +63,11 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		RasterizerDiscardEnable: vk.False,
 		PolygonMode:             vk.PolygonModeLine,
 		LineWidth:               1.0,
+		FrontFace:               vk.FrontFaceCounterClockwise,
+		DepthBiasEnable:         vk.False,
+		DepthBiasConstantFactor: 0.0,
+		DepthBiasClamp:          0.0,
+		DepthBiasSlopeFactor:    0.0,
 	}
 	if !config.IsWireframe {
 		rasterizer_create_info.PolygonMode = vk.PolygonModeFill
@@ -80,11 +84,6 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 	case metadata.FaceCullModeBack:
 		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeBackBit)
 	}
-	rasterizer_create_info.FrontFace = vk.FrontFaceCounterClockwise
-	rasterizer_create_info.DepthBiasEnable = vk.False
-	rasterizer_create_info.DepthBiasConstantFactor = 0.0
-	rasterizer_create_info.DepthBiasClamp = 0.0
-	rasterizer_create_info.DepthBiasSlopeFactor = 0.0
 	rasterizer_create_info.Deref()
 
 	// Multisampling.
@@ -181,9 +180,11 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 
 	// Pipeline layout
 	pipeline_layout_create_info := vk.PipelineLayoutCreateInfo{
-		SType:          vk.StructureTypePipelineLayoutCreateInfo,
-		SetLayoutCount: uint32(len(config.DescriptorSetLayouts)),
-		PSetLayouts:    config.DescriptorSetLayouts,
+		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
+		SetLayoutCount:         uint32(len(config.DescriptorSetLayouts)),
+		PSetLayouts:            config.DescriptorSetLayouts,
+		PushConstantRangeCount: 0,
+		PPushConstantRanges:    nil,
 	}
 
 	// Push constants
@@ -203,9 +204,6 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		}
 		pipeline_layout_create_info.PushConstantRangeCount = uint32(len(config.PushConstantRanges))
 		pipeline_layout_create_info.PPushConstantRanges = ranges
-	} else {
-		pipeline_layout_create_info.PushConstantRangeCount = 0
-		pipeline_layout_create_info.PPushConstantRanges = nil
 	}
 	pipeline_layout_create_info.Deref()
 
@@ -243,10 +241,6 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		BasePipelineIndex:   -1,
 	}
 	pipeline_create_info.Deref()
-
-	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_TEST) == 0 {
-		pipeline_create_info.PDepthStencilState = nil
-	}
 
 	pPipelines := []vk.Pipeline{out_pipeline.Handle}
 	result = vk.CreateGraphicsPipelines(

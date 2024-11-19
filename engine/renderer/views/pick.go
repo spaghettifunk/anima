@@ -57,6 +57,7 @@ func NewRenderViewPick(view *metadata.RenderView, shaderUIPick *metadata.Shader,
 		ColourTargetAttachmentTexture: &metadata.Texture{},
 		DepthTargetAttachmentTexture:  &metadata.Texture{},
 		WorldCamera:                   c,
+		View:                          view,
 	}
 	view.InternalData = rp
 
@@ -99,7 +100,7 @@ func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) bool {
 
 	core.EventRegister(core.EVENT_CODE_MOUSE_MOVED, vp.onMouseMoved)
 
-	return false
+	return true
 }
 
 func (vp *RenderViewPick) OnDestroy() error {

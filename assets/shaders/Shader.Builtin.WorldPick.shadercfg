@@ -9,42 +9,42 @@ stagefiles = ["shaders/Builtin.WorldPickShader.vert.spv", "shaders/Builtin.World
 depth_test = 1
 depth_write = 1
 
-[[attributes]]
+[[attribute]]
 type = "vec3"
 name = "in_position"
 
-[[attributes]]
+[[attribute]]
 type = "vec3"
 name = "in_normal"
 
-[[attributes]]
+[[attribute]]
 type = "vec2"
 name = "in_texcoord"
 
-[[attributes]]
+[[attribute]]
 type = "vec4"
 name = "in_colour"
 
-[[attributes]]
+[[attribute]]
 type = "vec3"
 name = "in_tangent"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 0
 name = "projection"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 0
 name = "view"
 
-[[uniforms]]
+[[uniform]]
 type = "vec3"
 scope = 1
 name = "id_colour"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 2
 name = "model"

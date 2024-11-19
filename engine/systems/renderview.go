@@ -150,7 +150,7 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 	uniforms := map[string]uint16{}
 	switch config.RenderViewType {
 	case metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD:
-		v, err := rvs.worldOnRenderViewCreate(view)
+		v, err := rvs.worldOnRenderViewCreate(view, uniforms)
 		if err != nil {
 			return err
 		}
@@ -168,7 +168,7 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 		}
 		view.View = v
 	case metadata.RENDERER_VIEW_KNOWN_TYPE_PICK:
-		v, err := rvs.pickOnRenderViewCreate(view)
+		v, err := rvs.pickOnRenderViewCreate(view, uniforms)
 		if err != nil {
 			return err
 		}
@@ -384,7 +384,7 @@ func (rvs *RenderViewSystem) skyboxOnRenderViewCreate(view *metadata.RenderView,
 		return nil, err
 	}
 	shaderCfg := res.Data.(*metadata.ShaderConfig)
-	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg)
+	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +494,7 @@ func (rvs *RenderViewSystem) uiOnRenderViewCreate(view *metadata.RenderView, uni
 		return nil, err
 	}
 	shaderCfg := res.Data.(*metadata.ShaderConfig)
-	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg)
+	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -523,18 +523,25 @@ func (rvs *RenderViewSystem) uiOnDestroy(view *views.RenderViewUI) error {
 }
 
 /* WORLD */
-func (rvs *RenderViewSystem) worldOnRenderViewCreate(view *metadata.RenderView) (*views.RenderViewWorld, error) {
+func (rvs *RenderViewSystem) worldOnRenderViewCreate(view *metadata.RenderView, uniforms map[string]uint16) (*views.RenderViewWorld, error) {
 	res, err := rvs.renderer.assetManager.LoadAsset("Shader.Builtin.Material", metadata.ResourceTypeShader, nil)
 	if err != nil {
 		return nil, err
 	}
 	shaderCfg := res.Data.(*metadata.ShaderConfig)
-	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg)
+	shader, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderCfg, true)
 	if err != nil {
 		return nil, err
 	}
 	c := rvs.cameraSystem.GetDefault()
 	v := views.NewRenderViewWorld(view, shader, c)
+
+	// uniforms["diffuse_texture"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_texture")
+	// uniforms["diffuse_colour"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_colour")
+	// uniforms["model"] = rvs.shaderSystem.GetUniformIndex(shader, "model")
+
+	// v.ProjectionMatrix = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "projection")
+	// v.UIShaderInfo.ViewLocation = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "view")
 
 	return v, nil
 }
@@ -616,13 +623,13 @@ func (rvs *RenderViewSystem) worldOnDestroy(view *views.RenderViewWorld) error {
 }
 
 /* PICK */
-func (rvs *RenderViewSystem) pickOnRenderViewCreate(view *metadata.RenderView) (*views.RenderViewPick, error) {
+func (rvs *RenderViewSystem) pickOnRenderViewCreate(view *metadata.RenderView, uniforms map[string]uint16) (*views.RenderViewPick, error) {
 	res, err := rvs.renderer.assetManager.LoadAsset("Shader.Builtin.UIPick", metadata.ResourceTypeShader, nil)
 	if err != nil {
 		return nil, err
 	}
 	shaderPickCfg := res.Data.(*metadata.ShaderConfig)
-	shaderPick, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderPickCfg)
+	shaderPick, err := rvs.shaderSystem.CreateShader(view.Passes[0], shaderPickCfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -632,12 +639,23 @@ func (rvs *RenderViewSystem) pickOnRenderViewCreate(view *metadata.RenderView) (
 		return nil, err
 	}
 	shaderWorldPickCfg := res.Data.(*metadata.ShaderConfig)
-	shaderWorldPick, err := rvs.shaderSystem.CreateShader(view.Passes[1], shaderWorldPickCfg)
+	shaderWorldPick, err := rvs.shaderSystem.CreateShader(view.Passes[1], shaderWorldPickCfg, true)
 	if err != nil {
 		return nil, err
 	}
 	c := rvs.cameraSystem.GetDefault()
 	v := views.NewRenderViewPick(view, shaderPick, shaderWorldPick, c)
+
+	// Extract uniform locations
+	uniforms["id_colour"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "id_colour")
+	uniforms["model"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "model")
+	uniforms["projection"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "projection")
+	uniforms["view"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "view")
+
+	uniforms["id_colour"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "id_colour")
+	uniforms["model"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "model")
+	uniforms["projection"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "projection")
+	uniforms["view"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "view")
 
 	return v, nil
 }

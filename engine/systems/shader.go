@@ -97,7 +97,7 @@ func (shaderSystem *ShaderSystem) Shutdown() error {
  * @param config The configuration to be used when creating the shader.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) CreateShader(pass *metadata.RenderPass, config *metadata.ShaderConfig) (*metadata.Shader, error) {
+func (shaderSystem *ShaderSystem) CreateShader(pass *metadata.RenderPass, config *metadata.ShaderConfig, initialize bool) (*metadata.Shader, error) {
 	id := shaderSystem.newShaderID()
 
 	shader := shaderSystem.Shaders[id]
@@ -170,10 +170,12 @@ func (shaderSystem *ShaderSystem) CreateShader(pass *metadata.RenderPass, config
 	}
 
 	// Initialize the shader.
-	if err := shaderSystem.renderer.ShaderInitialize(shader); err != nil {
-		core.LogError("func ShaderInitialize: initialization failed for shader '%s'", config.Name)
-		// NOTE: initialize automatically destroys the shader if it fails.
-		return nil, err
+	if initialize {
+		if err := shaderSystem.renderer.ShaderInitialize(shader); err != nil {
+			core.LogError("func ShaderInitialize: initialization failed for shader '%s'", config.Name)
+			// NOTE: initialize automatically destroys the shader if it fails.
+			return nil, err
+		}
 	}
 
 	// At this point, creation is successful, so store the shader id in the hashtable

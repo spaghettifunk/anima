@@ -9,30 +9,30 @@ stagefiles = ["shaders/Builtin.UIPickShader.vert.spv", "shaders/Builtin.UIPickSh
 depth_test = 0
 depth_write = 0
 
-[[attributes]]
+[[attribute]]
 type = "vec2"
 name = "in_position"
 
-[[attributes]]
+[[attribute]]
 type = "vec2"
 name = "in_texcoord"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 0
 name = "projection"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 0
 name = "view"
 
-[[uniforms]]
+[[uniform]]
 type = "vec3"
 scope = 1
 name = "id_colour"
 
-[[uniforms]]
+[[uniform]]
 type = "mat4"
 scope = 2
 name = "model"
