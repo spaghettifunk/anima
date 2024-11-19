@@ -299,7 +299,7 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 		} else {
 			// Skip rendering the frame and try again next time.
 			// NOTE: Simulate a frame being "drawn" at 60 FPS.
-			// platform_sleep(16);
+			r.Platform.Sleep(16)
 			return nil
 		}
 	}

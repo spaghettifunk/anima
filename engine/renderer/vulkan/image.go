@@ -9,39 +9,50 @@ import (
 )
 
 type VulkanImage struct {
-	Handle vk.Image
-	Memory vk.DeviceMemory
-	View   vk.ImageView
-	Width  uint32
-	Height uint32
+	Handle             vk.Image
+	Memory             vk.DeviceMemory
+	MemoryRequirements vk.MemoryRequirements // The GPU memory requirements for this image
+	MemoryFlags        vk.MemoryPropertyFlags
+	View               vk.ImageView
+	Width              uint32
+	Height             uint32
 }
 
-func ImageCreate(context *VulkanContext, imageType metadata.TextureType, width uint32, height uint32,
+func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width uint32, height uint32,
 	format vk.Format, tiling vk.ImageTiling, usage vk.ImageUsageFlags, memoryFlags vk.MemoryPropertyFlags,
 	createView bool, viewAspectFlags vk.ImageAspectFlags) (*VulkanImage, error) {
 
 	outImage := &VulkanImage{
-		Width:  width,
-		Height: height,
+		Width:       width,
+		Height:      height,
+		MemoryFlags: memoryFlags,
+	}
+
+	al := uint32(1)
+	flags := vk.ImageCreateFlags(0)
+	if textureType == metadata.TextureTypeCube {
+		al = 6
+		flags = vk.ImageCreateFlags(vk.ImageCreateCubeCompatibleBit)
 	}
 
 	// Creation info.
 	imageCreateInfo := vk.ImageCreateInfo{
 		SType:     vk.StructureTypeImageCreateInfo,
-		ImageType: vk.ImageType2d,
+		ImageType: vk.ImageType2d, // Intentional, there is no cube image type.
 		Extent: vk.Extent3D{
 			Width:  width,
 			Height: height,
 			Depth:  1, // TODO: Support configurable depth.
 		},
 		MipLevels:     4, // TODO: Support mip mapping
-		ArrayLayers:   1, // TODO: Support number of layers in the image.
+		ArrayLayers:   al,
 		Format:        format,
 		Tiling:        tiling,
 		InitialLayout: vk.ImageLayoutUndefined,
 		Usage:         usage,
 		Samples:       vk.SampleCount1Bit,      // TODO: Configurable sample count.
 		SharingMode:   vk.SharingModeExclusive, // TODO: Configurable sharing mode.
+		Flags:         flags,
 	}
 
 	var handle vk.Image
@@ -86,7 +97,7 @@ func ImageCreate(context *VulkanContext, imageType metadata.TextureType, width u
 
 	// Create view
 	if createView {
-		view, err := ImageViewCreate(context, format, viewAspectFlags, outImage)
+		view, err := ImageViewCreate(context, textureType, format, viewAspectFlags, outImage)
 		if err != nil {
 			core.LogError(err.Error())
 			return nil, err
@@ -96,11 +107,18 @@ func ImageCreate(context *VulkanContext, imageType metadata.TextureType, width u
 	return outImage, nil
 }
 
-func ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.ImageAspectFlags, image *VulkanImage) (*vk.ImageView, error) {
+func ImageViewCreate(context *VulkanContext, textureType metadata.TextureType, format vk.Format, aspectFlags vk.ImageAspectFlags, image *VulkanImage) (*vk.ImageView, error) {
+	lc := uint32(1)
+	viewType := vk.ImageViewType2d
+	if textureType == metadata.TextureTypeCube {
+		lc = 6
+		viewType = vk.ImageViewTypeCube
+	}
+
 	viewCreateInfo := vk.ImageViewCreateInfo{
 		SType:    vk.StructureTypeImageViewCreateInfo,
 		Image:    image.Handle,
-		ViewType: vk.ImageViewType2d, // TODO: Make configurable
+		ViewType: viewType,
 		Format:   format,
 		SubresourceRange: vk.ImageSubresourceRange{
 			AspectMask: aspectFlags,
@@ -108,13 +126,14 @@ func ImageViewCreate(context *VulkanContext, format vk.Format, aspectFlags vk.Im
 			BaseMipLevel:   0,
 			LevelCount:     1,
 			BaseArrayLayer: 0,
-			LayerCount:     1,
+			LayerCount:     lc,
 		},
 	}
 
 	var view vk.ImageView
-	if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &view); res != vk.Success {
-		return nil, nil
+	if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &view); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("create image view failed with error %s", VulkanResultString(res, true))
+		return nil, err
 	}
 	return &view, nil
 }

@@ -345,7 +345,7 @@ func (e *Engine) Run() error {
 				MeshCount: uint32(meshCount),
 				Meshes:    meshes,
 			}
-			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world_opaque"), worldMeshData)
+			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world"), worldMeshData)
 			if err != nil {
 				return err
 			}

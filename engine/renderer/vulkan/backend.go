@@ -78,8 +78,8 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	// TODO: custom allocator.
 	vr.context.Allocator = nil
 
-	vr.FramebufferWidth = 800
-	vr.FramebufferHeight = 600
+	vr.context.FramebufferWidth = 1280
+	vr.context.FramebufferHeight = 720
 
 	// Setup Vulkan instance.
 	appInfo := &vk.ApplicationInfo{
@@ -234,7 +234,7 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	vr.TextureCreate(vr.defaultTexture.NormalTexturePixels, vr.defaultTexture.DefaultNormalTexture)
 
 	// Swapchain
-	sc, err := SwapchainCreate(vr.context, vr.FramebufferWidth, vr.FramebufferHeight)
+	sc, err := SwapchainCreate(vr.context, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
 	if err != nil {
 		return nil
 	}
@@ -396,8 +396,8 @@ func (vr *VulkanRenderer) Shutdow() error {
 func (vr *VulkanRenderer) Resized(width, height uint32) error {
 	// Update the "framebuffer size generation", a counter which indicates when the
 	// framebuffer size has been updated.
-	vr.FramebufferWidth = width
-	vr.FramebufferHeight = height
+	vr.context.FramebufferWidth = width
+	vr.context.FramebufferHeight = height
 	vr.context.FramebufferSizeGeneration++
 
 	core.LogInfo("Vulkan renderer backend.resized: w/h/gen: %d/%d/%d", width, height, vr.context.FramebufferSizeGeneration)
@@ -444,7 +444,6 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
 	f := vr.context.InFlightFences[vr.context.CurrentFrame]
-	core.LogDebug("fence: %+v", f)
 
 	inFlightsFences := []vk.Fence{f}
 	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64)
@@ -1282,7 +1281,7 @@ func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {
 	for i := 0; i < int(pass.RenderTargetCount); i++ {
 		target := pass.Targets[i]
 		if target != nil && target.InternalFramebuffer != nil {
-			buff := target.InternalFramebuffer.(vk.Framebuffer)
+			buff := *target.InternalFramebuffer.(*vk.Framebuffer)
 			vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, buff, vr.context.Allocator)
 			target.InternalFramebuffer = nil
 			target.Attachments = nil
@@ -1300,7 +1299,7 @@ func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *met
 	begin_info := vk.RenderPassBeginInfo{
 		SType:       vk.StructureTypeRenderPassBeginInfo,
 		RenderPass:  internal_data.Handle,
-		Framebuffer: target.InternalFramebuffer.(vk.Framebuffer),
+		Framebuffer: *target.InternalFramebuffer.(*vk.Framebuffer),
 		RenderArea: vk.Rect2D{
 			Offset: vk.Offset2D{
 				X: int32(pass.RenderArea.X),
