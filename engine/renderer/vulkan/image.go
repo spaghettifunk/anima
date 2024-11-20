@@ -160,9 +160,8 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 	}
 	barrier.Deref()
 
-	sourceStage := vk.PipelineStageFlags(vk.PipelineStageTopOfPipeBit)
-	destStage := vk.PipelineStageFlags(vk.PipelineStageTransferBit)
-
+	var sourceStage vk.PipelineStageFlags
+	var destStage vk.PipelineStageFlags
 	// Don't care about the old layout - transition to optimal layout (for the underlying implementation).
 	if oldLayout == vk.ImageLayoutUndefined && newLayout == vk.ImageLayoutTransferDstOptimal {
 		barrier.SrcAccessMask = 0

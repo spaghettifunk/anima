@@ -149,41 +149,42 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	}
 
 	// UI view
-	// render_view_config ui_view_config = {};
-	// ui_view_config.type = RENDERER_VIEW_KNOWN_TYPE_UI;
-	// ui_view_config.width = 0;
-	// ui_view_config.height = 0;
-	// ui_view_config.name = "ui";
-	// ui_view_config.view_matrix_source = RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA;
+	ui_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_UI,
+		Width:            0,
+		Height:           0,
+		Name:             "ui",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.UI",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							// Colour attachment.
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               true,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
+	}
 
-	// // Renderpass config
-	// ui_view_config.pass_count = 1;
-	// renderpass_config ui_passes[1];
-	// ui_passes[0].name = "Renderpass.Builtin.UI";
-	// ui_passes[0].render_area = (vec4){0, 0, 1280, 720};
-	// ui_passes[0].clear_colour = (vec4){0.0f, 0.0f, 0.2f, 1.0f};
-	// ui_passes[0].clear_flags = RENDERPASS_CLEAR_NONE_FLAG;
-	// ui_passes[0].depth = 1.0f;
-	// ui_passes[0].stencil = 0;
-
-	// render_target_attachment_config ui_target_attachment = {};
-	// // Colour attachment.
-	// ui_target_attachment.type = RENDER_TARGET_ATTACHMENT_TYPE_COLOUR;
-	// ui_target_attachment.source = RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT;
-	// ui_target_attachment.load_operation = RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD;
-	// ui_target_attachment.store_operation = RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE;
-	// ui_target_attachment.present_after = true;
-
-	// ui_passes[0].target.attachment_count = 1;
-	// ui_passes[0].target.attachments = &ui_target_attachment;
-	// ui_passes[0].render_target_count = renderer_window_attachment_count_get();
-
-	// ui_view_config.passes = ui_passes;
-
-	// if (!render_view_system_create(&ui_view_config)) {
-	//     KFATAL("Failed to create ui view. Aborting application.");
-	//     return false;
-	// }
+	if err := renderViewSystem.Create(ui_view_config); err != nil {
+		core.LogError("failed to create UI view. Aborting application")
+		return err
+	}
 
 	// Pick pass.
 	pick_view_config := &metadata.RenderViewConfig{
@@ -259,14 +260,6 @@ func (r *RendererSystem) Shutdown() error {
 	return r.backend.Shutdow()
 }
 
-func (r *RendererSystem) BeginFrame(deltaTime float64) error {
-	return r.backend.BeginFrame(deltaTime)
-}
-
-func (r *RendererSystem) EndFrame(deltaTime float64) error {
-	return r.backend.EndFrame(deltaTime)
-}
-
 func (r *RendererSystem) OnResize(width, height uint16) error {
 	// Flag as resizing and store the change, but wait to regenerate.
 	r.Resizing = true
@@ -319,11 +312,9 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 		// End the frame. If this fails, it is likely unrecoverable.
 		if err := r.backend.EndFrame(packet.DeltaTime); err != nil {
 			err := fmt.Errorf("backend func EndFrame failed. Application shutting down")
-			core.LogError(err.Error())
 			return err
 		}
 	}
-
 	return nil
 }
 

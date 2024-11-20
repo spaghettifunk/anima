@@ -72,6 +72,7 @@ func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueu
 		PImageIndices:      []uint32{presentImageIndex},
 		PResults:           nil,
 	}
+	presentInfo.Deref()
 
 	result := vk.QueuePresent(presentQueue, &presentInfo)
 	if result == vk.ErrorOutOfDate || result == vk.Suboptimal {

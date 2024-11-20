@@ -139,12 +139,12 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 		// Obtain a list of available validation layers
 		var available_layer_count uint32
-		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, nil); res != vk.Success {
+		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, nil); !VulkanResultIsSuccess(res) {
 			return nil
 		}
 
 		available_layers := make([]vk.LayerProperties, available_layer_count)
-		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, available_layers); res != vk.Success {
+		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, available_layers); !VulkanResultIsSuccess(res) {
 			return nil
 		}
 
@@ -176,7 +176,7 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	createInfo.Deref()
 
 	var instance vk.Instance
-	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &instance); res != vk.Success {
+	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &instance); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed in creating the Vulkan Instance with error `%s`", VulkanResultString(res, true))
 		core.LogError(err.Error())
 		return err
@@ -256,13 +256,13 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		}
 		semaphoreCreateInfo.Deref()
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); res != vk.Success {
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on image available")
 			core.LogError(err.Error())
 			return err
 		}
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i]); res != vk.Success {
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i]); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on queue complete")
 			core.LogError(err.Error())
 			return err
@@ -493,8 +493,8 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	vr.context.ImagesInFlight[vr.context.ImageIndex] = vr.context.InFlightFences[vr.context.CurrentFrame]
 
 	// Reset the fence for use on the next frame
-	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}); res != vk.Success {
-		err := fmt.Errorf("func EndFrame failed to reset fences")
+	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("func EndFrame failed to reset fences with error %s", VulkanResultString(res, true))
 		return err
 	}
 
@@ -1030,7 +1030,18 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 
 	// Main subpass
 	subpass := vk.SubpassDescription{
-		PipelineBindPoint: vk.PipelineBindPointGraphics,
+		PipelineBindPoint:       vk.PipelineBindPointGraphics,
+		PDepthStencilAttachment: nil,
+		ColorAttachmentCount:    0,
+		PColorAttachments:       nil,
+		// Input from a shader
+		InputAttachmentCount: 0,
+		PInputAttachments:    nil,
+		// Attachments used for multisampling colour attachments
+		PResolveAttachments: nil,
+		// Attachments not used in this subpass, but must be preserved for the next.
+		PreserveAttachmentCount: 0,
+		PPreserveAttachments:    nil,
 	}
 
 	// Attachments.
@@ -1184,13 +1195,9 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 		}
 		subpass.ColorAttachmentCount = uint32(colour_attachment_count)
 		subpass.PColorAttachments = colour_attachment_references
-	} else {
-		subpass.ColorAttachmentCount = 0
-		subpass.PColorAttachments = nil
 	}
 
 	// Depth attachment reference.
-	depth_attachment_references := make([]vk.AttachmentReference, 0)
 	depth_attachment_count := len(depthAttachmentDescs)
 	if depth_attachment_count > 0 {
 		if depth_attachment_count > 1 {
@@ -1204,20 +1211,7 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 		}
 		// Depth stencil data.
 		subpass.PDepthStencilAttachment = &depth_attachment_reference
-	} else {
-		subpass.PDepthStencilAttachment = nil
 	}
-
-	// Input from a shader
-	subpass.InputAttachmentCount = 0
-	subpass.PInputAttachments = nil
-
-	// Attachments used for multisampling colour attachments
-	subpass.PResolveAttachments = nil
-
-	// Attachments not used in this subpass, but must be preserved for the next.
-	subpass.PreserveAttachmentCount = 0
-	subpass.PPreserveAttachments = nil
 	subpass.Deref()
 
 	// Render pass dependencies. TODO: make this configurable.
@@ -1268,9 +1262,6 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 
 	if len(depthAttachmentDescs) > 0 {
 		depthAttachmentDescs = nil
-	}
-	if len(depth_attachment_references) > 0 {
-		depth_attachment_references = nil
 	}
 
 	return pass, nil

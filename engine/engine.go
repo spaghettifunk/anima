@@ -132,6 +132,27 @@ func (e *Engine) Initialize() error {
 		return err
 	}
 
+	// TODO: temp
+	// Create test ui text objects
+	// if (!ui_text_create(UI_TEXT_TYPE_BITMAP, "Ubuntu Mono 21px", 21, "Some test text 123,\n\tyo!", &app_state->test_text)) {
+	// 	KERROR("Failed to load basic ui bitmap text.");
+	// 	return false;
+	// }
+	// // Move debug text to new bottom of screen.
+	// ui_text_set_position(&app_state->test_text, vec3_create(20, app_state->height - 75, 0));
+
+	// if(!ui_text_create(UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한", &app_state->test_sys_text)) {
+	// 	KERROR("Failed to load basic ui system text.");
+	// 	return false;
+	// }
+	// ui_text_set_position(&app_state->test_sys_text, vec3_create(50, 250, 0));
+
+	// if(!ui_text_create(UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한", &app_state->test_sys_text)) {
+	// 	KERROR("Failed to load basic ui system text.");
+	// 	return false;
+	// }
+	// ui_text_set_position(&app_state->test_sys_text, vec3_create(50, 200, 0));
+
 	// Skybox
 	e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
 	e.skybox.Cubemap.FilterMinify = metadata.TextureFilterModeLinear
