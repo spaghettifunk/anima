@@ -478,7 +478,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.DiffuseMapName) > 0 {
 		material.DiffuseMap.Use = metadata.TextureUseMapDiffuse
-		t, err := ms.textureSystem.Acquire(config.DiffuseMapName, true)
+		t, err := ms.textureSystem.Aquire(config.DiffuseMapName, true)
 		if err != nil {
 			return nil, err
 		}
@@ -501,7 +501,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.SpecularMapName) > 0 {
 		material.SpecularMap.Use = metadata.TextureUseMapSpecular
-		t, err := ms.textureSystem.Acquire(config.SpecularMapName, true)
+		t, err := ms.textureSystem.Aquire(config.SpecularMapName, true)
 		if err != nil {
 			return nil, err
 		}
@@ -523,7 +523,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.NormalMapName) > 0 {
 		material.NormalMap.Use = metadata.TextureUseMapNormal
-		t, err := ms.textureSystem.Acquire(config.NormalMapName, true)
+		t, err := ms.textureSystem.Aquire(config.NormalMapName, true)
 		if err != nil {
 			return nil, err
 		}

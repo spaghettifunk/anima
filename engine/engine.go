@@ -165,7 +165,7 @@ func (e *Engine) Initialize() error {
 		return err
 	}
 
-	t, err := e.systemManager.TextureSystem.AcquireCube("skybox", true)
+	t, err := e.systemManager.TextureSystem.AquireCube("skybox", true)
 	if err != nil {
 		return err
 	}

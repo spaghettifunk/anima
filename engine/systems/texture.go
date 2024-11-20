@@ -87,7 +87,7 @@ func (ts *TextureSystem) Shutdown() error {
 	return nil
 }
 
-func (ts *TextureSystem) Acquire(name string, autoRelease bool) (*metadata.Texture, error) {
+func (ts *TextureSystem) Aquire(name string, autoRelease bool) (*metadata.Texture, error) {
 	// Return default texture, but warn about it since this should be returned via get_default_texture();
 	// TODO: Check against other default texture names?
 	if name == metadata.DEFAULT_TEXTURE_NAME {
@@ -119,7 +119,7 @@ func (ts *TextureSystem) Acquire(name string, autoRelease bool) (*metadata.Textu
  * For example, "skybox_f.png", "skybox_b.png", etc. where name is "skybox".
  *
  */
-func (ts *TextureSystem) AcquireCube(name string, autoRelease bool) (*metadata.Texture, error) {
+func (ts *TextureSystem) AquireCube(name string, autoRelease bool) (*metadata.Texture, error) {
 	// Return default texture, but warn about it since this should be returned via get_default_texture();
 	// TODO: Check against other default texture names?
 	if name == metadata.DEFAULT_TEXTURE_NAME {

@@ -14,16 +14,6 @@ type BitmapFontConfig struct {
 	ResourceName string
 }
 
-type FontSystemConfig struct {
-	DefaultSystemFontCount uint8
-	SystemFontConfigs      []*SystemFontConfig
-	DefaultBitmapFontCount uint8
-	BitmapFontConfigs      []*BitmapFontConfig
-	MaxSystemFontCount     uint8
-	MaxBitmapFontCount     uint8
-	AutoRelease            bool
-}
-
 type UITextType int
 
 const (
@@ -69,7 +59,7 @@ const (
 )
 
 type FontData struct {
-	FontType         *FontType
+	FontType         FontType
 	Face             string
 	Size             uint32
 	LineHeight       int32
@@ -86,7 +76,7 @@ type FontData struct {
 
 type BitmapFontPage struct {
 	ID   int8
-	Name string
+	File string
 }
 
 type BitmapFontResourceData struct {
@@ -96,4 +86,10 @@ type BitmapFontResourceData struct {
 
 type SystemFontFace struct {
 	Name string
+}
+
+type SystemFontResourceData struct {
+	Fonts      []*SystemFontFace
+	BinarySize uint64
+	FontBinary interface{}
 }

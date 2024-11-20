@@ -19,6 +19,7 @@ type SystemManager struct {
 	ShaderSystem     *ShaderSystem
 	TextureSystem    *TextureSystem
 	RendererSystem   *RendererSystem
+	FontSystem       *FontSystem
 	AssetManager     *assets.AssetManager
 }
 
@@ -86,6 +87,32 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
+
+	fs, err := NewFontSystem(&FontSystemConfig{
+		AutoRelease:            false,
+		DefaultBitmapFontCount: 1,
+		DefaultSystemFontCount: 1,
+		MaxSystemFontCount:     101,
+		MaxBitmapFontCount:     101,
+		BitmapFontConfigs: []*metadata.BitmapFontConfig{
+			{
+				Name:         "Ubuntu Mono 21px",
+				ResourceName: "UbuntuMono21px",
+				Size:         21,
+			},
+		},
+		SystemFontConfigs: []*metadata.SystemFontConfig{
+			{
+				DefaultSize:  20,
+				Name:         "Noto Sans",
+				ResourceName: "NotoSansCJK",
+			},
+		},
+	}, ts, am, renderer)
+	if err != nil {
+		return nil, err
+	}
+
 	return &SystemManager{
 		RendererSystem:   renderer,
 		CameraSystem:     cs,
@@ -96,6 +123,7 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		GeometrySystem:   gs,
 		MeshLoaderSystem: mls,
 		RenderViewSystem: rvs,
+		FontSystem:       fs,
 		AssetManager:     am,
 	}, nil
 }
@@ -111,6 +139,9 @@ func (sm *SystemManager) Initialize() error {
 		return err
 	}
 	if err := sm.GeometrySystem.Initialize(); err != nil {
+		return err
+	}
+	if err := sm.FontSystem.Initialize(); err != nil {
 		return err
 	}
 	return nil

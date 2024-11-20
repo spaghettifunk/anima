@@ -51,7 +51,7 @@ func NewAssetManager() (*AssetManager, error) {
 }
 
 func (am *AssetManager) Initialize(assetsDir string) error {
-	// go am.start()
+	go am.start()
 
 	if err := am.addRecursive(assetsDir); err != nil {
 		return err
@@ -62,6 +62,8 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
 	am.registerLoader(metadata.ResourceTypeMaterial, &loaders.MaterialLoader{})
+	am.registerLoader(metadata.ResourceTypeBitmapFont, &loaders.BitmapFontLoader{})
+	am.registerLoader(metadata.ResourceTypeSystemFont, &loaders.SystemFontLoader{})
 
 	return nil
 }
@@ -261,6 +263,10 @@ func determineAssetType(path string) metadata.ResourceType {
 	switch filepath.Ext(path) {
 	case ".shadercfg":
 		return metadata.ResourceTypeShader
+	case ".fontcfg", ".ksf":
+		return metadata.ResourceTypeSystemFont
+	case ".fnt", ".kbf":
+		return metadata.ResourceTypeBitmapFont
 	case ".spv":
 		return metadata.ResourceTypeBinary
 	case ".png", ".jpg", ".tga":
