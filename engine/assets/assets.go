@@ -62,7 +62,9 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
 	am.registerLoader(metadata.ResourceTypeMaterial, &loaders.MaterialLoader{})
-	am.registerLoader(metadata.ResourceTypeBitmapFont, &loaders.BitmapFontLoader{})
+	am.registerLoader(metadata.ResourceTypeBitmapFont, &loaders.BitmapFontLoader{
+		ResourcePath: assetsDir,
+	})
 	am.registerLoader(metadata.ResourceTypeSystemFont, &loaders.SystemFontLoader{})
 
 	return nil
