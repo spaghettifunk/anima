@@ -428,7 +428,7 @@ func (e *Engine) Run() error {
 			}
 
 			textBuffer := fmt.Sprintf(
-				"FPS: %5.1f(%4.1fms)        Pos=[%7.3f %7.3f %7.3f] Rot=[%7.3f, %7.3f, %7.3f]\n"+
+				"FPS: %5.1f(%4.1fms)        Pos=[%7.3f %7.3f %7.3f ] Rot=[%7.3f, %7.3f, %7.3f  ]\n"+
 					"Mouse: X=%-5d Y=%-5d   L=%s R=%s   NDC: X=%.6f, Y=%.6f\n"+
 					"Hovered: %s%d",
 				fps,

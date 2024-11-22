@@ -42,15 +42,15 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 	}
 	allocate_info.Deref()
 
-	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
 	queueMutex.Lock()
+	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
 	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed to allocate command buffer with error %s", VulkanResultString(res, true))
 		return nil, err
 	}
-	queueMutex.Unlock()
 	vCommandBuffer.Handle = pCommandBuffers[0]
 	vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
+	queueMutex.Unlock()
 
 	return vCommandBuffer, nil
 }

@@ -651,15 +651,15 @@ func (rvs *RenderViewSystem) pickOnRenderViewCreate(view *metadata.RenderView, u
 	v := views.NewRenderViewPick(view, shaderPick, shaderWorldPick, c)
 
 	// Extract uniform locations
-	uniforms["id_colour"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "id_colour")
-	uniforms["model"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "model")
-	uniforms["projection"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "projection")
-	uniforms["view"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "view")
+	uniforms["ui_id_colour"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "id_colour")
+	uniforms["ui_model"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "model")
+	uniforms["ui_projection"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "projection")
+	uniforms["ui_view"] = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "view")
 
-	uniforms["id_colour"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "id_colour")
-	uniforms["model"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "model")
-	uniforms["projection"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "projection")
-	uniforms["view"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "view")
+	uniforms["world_id_colour"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "id_colour")
+	uniforms["world_model"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "model")
+	uniforms["world_projection"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "projection")
+	uniforms["world_view"] = rvs.shaderSystem.GetUniformIndex(v.WorldShaderInfo.Shader, "view")
 
 	return v, nil
 }
@@ -727,7 +727,10 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			}
 
 			needs_update := !data.InstanceUpdated[current_instance_id]
-			rvs.shaderSystem.ApplyInstance(needs_update)
+			if !rvs.shaderSystem.ApplyInstance(needs_update) {
+				err := fmt.Errorf("failed to apply shader instance to world geometry")
+				return err
+			}
 			data.InstanceUpdated[current_instance_id] = true
 
 			// Apply the locals
@@ -982,7 +985,9 @@ func (rvs *RenderViewSystem) pickRegenerateAttachmentTarget(view *views.RenderVi
 	}
 	attachment.Texture.InternalData = nil
 
-	rvs.renderer.TextureCreateWriteable(attachment.Texture)
+	if err := rvs.renderer.TextureCreateWriteable(attachment.Texture); err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -71,10 +71,10 @@ func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) bool {
 	vp.WorldShaderInfo.Renderpass = vp.View.Passes[1]
 
 	// Extract uniform locations
-	vp.UIShaderInfo.IDColorLocation = uniforms["id_colour"]
-	vp.UIShaderInfo.ModelLocation = uniforms["model"]
-	vp.UIShaderInfo.ProjectionLocation = uniforms["projection"]
-	vp.UIShaderInfo.ViewLocation = uniforms["view"]
+	vp.UIShaderInfo.IDColorLocation = uniforms["ui_id_colour"]
+	vp.UIShaderInfo.ModelLocation = uniforms["ui_model"]
+	vp.UIShaderInfo.ProjectionLocation = uniforms["ui_projection"]
+	vp.UIShaderInfo.ViewLocation = uniforms["ui_view"]
 
 	// Default UI properties
 	vp.UIShaderInfo.NearClip = -100.0
@@ -84,10 +84,10 @@ func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) bool {
 	vp.UIShaderInfo.View = math.NewMat4Identity()
 
 	// Extract uniform locations.
-	vp.WorldShaderInfo.IDColorLocation = uniforms["id_colour"]
-	vp.WorldShaderInfo.ModelLocation = uniforms["model"]
-	vp.WorldShaderInfo.ProjectionLocation = uniforms["projection"]
-	vp.WorldShaderInfo.ViewLocation = uniforms["view"]
+	vp.WorldShaderInfo.IDColorLocation = uniforms["world_id_colour"]
+	vp.WorldShaderInfo.ModelLocation = uniforms["world_model"]
+	vp.WorldShaderInfo.ProjectionLocation = uniforms["world_projection"]
+	vp.WorldShaderInfo.ViewLocation = uniforms["world_view"]
 
 	// Default World properties
 	vp.WorldShaderInfo.NearClip = 0.1

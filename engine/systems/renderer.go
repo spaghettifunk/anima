@@ -326,8 +326,8 @@ func (r *RendererSystem) TextureDestroy(texture *metadata.Texture) {
 	r.backend.TextureDestroy(texture)
 }
 
-func (r *RendererSystem) TextureCreateWriteable(texture *metadata.Texture) {
-	r.backend.TextureCreateWriteable(texture)
+func (r *RendererSystem) TextureCreateWriteable(texture *metadata.Texture) error {
+	return r.backend.TextureCreateWriteable(texture)
 }
 
 func (r *RendererSystem) TextureResize(texture *metadata.Texture, new_width, new_height uint32) {

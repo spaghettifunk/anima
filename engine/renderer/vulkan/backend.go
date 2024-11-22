@@ -1945,6 +1945,7 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShader
 		CodeSize: binary_resource.DataSize * 4,
 		PCode:    binary_resource.Data.([]uint32),
 	}
+	shader_stage.CreateInfo.Deref()
 
 	var shaderModule vk.ShaderModule
 	result := vk.CreateShaderModule(vr.context.Device.LogicalDevice, &shader_stage.CreateInfo, vr.context.Allocator, &shaderModule)
@@ -1955,7 +1956,9 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShader
 	shader_stage.Handle = shaderModule
 
 	// Release the resource.
-	vr.assetManager.UnloadAsset(binary_resource)
+	if err := vr.assetManager.UnloadAsset(binary_resource); err != nil {
+		return err
+	}
 
 	// Shader stage info
 	shader_stage.ShaderStageCreateInfo = vk.PipelineShaderStageCreateInfo{
@@ -1967,6 +1970,7 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config VulkanShader
 		PNext:               vk.NullHandle,
 		Flags:               0,
 	}
+	shader_stage.ShaderStageCreateInfo.Deref()
 
 	return nil
 }
@@ -2076,6 +2080,7 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 			buffer_info.Buffer = (internal.UniformBuffer.InternalData.(*VulkanBuffer)).Handle
 			buffer_info.Offset = vk.DeviceSize(object_state.Offset)
 			buffer_info.Range = vk.DeviceSize(shader.UboStride)
+			buffer_info.Deref()
 
 			ubo_descriptor := vk.WriteDescriptorSet{
 				SType:           vk.StructureTypeWriteDescriptorSet,
@@ -2085,6 +2090,7 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 				DescriptorCount: 1,
 				PBufferInfo:     []vk.DescriptorBufferInfo{buffer_info},
 			}
+			ubo_descriptor.Deref()
 
 			descriptor_writes[descriptor_count] = ubo_descriptor
 			descriptor_count++
@@ -2186,7 +2192,7 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 	if shader.InstanceTextureCount > 0 {
 		instance_state.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
 		for i := uint32(0); i < instance_texture_count; i++ {
-			if maps[i].Texture != nil {
+			if maps[i].Texture == nil {
 				instance_state.InstanceTextureMaps[i] = &metadata.TextureMap{
 					Texture:      vr.defaultTexture.DefaultTexture,
 					InternalData: *new(vk.Sampler),
