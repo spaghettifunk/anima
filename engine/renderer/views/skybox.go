@@ -65,16 +65,17 @@ func (vs *RenderViewSkybox) OnBuildPacket(data interface{}) (*metadata.RenderVie
 		return nil, err
 	}
 
-	out_packet := &metadata.RenderViewPacket{}
 	skybox_data := data.(*metadata.SkyboxPacketData)
 
 	// Set matrices, etc.
-	out_packet.ProjectionMatrix = vs.ProjectionMatrix
-	out_packet.ViewMatrix = vs.WorldCamera.GetView()
-	out_packet.ViewPosition = vs.WorldCamera.GetPosition()
-
-	// Just set the extended data to the skybox data
-	out_packet.ExtendedData = skybox_data
+	out_packet := &metadata.RenderViewPacket{
+		ProjectionMatrix: vs.ProjectionMatrix,
+		ViewMatrix:       vs.WorldCamera.GetView(),
+		ViewPosition:     vs.WorldCamera.GetPosition(),
+		View:             vs.View,
+		// Just set the extended data to the skybox data
+		ExtendedData: skybox_data,
+	}
 	return out_packet, nil
 }
 

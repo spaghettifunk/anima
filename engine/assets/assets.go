@@ -139,6 +139,12 @@ func (am *AssetManager) LoadAsset(filename string, resourceType metadata.Resourc
 	case metadata.ResourceTypeMaterial:
 		path = fmt.Sprintf("assets/materials/%s.amt", filename)
 		asset = am.assetExists(path)
+	case metadata.ResourceTypeSystemFont:
+		path = fmt.Sprintf("assets/fonts/%s.fontcfg", filename)
+		asset = am.assetExists(path)
+	case metadata.ResourceTypeBitmapFont:
+		path = fmt.Sprintf("assets/fonts/%s.fnt", filename)
+		asset = am.assetExists(path)
 	default:
 		err := fmt.Errorf("unknown resource type")
 		return nil, err

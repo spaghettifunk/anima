@@ -50,6 +50,10 @@ type Engine struct {
 	carMesh      *metadata.Mesh
 	sponzaMesh   *metadata.Mesh
 	modelsLoaded bool
+
+	uiMeshes    []*metadata.Mesh
+	testText    *metadata.UIText
+	testSysText *metadata.UIText
 }
 
 func New(g *Game) (*Engine, error) {
@@ -134,24 +138,31 @@ func (e *Engine) Initialize() error {
 
 	// TODO: temp
 	// Create test ui text objects
-	// if (!ui_text_create(UI_TEXT_TYPE_BITMAP, "Ubuntu Mono 21px", 21, "Some test text 123,\n\tyo!", &app_state->test_text)) {
-	// 	KERROR("Failed to load basic ui bitmap text.");
-	// 	return false;
+	// text, err := e.systemManager.FontSystem.UITextCreate(metadata.UI_TEXT_TYPE_BITMAP, "Ubuntu Mono 21px", 21, "Some test text 123,\n\tyo!")
+	// if err != nil {
+	// 	core.LogError("failed to load basic ui bitmap text")
+	// 	return err
 	// }
+	// e.testText = text
+
 	// // Move debug text to new bottom of screen.
-	// ui_text_set_position(&app_state->test_text, vec3_create(20, app_state->height - 75, 0));
+	// e.systemManager.FontSystem.UITextSetPosition(e.testText, math.NewVec3(20, float32(e.height-75), 0))
 
-	// if(!ui_text_create(UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한", &app_state->test_sys_text)) {
-	// 	KERROR("Failed to load basic ui system text.");
-	// 	return false;
+	// text, err = e.systemManager.FontSystem.UITextCreate(metadata.UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한")
+	// if err != nil {
+	// 	core.LogError("failed to load basic ui system text")
+	// 	return err
 	// }
-	// ui_text_set_position(&app_state->test_sys_text, vec3_create(50, 250, 0));
+	// e.testSysText = text
+	// e.systemManager.FontSystem.UITextSetPosition(e.testSysText, math.NewVec3(50, 250, 0))
 
-	// if(!ui_text_create(UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한", &app_state->test_sys_text)) {
-	// 	KERROR("Failed to load basic ui system text.");
-	// 	return false;
+	// text, err = e.systemManager.FontSystem.UITextCreate(metadata.UI_TEXT_TYPE_SYSTEM, "Noto Sans CJK JP", 31, "Some system text 123, \n\tyo!\n\n\tこんにちは 한")
+	// if err != nil {
+	// 	core.LogError("failed to load basic ui system text")
+	// 	return err
 	// }
-	// ui_text_set_position(&app_state->test_sys_text, vec3_create(50, 200, 0));
+	// e.testSysText = text
+	// e.systemManager.FontSystem.UITextSetPosition(e.testSysText, math.NewVec3(50, 200, 0))
 
 	// Skybox
 	e.skybox.Cubemap.FilterMagnify = metadata.TextureFilterModeLinear
@@ -299,9 +310,17 @@ func (e *Engine) Run() error {
 	// start goroutine to process all the events around the engine
 	go core.ProcessEvents()
 
-	var runningTime float64 = 0.0
+	// var runningTime float64 = 0.0
 	var frameCount uint8 = 0
+	var frameElapsedTime float64 = 0
 	var targetFrameSeconds float64 = 1.0 / 60.0
+	var frame_avg_counter uint8 = 0
+	ms_times := [30]float64{0}
+	var msAvg float64 = 0
+	var frames int32 = 0
+	var accumulated_frame_ms float64 = 0
+	var fps float64 = 0
+	var AVG_COUNT = 30
 
 	for e.isRunning {
 		if !e.platform.PumpMessages() {
@@ -339,8 +358,8 @@ func (e *Engine) Run() error {
 
 			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
-				ViewCount: 2,
-				Views:     make([]*metadata.RenderViewPacket, 2),
+				ViewCount: 4,
+				Views:     make([]*metadata.RenderViewPacket, 4),
 			}
 
 			// skybox
@@ -349,6 +368,7 @@ func (e *Engine) Run() error {
 			}
 			rvp, err := e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("skybox"), skyboxPacketData)
 			if err != nil {
+				core.LogError("Failed to build packet for view 'skybox'.")
 				return err
 			}
 			packet.Views[0] = rvp
@@ -368,6 +388,7 @@ func (e *Engine) Run() error {
 			}
 			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("world"), worldMeshData)
 			if err != nil {
+				core.LogError("Failed to build packet for view 'world'.")
 				return err
 			}
 			packet.Views[1] = rvp
@@ -377,15 +398,133 @@ func (e *Engine) Run() error {
 			pos := worldCamera.GetPosition()
 			rot := worldCamera.GetEulerRotation()
 
-			core.LogInfo(fmt.Sprintf("Camera Pos: [%.3f, %.3f, %.3f] - Camera Rot: [%.3f, %.3f, %.3f]", pos.X, pos.Y, pos.Z, math.RadToDeg(rot.X), math.RadToDeg(rot.Y), math.RadToDeg(rot.Z)))
+			// also track on current mouse state
+			leftDown := core.InputIsButtonDown(core.BUTTON_LEFT)
+			rightDown := core.InputIsButtonDown(core.BUTTON_RIGHT)
+			mouseX, mouseY := core.InputGetMousePosition()
 
-			// Draw freame
-			e.systemManager.DrawFrame(packet)
+			// convert to NDC
+			mouseXNDC := math.RangeConvertFloat32(float32(mouseX), 0, float32(e.width), -1, 1)
+			mouseYNDC := math.RangeConvertFloat32(float32(mouseY), 0, float32(e.height), -1, 1)
+
+			// Calculate frame ms average
+			frame_ms := (frameElapsedTime * 1000.0)
+			ms_times[frame_avg_counter] = frame_ms
+			if frame_avg_counter == uint8(AVG_COUNT-1) {
+				for i := 0; i < AVG_COUNT; i++ {
+					msAvg += ms_times[i]
+				}
+				msAvg /= float64(AVG_COUNT)
+			}
+			frame_avg_counter++
+			frame_avg_counter %= uint8(AVG_COUNT)
+
+			// Calculate frames per second.
+			accumulated_frame_ms += frame_ms
+			if accumulated_frame_ms > 1000 {
+				fps = float64(frames)
+				accumulated_frame_ms -= 1000
+				frames = 0
+			}
+
+			textBuffer := fmt.Sprintf(
+				"FPS: %5.1f(%4.1fms)        Pos=[%7.3f %7.3f %7.3f] Rot=[%7.3f, %7.3f, %7.3f]\n"+
+					"Mouse: X=%-5d Y=%-5d   L=%s R=%s   NDC: X=%.6f, Y=%.6f\n"+
+					"Hovered: %s%d",
+				fps,
+				msAvg,
+				pos.X, pos.Y, pos.Z,
+				math.RadToDeg(rot.X), math.RadToDeg(rot.Y), math.RadToDeg(rot.Z),
+				mouseX, mouseY,
+				map[bool]string{true: "Y", false: "N"}[leftDown],
+				map[bool]string{true: "Y", false: "N"}[rightDown],
+				mouseXNDC,
+				mouseYNDC,
+				// FIXME: the two belows are hardcoded
+				"none",
+				0,
+				// func() string {
+				// 	if appState.hoveredObjectID == INVALID_ID {
+				// 		return "none"
+				// 	}
+				// 	return ""
+				// }(),
+				// func() uint {
+				// 	if appState.hoveredObjectID == INVALID_ID {
+				// 		return 0
+				// 	}
+				// 	return appState.hoveredObjectID
+				// }(),
+			)
+
+			core.LogInfo(textBuffer)
+
+			ui_packet := &metadata.UIPacketData{
+				MeshData: &metadata.MeshPacketData{},
+			}
+
+			ui_mesh_count := uint32(0)
+			ui_meshes := make([]*metadata.Mesh, 10)
+
+			// TODO: flexible size array
+			for i := 0; i < len(e.uiMeshes); i++ {
+				if e.uiMeshes[i] != nil {
+					if e.uiMeshes[i].Generation != metadata.InvalidIDUint8 {
+						ui_meshes[ui_mesh_count] = e.uiMeshes[i]
+						ui_mesh_count++
+					}
+				}
+			}
+
+			ui_packet.MeshData.MeshCount = ui_mesh_count
+			ui_packet.MeshData.Meshes = ui_meshes
+			ui_packet.Texts = make([]*metadata.UIText, 2)
+
+			ui_packet.Texts[0] = e.testText
+			ui_packet.Texts[1] = e.testSysText
+
+			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("ui"), ui_packet)
+			if err != nil {
+				core.LogError("Failed to build packet for view 'ui'.")
+				return err
+			}
+			packet.Views[2] = rvp
+
+			// Pick uses both world and ui packet data.
+			pick_packet := &metadata.PickPacketData{
+				UIMeshData:    ui_packet.MeshData,
+				WorldMeshData: worldMeshData,
+				Texts:         ui_packet.Texts,
+				TextCount:     uint32(len(ui_packet.Texts)),
+			}
+
+			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("pick"), pick_packet)
+			if err != nil {
+				core.LogError("Failed to build packet for view 'pick'.")
+				return err
+			}
+			packet.Views[3] = rvp
+
+			// Draw frame
+			if err := e.systemManager.DrawFrame(packet); err != nil {
+				core.LogError("failed to draw frame")
+				return err
+			}
+
+			// TODO: temp
+			// Cleanup the packet.
+			for i := 0; i < int(packet.ViewCount); i++ {
+				if err := packet.Views[i].View.View.OnDestroy(); err != nil {
+					core.LogError("failed to destroy renderview")
+					return err
+				}
+			}
+			// TODO: end temp
 
 			// Figure out how long the frame took and, if below
 			var frameEndTime float64 = platform.GetAbsoluteTime()
 			var frameElapsedTime float64 = frameEndTime - frameStartTime
-			runningTime += frameElapsedTime
+			// runningTime += frameElapsedTime
 			var remainingSeconds float64 = targetFrameSeconds - frameElapsedTime
 
 			if remainingSeconds > 0 {
@@ -397,6 +536,8 @@ func (e *Engine) Run() error {
 				}
 				frameCount++
 			}
+
+			frames++
 
 			// NOTE: Input update/state copying should always be handled
 			// after any input should be recorded; I.E. before this line.

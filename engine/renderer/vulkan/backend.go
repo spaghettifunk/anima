@@ -256,17 +256,21 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		}
 		semaphoreCreateInfo.Deref()
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); !VulkanResultIsSuccess(res) {
+		var sem vk.Semaphore
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &sem); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on image available")
 			core.LogError(err.Error())
 			return err
 		}
+		vr.context.ImageAvailableSemaphores[i] = sem
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i]); !VulkanResultIsSuccess(res) {
+		var sem2 vk.Semaphore
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &sem2); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on queue complete")
 			core.LogError(err.Error())
 			return err
 		}
+		vr.context.QueueCompleteSemaphores[i] = sem2
 
 		// Create the fence in a signaled state, indicating that the first frame has already been "rendered".
 		// This will prevent the application from waiting indefinitely for the first frame to render since it
@@ -446,7 +450,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 	f := vr.context.InFlightFences[vr.context.CurrentFrame]
 
 	inFlightsFences := []vk.Fence{f}
-	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64)
+	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64-1)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("func BeginFram In-flight fence wait failure! error: %s", VulkanResultString(result, true))
 		return err
@@ -454,7 +458,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
 	// This same semaphore will later be waited on by the queue submission to ensure this image is available.
-	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, vk.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
+	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, vk.MaxUint64-1, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok {
 		err := fmt.Errorf("failed to swapchain aquire next image index")
 		return err

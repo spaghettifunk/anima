@@ -243,6 +243,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	} else {
 		for i := 0; i < int(swapchain.ImageCount); i++ {
 			// Just update the dimensions.
+			core.LogWarn("missing update dimensions of the rendered textures")
 			// texture_system_resize(&swapchain.render_textures[i], swapchain_extent.width, swapchain_extent.height, false);
 		}
 	}

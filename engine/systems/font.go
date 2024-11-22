@@ -8,10 +8,12 @@ package systems
 import "C"
 import (
 	"fmt"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
 
@@ -66,9 +68,10 @@ type FontSystem struct {
 	textureSystem  *TextureSystem
 	assetManager   *assets.AssetManager
 	rendererSystem *RendererSystem
+	shaderSystem   *ShaderSystem
 }
 
-func NewFontSystem(config *FontSystemConfig, ts *TextureSystem, am *assets.AssetManager, r *RendererSystem) (*FontSystem, error) {
+func NewFontSystem(config *FontSystemConfig, ts *TextureSystem, shaderSystem *ShaderSystem, am *assets.AssetManager, r *RendererSystem) (*FontSystem, error) {
 	fs := &FontSystem{
 		Config:           config,
 		BitmapFontLookup: make(map[string]uint16),
@@ -78,6 +81,7 @@ func NewFontSystem(config *FontSystemConfig, ts *TextureSystem, am *assets.Asset
 		textureSystem:    ts,
 		assetManager:     am,
 		rendererSystem:   r,
+		shaderSystem:     shaderSystem,
 	}
 
 	return fs, nil
@@ -88,19 +92,21 @@ func (fs *FontSystem) Initialize() error {
 		err := fmt.Errorf("font_system_initialize - config.max_bitmap_font_count and config.max_system_font_count must be > 0")
 		return err
 	}
-
 	// Invalidate all entries in both arrays.
 	count := fs.Config.MaxBitmapFontCount
 	for i := 0; i < int(count); i++ {
-		fs.BitmapFonts[i].ID = metadata.InvalidIDUint16
-		fs.BitmapFonts[i].ReferenceCount = 0
+		fs.BitmapFonts[i] = &BitmapFontLookup{
+			ID:             metadata.InvalidIDUint16,
+			ReferenceCount: 0,
+		}
 	}
 	count = fs.Config.MaxSystemFontCount
 	for i := 0; i < int(count); i++ {
-		fs.SystemFonts[i].ID = metadata.InvalidIDUint16
-		fs.SystemFonts[i].ReferenceCount = 0
+		fs.SystemFonts[i] = &SystemFontLookup{
+			ID:             metadata.InvalidIDUint16,
+			ReferenceCount: 0,
+		}
 	}
-
 	// Load up any default fonts.
 	// Bitmap fonts.
 	for i := 0; i < int(fs.Config.DefaultBitmapFontCount); i++ {
@@ -116,11 +122,10 @@ func (fs *FontSystem) Initialize() error {
 			return err
 		}
 	}
-
 	return nil
 }
 
-func (fs *FontSystem) Shutdown() {
+func (fs *FontSystem) Shutdown() error {
 	// Cleanup bitmap fonts.
 	for i := uint16(0); i < uint16(fs.Config.MaxBitmapFontCount); i++ {
 		if fs.BitmapFonts[i].ID != metadata.InvalidIDUint16 {
@@ -143,6 +148,8 @@ func (fs *FontSystem) Shutdown() {
 			fs.SystemFonts[i].SizeVariants = nil
 		}
 	}
+
+	return nil
 }
 
 func (fs *FontSystem) Release(text *metadata.UIText) error {
@@ -183,12 +190,16 @@ func (fs *FontSystem) LoadBitmapFont(config *metadata.BitmapFontConfig) error {
 
 	// Obtain the lookup.
 	lookup := fs.BitmapFonts[id]
+	if lookup.Font == nil {
+		lookup.Font = &BitmapFontInternalData{}
+	}
 
 	res, err := fs.assetManager.LoadAsset(config.ResourceName, metadata.ResourceTypeBitmapFont, nil)
 	if err != nil {
 		core.LogError("failed to load bitmap font")
 		return err
 	}
+
 	lookup.Font.LoadedResource = res
 
 	// Keep a casted pointer to the resource data for convenience.
@@ -199,6 +210,9 @@ func (fs *FontSystem) LoadBitmapFont(config *metadata.BitmapFontConfig) error {
 	text, err := fs.textureSystem.Aquire(lookup.Font.ResourceData.Pages[0].File, true)
 	if err != nil {
 		return err
+	}
+	if lookup.Font.ResourceData.Data.Atlas == nil {
+		lookup.Font.ResourceData.Data.Atlas = &metadata.TextureMap{}
 	}
 	lookup.Font.ResourceData.Data.Atlas.Texture = text
 
@@ -342,6 +356,70 @@ func (fs *FontSystem) SetupFontData(font *metadata.FontData) error {
 		}
 	}
 	return nil
+}
+
+func (fs *FontSystem) Acquire(font_name string, font_size uint16, text *metadata.UIText) error {
+	if text.UITextType == metadata.UI_TEXT_TYPE_BITMAP {
+		id, ok := fs.BitmapFontLookup[font_name]
+		if ok && id == metadata.InvalidIDUint16 {
+			err := fmt.Errorf("a bitmap font named '%s' was not found. Font acquisition failed", font_name)
+			return err
+		}
+
+		// Get the lookup.
+		lookup := fs.BitmapFonts[id]
+
+		// Assign the data, increment the reference.
+		text.Data = lookup.Font.ResourceData.Data
+		lookup.ReferenceCount++
+
+		return nil
+	} else if text.UITextType == metadata.UI_TEXT_TYPE_SYSTEM {
+		id, ok := fs.SystemFontLookup[font_name]
+		if ok && id == metadata.InvalidIDUint16 {
+			err := fmt.Errorf("a system font named '%s' was not found. Font acquisition failed", font_name)
+			return err
+		}
+
+		// Get the lookup.
+		lookup := fs.SystemFonts[id]
+
+		// Search the size variants for the correct size.
+		count := len(lookup.SizeVariants)
+		for i := 0; i < count; i++ {
+			if lookup.SizeVariants[i].Size == uint32(font_size) {
+				// Assign the data, increment the reference.
+				text.Data = lookup.SizeVariants[i]
+				lookup.ReferenceCount++
+				return nil
+			}
+		}
+
+		// If we reach this point, the size variant doesn't exist. Create it.
+		// font_data variant;
+		variant, err := fs.CreateSystemFontVariant(lookup, font_size, font_name)
+		if err != nil {
+			err := fmt.Errorf("failed to create variant: %s, index %d, size %d", lookup.Face, lookup.Index, font_size)
+			return err
+		}
+
+		// Also perform setup for the varian
+		if err := fs.SetupFontData(variant); err != nil {
+			err := fmt.Errorf("failed to setup font data")
+			return err
+		}
+
+		// Add to the lookup's size variants.
+		lookup.SizeVariants = append(lookup.SizeVariants, variant)
+		length := len(lookup.SizeVariants)
+		// Assign the data, increment the reference.
+		text.Data = lookup.SizeVariants[length-1]
+		lookup.ReferenceCount++
+		return nil
+	}
+
+	err := fmt.Errorf("unrecognized font type: %d", text.UITextType)
+	return err
 }
 
 func (fs *FontSystem) CreateSystemFontVariant(lookup *SystemFontLookup, size uint16, font_name string) (*metadata.FontData, error) {
@@ -528,5 +606,304 @@ func (fs *FontSystem) VerifySystemFontSizeVariant(lookup *SystemFontLookup, vari
 	}
 
 	// Otherwise, proceed as normal.
+	return nil
+}
+
+func (fs *FontSystem) VerifyAtlas(font *metadata.FontData, text string) error {
+	if font.FontType == metadata.FONT_TYPE_BITMAP {
+		// Bitmaps don't need verification since they are already generated.
+		return nil
+	} else if font.FontType == metadata.FONT_TYPE_SYSTEM {
+		id, ok := fs.SystemFontLookup[font.Face]
+		if ok && id == metadata.InvalidIDUint16 {
+			err := fmt.Errorf("a system font named '%s' was not found. Font atlas verification failed", font.Face)
+			return err
+		}
+
+		// Get the lookup.
+		lookup := fs.SystemFonts[id]
+
+		return fs.VerifySystemFontSizeVariant(lookup, font, text)
+	}
+
+	err := fmt.Errorf("font_system_verify_atlas failed: Unknown font type")
+	return err
+}
+
+// Text Creation
+func (fs *FontSystem) UITextCreate(textType metadata.UITextType, fontName string, fontSize uint16, textContent string) (*metadata.UIText, error) {
+	outText := &metadata.UIText{
+		UITextType: textType,
+	}
+
+	if err := fs.Acquire(fontName, fontSize, outText); err != nil {
+		err := fmt.Errorf("unable to acquire font: '%s'. ui_text cannot be created", fontName)
+		return nil, err
+	}
+
+	outText.Text = textContent
+	outText.Transform = math.TransformCreate()
+
+	outText.InstanceID = metadata.InvalidID
+	outText.RenderFrameNumber = metadata.InvalidIDUint64
+
+	quad_size := uint64(unsafe.Sizeof(math.Vertex2D{})) * uint64(4)
+
+	text_length := len(outText.Text)
+	// In the case of an empty string, cannot create an empty buffer so just create enough to hold one for now.
+	if text_length < 1 {
+		text_length = 1
+	}
+
+	// Acquire resources for font texture map.
+	ui_shader, err := fs.shaderSystem.GetShader("Shader.Builtin.UI") // TODO: text shader.
+	if err != nil {
+		return nil, err
+	}
+
+	fontMaps := []*metadata.TextureMap{outText.Data.Atlas}
+
+	instanceID, err := fs.rendererSystem.ShaderAcquireInstanceResources(ui_shader, fontMaps)
+	if err != nil {
+		err := fmt.Errorf("unable to acquire shader resources for font texture map")
+		return nil, err
+	}
+	outText.InstanceID = instanceID
+
+	// Generate the vertex buffer.
+	vb, err := fs.rendererSystem.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_VERTEX, uint64(text_length)*quad_size)
+	if err != nil {
+		err := fmt.Errorf("ui_text_create failed to create vertex renderbuffer")
+		return nil, err
+	}
+	outText.VertexBuffer = vb
+
+	if err := fs.rendererSystem.RenderBufferBind(outText.VertexBuffer, 0); err != nil {
+		err := fmt.Errorf("ui_text_create failed to bind vertex renderbuffer")
+		return nil, err
+	}
+
+	// Generate an index buffer.
+	quad_index_size := uint64(unsafe.Sizeof(uint32(1))) * uint64(6) * uint64(text_length)
+	ib, err := fs.rendererSystem.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_INDEX, quad_index_size)
+	if err != nil {
+		err := fmt.Errorf("ui_text_create failed to create index renderbuffer")
+		return nil, err
+	}
+	outText.IndexBuffer = ib
+
+	if err := fs.rendererSystem.RenderBufferBind(outText.IndexBuffer, 0); err != nil {
+		err := fmt.Errorf("ui_text_create failed to bind index renderbuffer")
+		return nil, err
+	}
+
+	// Verify atlas has the glyphs needed.
+	if err := fs.VerifyAtlas(outText.Data, textContent); err != nil {
+		err := fmt.Errorf("font atlas verification failed")
+		return nil, err
+	}
+
+	// Generate geometry.
+	if err := fs.regenerateGeometry(outText); err != nil {
+		return nil, err
+	}
+
+	// Get a unique identifier for the text object.
+	outText.UniqueID = core.IdentifierAquireNewID(outText)
+
+	return outText, nil
+}
+
+func (fs *FontSystem) UITextDraw(u_text *metadata.UIText) error {
+	// TODO: utf8 length
+	text_length := uint32(len(u_text.Text))
+	quad_vert_count := uint32(4)
+
+	if !fs.rendererSystem.RenderBufferDraw(u_text.VertexBuffer, 0, text_length*quad_vert_count, true) {
+		err := fmt.Errorf("failed to draw ui font vertex buffer")
+		return err
+	}
+
+	quad_index_count := uint32(6)
+	if !fs.rendererSystem.RenderBufferDraw(u_text.IndexBuffer, 0, text_length*quad_index_count, false) {
+		err := fmt.Errorf("Failed to draw ui font index buffer.")
+		return err
+	}
+	return nil
+}
+
+func (fs *FontSystem) UITextSetPosition(uText *metadata.UIText, position math.Vec3) {
+	uText.Transform.SetPosition(position)
+}
+
+func (fs *FontSystem) regenerateGeometry(text *metadata.UIText) error {
+	// Get the UTF-8 string length
+	text_length_utf8 := uint64(utf8.RuneCountInString(text.Text))
+	// Also get the length in characters.
+	char_length := len(text.Text)
+
+	// Calculate buffer sizes.
+	verts_per_quad := uint64(4)
+	indices_per_quad := uint8(6)
+	vertex_buffer_size := uint64(unsafe.Sizeof(math.Vertex2D{})) * verts_per_quad * text_length_utf8
+	index_buffer_size := uint64(unsafe.Sizeof(uint32(1))) * uint64(indices_per_quad) * text_length_utf8
+
+	// Resize the vertex buffer, but only if larger.
+	if vertex_buffer_size > text.VertexBuffer.TotalSize {
+		if !fs.rendererSystem.RenderBufferResize(text.VertexBuffer, vertex_buffer_size) {
+			err := fmt.Errorf("regenerate_geometry for ui text failed to resize vertex renderbuffer")
+			return err
+		}
+	}
+
+	// Resize the index buffer, but only if larger.
+	if index_buffer_size > text.IndexBuffer.TotalSize {
+		if !fs.rendererSystem.RenderBufferResize(text.IndexBuffer, index_buffer_size) {
+			err := fmt.Errorf("regenerate_geometry for ui text failed to resize index renderbuffer")
+			return err
+		}
+	}
+
+	// Generate new geometry for each character.
+	x := float32(0)
+	y := float32(0)
+	// Temp arrays to hold vertex/index data.
+	vertex_buffer_data := make([]*math.Vertex2D, vertex_buffer_size)
+	index_buffer_data := make([]uint8, index_buffer_size)
+
+	// Take the length in chars and get the correct codepoint from it.
+	for c := uint32(0); c < uint32(char_length); c++ {
+		uc := uint32(0)
+		codepoint := int32(text.Text[c])
+
+		// Continue to next line for newline.
+		if codepoint == '\n' {
+			x = 0
+			y += float32(text.Data.LineHeight)
+			// Increment utf-8 character count.
+			uc++
+			continue
+		}
+
+		if codepoint == '\t' {
+			x += text.Data.TabXAdvance
+			uc++
+			continue
+		}
+
+		// NOTE: UTF-8 codepoint handling.
+		codepoint, advance, err := metadata.BytesToCodepoint(text.Text, c)
+		if err != nil {
+			core.LogWarn("invalid UTF-8 found in string, using unknown codepoint of -1")
+			codepoint = int32(-1)
+		}
+
+		var g *metadata.FontGlyph
+		for i := uint32(0); i < uint32(len(text.Data.Glyphs)); i++ {
+			if text.Data.Glyphs[i].Codepoint == codepoint {
+				g = text.Data.Glyphs[i]
+				break
+			}
+		}
+
+		if g == nil {
+			// If not found, use the codepoint -1
+			codepoint = -1
+			for i := uint32(0); i < uint32(len(text.Data.Glyphs)); i++ {
+				if text.Data.Glyphs[i].Codepoint == codepoint {
+					g = text.Data.Glyphs[i]
+					break
+				}
+			}
+		}
+
+		if g != nil {
+			// Found the glyph. generate points.
+			minx := x + float32(g.XOffset)
+			miny := y + float32(g.YOffset)
+			maxx := minx + float32(g.Width)
+			maxy := miny + float32(g.Height)
+			tminx := g.X / uint16(text.Data.AtlasSizeX)
+			tmaxx := float32((g.X + g.Width)) / float32(text.Data.AtlasSizeX)
+			tminy := g.Y / uint16(text.Data.AtlasSizeY)
+			tmaxy := float32((g.Y + g.Height)) / float32(text.Data.AtlasSizeY)
+			// Flip the y axis for system text
+			if text.UITextType == metadata.UI_TEXT_TYPE_SYSTEM {
+				tminy = 1.0 - tminy
+				tmaxy = 1.0 - tmaxy
+			}
+
+			p0 := &math.Vertex2D{Position: math.NewVec2(minx, miny), Texcoord: math.NewVec2(float32(tminx), float32(tminy))}
+			p1 := &math.Vertex2D{Position: math.NewVec2(maxx, miny), Texcoord: math.NewVec2(tmaxx, float32(tminy))}
+			p2 := &math.Vertex2D{Position: math.NewVec2(maxx, maxy), Texcoord: math.NewVec2(tmaxx, tmaxy)}
+			p3 := &math.Vertex2D{Position: math.NewVec2(minx, maxy), Texcoord: math.NewVec2(float32(tminx), tmaxy)}
+
+			vertex_buffer_data[(uc*4)+0] = p0 // 0    3
+			vertex_buffer_data[(uc*4)+1] = p2 //
+			vertex_buffer_data[(uc*4)+2] = p3 //
+			vertex_buffer_data[(uc*4)+3] = p1 // 2    1
+
+			// Try to find kerning
+			kerning := int32(0)
+
+			// Get the offset of the next character. If there is no advance, move forward one,
+			// otherwise use advance as-is.
+			offset := c + uint32(advance) //(advance < 1 ? 1 : advance);
+			if offset < uint32(text_length_utf8)-1 {
+				// Get the next codepoint.
+				next_codepoint, _, err := metadata.BytesToCodepoint(text.Text, offset)
+				if err != nil {
+					core.LogWarn("invalid UTF-8 found in string, using unknown codepoint of -1")
+					codepoint = -1
+				} else {
+					for i := uint32(0); i < uint32(len(text.Data.Kernings)); i++ {
+						k := text.Data.Kernings[i]
+						if k.Codepoint0 == codepoint && k.Codepoint1 == next_codepoint {
+							kerning = int32(k.Amount)
+						}
+					}
+				}
+			}
+			x += float32(int32(g.XAdvance) + kerning)
+
+		} else {
+			core.LogError("unable to find unknown codepoint. Skipping")
+			// Increment utf-8 character count.
+			uc++
+			continue
+		}
+
+		// Index data 210301
+		index_buffer_data[(uc*6)+0] = uint8((uc * 4) + 2)
+		index_buffer_data[(uc*6)+1] = uint8((uc * 4) + 1)
+		index_buffer_data[(uc*6)+2] = uint8((uc * 4) + 0)
+		index_buffer_data[(uc*6)+3] = uint8((uc * 4) + 3)
+		index_buffer_data[(uc*6)+4] = uint8((uc * 4) + 0)
+		index_buffer_data[(uc*6)+5] = uint8((uc * 4) + 1)
+
+		// Now advance c
+		c += uint32(advance - 1) // Subtracting 1 because the loop always increments once for single-byte anyway.
+		// Increment utf-8 character count.
+		uc++
+	}
+
+	// Load up the data.
+	vertex_load_result := fs.rendererSystem.RenderBufferLoadRange(text.VertexBuffer, 0, vertex_buffer_size, vertex_buffer_data)
+	index_load_result := fs.rendererSystem.RenderBufferLoadRange(text.IndexBuffer, 0, index_buffer_size, index_buffer_data)
+
+	// Clean up.
+	vertex_buffer_data = nil
+	index_buffer_data = nil
+
+	// Verify results.
+	if !vertex_load_result {
+		err := fmt.Errorf("regenerate_geometry failed to load data into vertex buffer range")
+		return err
+	}
+	if !index_load_result {
+		err := fmt.Errorf("regenerate_geometry failed to load data into index buffer range")
+		return err
+	}
+
 	return nil
 }

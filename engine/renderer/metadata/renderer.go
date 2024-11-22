@@ -357,11 +357,10 @@ type MeshPacketData struct {
 	Meshes    []*Mesh
 }
 
-// type UIPacketData struct {
-// 	MeshData *MeshPacketData
-// 	// TODO: temp
-// 	Texts []*UIText
-// }
+type UIPacketData struct {
+	MeshData *MeshPacketData
+	Texts    []*UIText
+}
 
 type PickPacketData struct {
 	WorldMeshData      *MeshPacketData
@@ -370,7 +369,7 @@ type PickPacketData struct {
 	UIGeometryCount    uint32
 	// TODO: temp
 	TextCount uint32
-	// struct ui_text** texts;
+	Texts     []*UIText
 
 	// This is only neede for when we build the packet
 	RequiredInstanceCount uint32

@@ -25,9 +25,10 @@ type RenderViewSystem struct {
 	shaderSystem   *ShaderSystem
 	cameraSystem   *CameraSystem
 	materialSystem *MaterialSystem
+	fontsystem     *FontSystem
 }
 
-func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shaderSystem *ShaderSystem, cs *CameraSystem, ms *MaterialSystem) (*RenderViewSystem, error) {
+func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shaderSystem *ShaderSystem, cs *CameraSystem, ms *MaterialSystem, fs *FontSystem) (*RenderViewSystem, error) {
 	if config.MaxViewCount == 0 {
 		core.LogError("render_view_system_initialize - config.MaxViewCount must be > 0.")
 		return nil, nil
@@ -40,6 +41,7 @@ func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shade
 		cameraSystem:    cs,
 		shaderSystem:    shaderSystem,
 		materialSystem:  ms,
+		fontsystem:      fs,
 	}
 	// Fill the array with invalid entries.
 	for i := uint32(0); i < rvs.MaxViewCount; i++ {
@@ -249,27 +251,19 @@ func (rvs *RenderViewSystem) Get(name string) *metadata.RenderView {
  */
 func (rvs *RenderViewSystem) BuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
 	if view != nil {
-		var err error
 		switch view.RenderViewType {
 		case metadata.RENDERER_VIEW_KNOWN_TYPE_PICK:
-			err = rvs.pickOnBuildPacket(view, data)
+			return rvs.pickOnBuildPacket(view, data)
 		case metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX:
-			err = rvs.skyboxOnBuildPacket(view, data)
+			return rvs.skyboxOnBuildPacket(view, data)
 		case metadata.RENDERER_VIEW_KNOWN_TYPE_UI:
-			err = rvs.uiOnBuildPacket(view, data)
+			return rvs.uiOnBuildPacket(view, data)
 		case metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD:
-			err = rvs.worldOnBuildPacket(view, data)
-		}
-		if err != nil {
+			return rvs.worldOnBuildPacket(view, data)
+		default:
+			err := fmt.Errorf("invalid renderview type")
 			return nil, err
 		}
-
-		op, err := view.View.OnBuildPacket(data)
-		if err != nil {
-			return nil, err
-		}
-		op.View = view
-		return op, nil
 	}
 	err := fmt.Errorf("render_view_system_build_packet requires valid pointers to a view and a packet")
 	return nil, err
@@ -481,8 +475,12 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 	return nil
 }
 
-func (rvs *RenderViewSystem) skyboxOnBuildPacket(view *metadata.RenderView, data interface{}) error {
-	return nil
+func (rvs *RenderViewSystem) skyboxOnBuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
+	op, err := view.View.OnBuildPacket(data)
+	if err != nil {
+		return nil, err
+	}
+	return op, nil
 }
 
 func (rvs *RenderViewSystem) skyboxOnDestroy(view *views.RenderViewSkybox) error {
@@ -516,8 +514,12 @@ func (rvs *RenderViewSystem) uiOnRenderView(view *metadata.RenderView, packet *m
 	return nil
 }
 
-func (rvs *RenderViewSystem) uiOnBuildPacket(view *metadata.RenderView, data interface{}) error {
-	return nil
+func (rvs *RenderViewSystem) uiOnBuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
+	op, err := view.View.OnBuildPacket(data)
+	if err != nil {
+		return nil, err
+	}
+	return op, nil
 }
 
 func (rvs *RenderViewSystem) uiOnDestroy(view *views.RenderViewUI) error {
@@ -541,13 +543,6 @@ func (rvs *RenderViewSystem) worldOnRenderViewCreate(view *metadata.RenderView, 
 	c := rvs.cameraSystem.GetDefault()
 	v := views.NewRenderViewWorld(view, shader, c)
 
-	// uniforms["diffuse_texture"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_texture")
-	// uniforms["diffuse_colour"] = rvs.shaderSystem.GetUniformIndex(shader, "diffuse_colour")
-	// uniforms["model"] = rvs.shaderSystem.GetUniformIndex(shader, "model")
-
-	// v.ProjectionMatrix = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "projection")
-	// v.UIShaderInfo.ViewLocation = rvs.shaderSystem.GetUniformIndex(v.UIShaderInfo.Shader, "view")
-
 	return v, nil
 }
 
@@ -562,7 +557,7 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 		}
 
 		if !rvs.shaderSystem.useByID(data.ShaderID) {
-			err := fmt.Errorf("Failed to use material shader. Render frame failed")
+			err := fmt.Errorf("failed to use material shader. Render frame failed")
 			return err
 		}
 
@@ -608,7 +603,7 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 		}
 
 		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_world_on_render pass index %u failed to end", p)
+			err := fmt.Errorf("render_view_world_on_render pass index %d failed to end", p)
 			return err
 		}
 	}
@@ -616,8 +611,12 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 	return nil
 }
 
-func (rvs *RenderViewSystem) worldOnBuildPacket(view *metadata.RenderView, data interface{}) error {
-	return nil
+func (rvs *RenderViewSystem) worldOnBuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
+	op, err := view.View.OnBuildPacket(data)
+	if err != nil {
+		return nil, err
+	}
+	return op, nil
 }
 
 func (rvs *RenderViewSystem) worldOnDestroy(view *views.RenderViewWorld) error {
@@ -708,6 +707,9 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 		// Draw geometries. Start from 0 since world geometries are added first, and stop at the world geometry count.
 		for i := uint32(0); i < packet_data.WorldGeometryCount; i++ {
 			geo := packet.Geometries[i]
+			if geo == nil {
+				continue
+			}
 			current_instance_id := geo.UniqueID
 
 			if !rvs.shaderSystem.BindInstance(current_instance_id) {
@@ -809,30 +811,38 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 		}
 
 		// Draw bitmap text
-		// for i := 0; i < packet_data.text_count; ++i) {
-		//     ui_text* text = packet_data.texts[i];
-		//     current_instance_id = text->UniqueID;
-		//     shader_system_bind_instance(current_instance_id);
+		// for i := 0; i < int(packet_data.TextCount); i++ {
+		// 	text := packet_data.Texts[i]
+		// 	current_instance_id := text.UniqueID
 
-		//     // Get colour based on id
-		//     vec3 id_colour;
-		//     u32 r, g, b;
-		//     u32_to_rgb(text->UniqueID, &r, &g, &b);
-		//     rgb_u32_to_vec3(r, g, b, &id_colour);
-		//     if (!shader_system_uniform_set_by_index(data.UIShaderInfo.id_colour_location, &id_colour)) {
-		//         err := fmt.Errorf("Failed to apply id colour uniform.");
-		//         return err
-		//     }
+		// 	if !rvs.shaderSystem.BindInstance(current_instance_id) {
+		// 		err := fmt.Errorf("failed to bind shader instance with ID %d", current_instance_id)
+		// 		return err
+		// 	}
 
-		//     shader_system_apply_instance(true);
+		// 	// Get colour based on id
+		// 	r, g, b := math.UInt32ToRGB(text.UniqueID)
+		// 	id_colour := math.RGBUInt32ToVec3(r, g, b)
+		// 	if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.IDColorLocation, id_colour) {
+		// 		err := fmt.Errorf("failed to apply id colour uniform")
+		// 		return err
+		// 	}
 
-		//     // Apply the locals
-		//     mat4 model = transform_get_world(&text->transform);
-		//     if (!shader_system_uniform_set_by_index(data.UIShaderInfo.ModelLocation, model)M {
-		//         err := fmt.Errorf("Failed to apply model matrix for text");
-		//     }
+		// 	if !rvs.shaderSystem.ApplyInstance(true) {
+		// 		err := fmt.Errorf("failed to apply shader instance")
+		// 		return err
+		// 	}
 
-		//     ui_text_draw(text);
+		// 	// Apply the locals
+		// 	model := text.Transform.GetWorld()
+		// 	if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ModelLocation, model) {
+		// 		err := fmt.Errorf("failed to apply model matrix for text")
+		// 		return err
+		// 	}
+
+		// 	if err := rvs.fontsystem.UITextDraw(text); err != nil {
+		// 		return err
+		// 	}
 		// }
 
 		if !rvs.renderer.RenderPassEnd(pass) {
@@ -868,7 +878,7 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 	return nil
 }
 
-func (rvs *RenderViewSystem) pickOnBuildPacket(view *metadata.RenderView, data interface{}) error {
+func (rvs *RenderViewSystem) pickOnBuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
 	packet := data.(*metadata.PickPacketData)
 	internalData := view.InternalData.(*views.RenderViewPick)
 
@@ -882,19 +892,23 @@ func (rvs *RenderViewSystem) pickOnBuildPacket(view *metadata.RenderView, data i
 			_, err := rvs.renderer.ShaderAcquireInstanceResources(internalData.UIShaderInfo.Shader, nil)
 			if err != nil {
 				core.LogError("render_view_pick failed to acquire shader resources.")
-				return err
+				return nil, err
 			}
 			// World shader
 			_, err = rvs.renderer.ShaderAcquireInstanceResources(internalData.WorldShaderInfo.Shader, nil)
 			if err != nil {
 				core.LogError("render_view_pick failed to acquire shader resources.")
-				return err
+				return nil, err
 			}
 			internalData.InstanceCount++
 			internalData.InstanceUpdated = append(internalData.InstanceUpdated, false)
 		}
 	}
-	return nil
+	op, err := view.View.OnBuildPacket(data)
+	if err != nil {
+		return nil, err
+	}
+	return op, nil
 }
 
 func (rvs *RenderViewSystem) pickOnDestroy(view *views.RenderViewPick) error {

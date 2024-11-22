@@ -69,25 +69,6 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		return nil, err
 	}
 
-	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
-		MaxViewCount: 251,
-	}, renderer, ssys, cs, ms)
-	if err != nil {
-		return nil, err
-	}
-
-	gs, err := NewGeometrySystem(&GeometrySystemConfig{
-		MaxGeometryCount: 4096,
-	}, ms, renderer)
-	if err != nil {
-		return nil, err
-	}
-
-	mls, err := NewMeshLoaderSystem(gs, am)
-	if err != nil {
-		return nil, err
-	}
-
 	fs, err := NewFontSystem(&FontSystemConfig{
 		AutoRelease:            false,
 		DefaultBitmapFontCount: 1,
@@ -108,7 +89,26 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 				ResourceName: "NotoSansCJK",
 			},
 		},
-	}, ts, am, renderer)
+	}, ts, ssys, am, renderer)
+	if err != nil {
+		return nil, err
+	}
+
+	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
+		MaxViewCount: 251,
+	}, renderer, ssys, cs, ms, fs)
+	if err != nil {
+		return nil, err
+	}
+
+	gs, err := NewGeometrySystem(&GeometrySystemConfig{
+		MaxGeometryCount: 4096,
+	}, ms, renderer)
+	if err != nil {
+		return nil, err
+	}
+
+	mls, err := NewMeshLoaderSystem(gs, am)
 	if err != nil {
 		return nil, err
 	}
@@ -141,9 +141,9 @@ func (sm *SystemManager) Initialize() error {
 	if err := sm.GeometrySystem.Initialize(); err != nil {
 		return err
 	}
-	if err := sm.FontSystem.Initialize(); err != nil {
-		return err
-	}
+	// if err := sm.FontSystem.Initialize(); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
@@ -173,6 +173,9 @@ func (sm *SystemManager) Shutdown() error {
 	if err := sm.RenderViewSystem.Shutdown(); err != nil {
 		return err
 	}
+	// if err := sm.FontSystem.Shutdown(); err != nil {
+	// 	return err
+	// }
 	if err := sm.MeshLoaderSystem.Shutdown(); err != nil {
 		return err
 	}

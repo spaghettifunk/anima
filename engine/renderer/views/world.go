@@ -101,6 +101,7 @@ func (vw *RenderViewWorld) OnBuildPacket(data interface{}) (*metadata.RenderView
 		ViewMatrix:       vw.WorldCamera.GetView(),
 		ViewPosition:     vw.WorldCamera.GetPosition(),
 		AmbientColour:    vw.AmbientColour,
+		View:             vw.View,
 	}
 
 	// Obtain all geometries from the current scene.

@@ -43,10 +43,12 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 	allocate_info.Deref()
 
 	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
-	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); res != vk.Success {
+	queueMutex.Lock()
+	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed to allocate command buffer with error %s", VulkanResultString(res, true))
 		return nil, err
 	}
+	queueMutex.Unlock()
 	vCommandBuffer.Handle = pCommandBuffers[0]
 	vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
 
@@ -63,7 +65,6 @@ func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) 
 func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimultaneousUse bool) error {
 	vBeginInfo := vk.CommandBufferBeginInfo{
 		SType: vk.StructureTypeCommandBufferBeginInfo,
-		Flags: 0,
 	}
 
 	if isSingleUse {
@@ -77,10 +78,12 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 	}
 	vBeginInfo.Deref()
 
-	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); res != vk.Success {
+	queueMutex.Lock()
+	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed to begin command buffer with error %s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
 
 	v.State = COMMAND_BUFFER_STATE_RECORDING
 
@@ -88,10 +91,12 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 }
 
 func (v *VulkanCommandBuffer) End() error {
-	if res := vk.EndCommandBuffer(v.Handle); res != vk.Success {
+	queueMutex.Lock()
+	if res := vk.EndCommandBuffer(v.Handle); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed to end command buffer with error %s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
 	v.State = COMMAND_BUFFER_STATE_RECORDING_ENDED
 	return nil
 }
@@ -137,7 +142,7 @@ func (v *VulkanCommandBuffer) EndSingleUse(context *VulkanContext, pool vk.Comma
 	submit_info.Deref()
 
 	queueMutex.Lock()
-	if res := vk.QueueSubmit(queue, 1, []vk.SubmitInfo{submit_info}, nil); res != vk.Success {
+	if res := vk.QueueSubmit(queue, 1, []vk.SubmitInfo{submit_info}, nil); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("%s", VulkanResultString(res, true))
 		return err
 	}
@@ -145,7 +150,7 @@ func (v *VulkanCommandBuffer) EndSingleUse(context *VulkanContext, pool vk.Comma
 
 	// Wait for it to finish
 	queueMutex.Lock()
-	if res := vk.QueueWaitIdle(queue); res != vk.Success {
+	if res := vk.QueueWaitIdle(queue); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("%s", VulkanResultString(res, true))
 		return err
 	}
