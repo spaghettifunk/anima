@@ -23,10 +23,6 @@ type RendererSystem struct {
 	// engine specific
 	Platform *platform.Platform
 
-	SkyboxShaderID   uint32
-	MaterialShaderID uint32
-	UIShaderID       uint32
-
 	// The number of render targets. Typically lines up with the amount of swapchain images.
 	WindowRenderTargetCount uint8
 	// The current window framebuffer width.
@@ -34,12 +30,6 @@ type RendererSystem struct {
 	// The current window framebuffer height.
 	FramebufferHeight uint32
 
-	// A pointer to the skybox renderpass. TODO: Configurable via views.
-	SkyboxRenderPass *metadata.RenderPass
-	// A pointer to the world renderpass. TODO: Configurable via views.
-	WorldRenderPass *metadata.RenderPass
-	// A pointer to the UI renderpass. TODO: Configurable via views.
-	UIRenderPass *metadata.RenderPass
 	// Indicates if the window is currently being resized.
 	Resizing bool
 	// The current number of frames since the last resize operation.'
@@ -58,7 +48,7 @@ func NewRendererSystem(appName string, appWidth, appHeight uint32, platform *pla
 	return renderer, nil
 }
 
-func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
+func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem *RenderViewSystem) error {
 	// Default framebuffer size. Overridden when window is created.
 	r.FramebufferWidth = 1280
 	r.FramebufferHeight = 720
@@ -66,143 +56,200 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 	r.FramesSinceResize = 0
 	r.backend.FrameNumber = 0
 
-	SkyboxRenderPassName := "Renderpass.Builtin.Skybox"
-	WorldRenderPassName := "Renderpass.Builtin.World"
-	UIRenderPassName := "Renderpass.Builtin.UI"
-
 	rbc := &metadata.RendererBackendConfig{
 		ApplicationName: r.AppName,
-		PassConfigs: []metadata.RenderPassConfig{
-			{
-				Name:        SkyboxRenderPassName,
-				PrevName:    "",
-				NextName:    WorldRenderPassName,
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG,
-			},
-			{
-				Name:        WorldRenderPassName,
-				PrevName:    SkyboxRenderPassName,
-				NextName:    UIRenderPassName,
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG,
-			},
-			{
-				Name:        UIRenderPassName,
-				PrevName:    WorldRenderPassName,
-				NextName:    "",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
-			},
-		},
-		OnRenderTargetRefreshRequired: r.regenerateRenderTargets,
 	}
 
 	if err := r.backend.Initialize(rbc, &r.WindowRenderTargetCount); err != nil {
 		return err
 	}
 
-	// TODO: Will know how to get these when we define views.
-	r.SkyboxRenderPass = r.backend.RenderPassGet(SkyboxRenderPassName)
-	r.SkyboxRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.SkyboxRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
+	// Load render views
 
-	r.WorldRenderPass = r.backend.RenderPassGet(WorldRenderPassName)
-	r.WorldRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.WorldRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
+	// Skybox view
+	skybox_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
+		Name:             "skybox",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.Skybox",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
+	}
 
-	r.UIRenderPass = r.backend.RenderPassGet(UIRenderPassName)
-	r.UIRenderPass.RenderTargetCount = r.WindowRenderTargetCount
-	r.UIRenderPass.Targets = make([]*metadata.RenderTarget, r.WindowRenderTargetCount)
-
-	r.regenerateRenderTargets()
-
-	// Update the skybox renderpass dimensions.
-	r.SkyboxRenderPass.RenderArea.X = 0
-	r.SkyboxRenderPass.RenderArea.Y = 0
-	r.SkyboxRenderPass.RenderArea.Z = float32(r.FramebufferWidth)
-	r.SkyboxRenderPass.RenderArea.W = float32(r.FramebufferHeight)
-
-	// Update the main/world renderpass dimensions.
-	r.WorldRenderPass.RenderArea.X = 0
-	r.WorldRenderPass.RenderArea.Y = 0
-	r.WorldRenderPass.RenderArea.Z = float32(r.FramebufferWidth)
-	r.WorldRenderPass.RenderArea.W = float32(r.FramebufferHeight)
-
-	// Also update the UI renderpass dimensions.
-	r.UIRenderPass.RenderArea.X = 0
-	r.UIRenderPass.RenderArea.Y = 0
-	r.UIRenderPass.RenderArea.Z = float32(r.FramebufferWidth)
-	r.UIRenderPass.RenderArea.W = float32(r.FramebufferHeight)
-
-	// Shaders
-
-	// Builtin skybox shader.
-	config_resource, err := r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_SKYBOX, metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin skybox shader.")
+	if err := renderViewSystem.Create(skybox_config); err != nil {
+		core.LogError("Failed to create skybox view. Aborting application.")
 		return err
 	}
 
-	config := config_resource.Data.(*metadata.ShaderConfig)
-	skyboxShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin skybox shader.")
-		return err
-	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.SkyboxShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_SKYBOX)
-
-	if r.SkyboxShaderID != skyboxShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
-		return err
-	}
-
-	// Builtin material shader.
-	config_resource, err = r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_MATERIAL, metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin material shader.")
-		return err
-	}
-
-	config = config_resource.Data.(*metadata.ShaderConfig)
-	materialShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin material shader.")
-		return err
-	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.MaterialShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_MATERIAL)
-
-	if r.MaterialShaderID != materialShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
-		return err
-	}
-
-	// Builtin UI shader.
-	config_resource, err = r.assetManager.LoadAsset(metadata.BUILTIN_SHADER_NAME_UI, metadata.ResourceTypeShader, nil)
-	if err != nil {
-		core.LogError("Failed to load builtin UI shader.")
-		return err
+	// World view.
+	world_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
+		Name:             "world",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.World",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						// Colour attachment
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+						{ // Depth attachment
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
 	}
 
-	config = config_resource.Data.(*metadata.ShaderConfig)
-	uiShader, err := shaderSystem.CreateShader(config)
-	if err != nil {
-		core.LogError("Failed to load builtin UI shader.")
+	if err := renderViewSystem.Create(world_view_config); err != nil {
+		core.LogError("Failed to create world view. Aborting application.")
 		return err
 	}
-	r.assetManager.UnloadAsset(config_resource)
-	r.UIShaderID = shaderSystem.GetShaderID(metadata.BUILTIN_SHADER_NAME_UI)
 
-	if r.UIShaderID != uiShader.ID {
-		err := fmt.Errorf("why are the IDs different?")
-		core.LogError(err.Error())
+	// UI view
+	ui_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_UI,
+		Width:            0,
+		Height:           0,
+		Name:             "ui",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        1,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				Name:        "Renderpass.Builtin.UI",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							// Colour attachment.
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               true,
+						},
+					},
+				},
+				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
+			},
+		},
+	}
+
+	if err := renderViewSystem.Create(ui_view_config); err != nil {
+		core.LogError("failed to create UI view. Aborting application")
+		return err
+	}
+
+	// Pick pass.
+	pick_view_config := &metadata.RenderViewConfig{
+		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
+		Width:            uint16(r.FramebufferWidth),
+		Height:           uint16(r.FramebufferHeight),
+		Name:             "pick",
+		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+		PassCount:        2,
+		Passes: []*metadata.RenderPassConfig{
+			{
+				// World pass
+				Name:        "Renderpass.Builtin.WorldPick",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0), // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id,
+				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
+							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:               false,
+						},
+					},
+				},
+				RenderTargetCount: 1,
+			},
+			{
+				Name:        "Renderpass.Builtin.UIPick",
+				RenderArea:  math.NewVec4(0, 0, 1280, 720),
+				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0),
+				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
+				Depth:       1.0,
+				Stencil:     0,
+				Target: &metadata.RenderTargetConfig{
+					Attachments: []*metadata.RenderTargetAttachmentConfig{
+						{
+							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+							// Obtain the attachment from the view.
+							Source:        metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW,
+							LoadOperation: metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+							// Need to store it so it can be sampled afterward.
+							StoreOperation: metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+							PresentAfter:   false,
+						},
+					},
+				},
+				RenderTargetCount: 1,
+			},
+		},
+	}
+
+	if err := renderViewSystem.Create(pick_view_config); err != nil {
+		core.LogError("Failed to create pick view. Aborting application.")
 		return err
 	}
 
@@ -210,21 +257,7 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem) error {
 }
 
 func (r *RendererSystem) Shutdown() error {
-	// Destroy render targets.
-	for i := 0; i < int(r.WindowRenderTargetCount); i++ {
-		r.backend.RenderTargetDestroy(r.SkyboxRenderPass.Targets[i], true)
-		r.backend.RenderTargetDestroy(r.WorldRenderPass.Targets[i], true)
-		r.backend.RenderTargetDestroy(r.UIRenderPass.Targets[i], true)
-	}
 	return r.backend.Shutdow()
-}
-
-func (r *RendererSystem) BeginFrame(deltaTime float64) error {
-	return r.backend.BeginFrame(deltaTime)
-}
-
-func (r *RendererSystem) EndFrame(deltaTime float64) error {
-	return r.backend.EndFrame(deltaTime)
 }
 
 func (r *RendererSystem) OnResize(width, height uint16) error {
@@ -259,7 +292,7 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 		} else {
 			// Skip rendering the frame and try again next time.
 			// NOTE: Simulate a frame being "drawn" at 60 FPS.
-			// platform_sleep(16);
+			r.Platform.Sleep(16)
 			return nil
 		}
 	}
@@ -279,11 +312,9 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 		// End the frame. If this fails, it is likely unrecoverable.
 		if err := r.backend.EndFrame(packet.DeltaTime); err != nil {
 			err := fmt.Errorf("backend func EndFrame failed. Application shutting down")
-			core.LogError(err.Error())
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -319,8 +350,8 @@ func (r *RendererSystem) DrawGeometry(data *metadata.GeometryRenderData) {
 	r.backend.DrawGeometry(data)
 }
 
-func (r *RendererSystem) RenderPassCreate(renderPass *metadata.RenderPass, depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
-	return r.backend.RenderPassCreate(renderPass, depth, stencil, has_prev_pass, has_next_pass)
+func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig, pass *metadata.RenderPass) (*metadata.RenderPass, error) {
+	return r.backend.RenderPassCreate(config, pass)
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {
@@ -333,10 +364,6 @@ func (r *RendererSystem) RenderPassBegin(pass *metadata.RenderPass, target *meta
 
 func (r *RendererSystem) RenderPassEnd(pass *metadata.RenderPass) bool {
 	return r.backend.RenderPassEnd(pass)
-}
-
-func (r *RendererSystem) RenderPassGet(name string) *metadata.RenderPass {
-	return r.backend.RenderPassGet(name)
 }
 
 func (r *RendererSystem) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
@@ -391,7 +418,7 @@ func (r *RendererSystem) TextureMapReleaseResources(texture_map *metadata.Textur
 	r.backend.TextureMapReleaseResources(texture_map)
 }
 
-func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
+func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments []*metadata.RenderTargetAttachment, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
 	return r.backend.RenderTargetCreate(attachment_count, attachments, pass, width, height)
 }
 
@@ -454,7 +481,7 @@ func (r *RendererSystem) RenderBufferFlush(buffer *metadata.RenderBuffer, offset
 	return r.backend.RenderBufferFlush(buffer, offset, size)
 }
 
-func (r *RendererSystem) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) ([]interface{}, error) {
+func (r *RendererSystem) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (interface{}, error) {
 	return r.backend.RenderBufferRead(buffer, offset, size)
 }
 
@@ -507,58 +534,58 @@ func (r *RendererSystem) RenderBufferDraw(buffer *metadata.RenderBuffer, offset 
 	return r.backend.RenderBufferDraw(buffer, offset, element_count, bind_only)
 }
 
-func (r *RendererSystem) regenerateRenderTargets() {
-	// Create render targets for each. TODO: Should be configurable.
-	for i := uint8(0); i < r.WindowRenderTargetCount; i++ {
-		// Destroy the old first if they exist.
-		r.backend.RenderTargetDestroy(r.SkyboxRenderPass.Targets[i], false)
-		r.backend.RenderTargetDestroy(r.WorldRenderPass.Targets[i], false)
-		r.backend.RenderTargetDestroy(r.UIRenderPass.Targets[i], false)
+// func (r *RendererSystem) regenerateRenderTargets() {
+// 	// Create render targets for each. TODO: Should be configurable.
+// 	for i := uint8(0); i < r.WindowRenderTargetCount; i++ {
+// 		// Destroy the old first if they exist.
+// 		r.backend.RenderTargetDestroy(r.SkyboxRenderPass.Targets[i], false)
+// 		r.backend.RenderTargetDestroy(r.WorldRenderPass.Targets[i], false)
+// 		r.backend.RenderTargetDestroy(r.UIRenderPass.Targets[i], false)
 
-		windowTargetTexture := r.backend.WindowAttachmentGet(i)
-		depthTargetTexture := r.backend.DepthAttachmentGet()
+// 		windowTargetTexture := r.backend.WindowAttachmentGet(i)
+// 		depthTargetTexture := r.backend.DepthAttachmentGet()
 
-		// Skybox render targets
-		skyboxAttachments := []*metadata.Texture{windowTargetTexture}
-		var err error
-		r.SkyboxRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-			1,
-			skyboxAttachments,
-			r.SkyboxRenderPass,
-			r.FramebufferWidth,
-			r.FramebufferHeight,
-		)
-		if err != nil {
-			core.LogError(err.Error())
-			return
-		}
+// 		// Skybox render targets
+// 		skyboxAttachments := []*metadata.Texture{windowTargetTexture}
+// 		var err error
+// 		r.SkyboxRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
+// 			1,
+// 			skyboxAttachments,
+// 			r.SkyboxRenderPass,
+// 			r.FramebufferWidth,
+// 			r.FramebufferHeight,
+// 		)
+// 		if err != nil {
+// 			core.LogError(err.Error())
+// 			return
+// 		}
 
-		// World render targets.
-		attachments := []*metadata.Texture{windowTargetTexture, depthTargetTexture}
-		r.WorldRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-			2,
-			attachments,
-			r.WorldRenderPass,
-			r.FramebufferWidth,
-			r.FramebufferHeight,
-		)
-		if err != nil {
-			core.LogError(err.Error())
-			return
-		}
+// 		// World render targets.
+// 		attachments := []*metadata.Texture{windowTargetTexture, depthTargetTexture}
+// 		r.WorldRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
+// 			2,
+// 			attachments,
+// 			r.WorldRenderPass,
+// 			r.FramebufferWidth,
+// 			r.FramebufferHeight,
+// 		)
+// 		if err != nil {
+// 			core.LogError(err.Error())
+// 			return
+// 		}
 
-		// UI render targets
-		uiAttachments := []*metadata.Texture{windowTargetTexture}
-		r.UIRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-			1,
-			uiAttachments,
-			r.UIRenderPass,
-			r.FramebufferWidth,
-			r.FramebufferHeight,
-		)
-		if err != nil {
-			core.LogError(err.Error())
-			return
-		}
-	}
-}
+// 		// UI render targets
+// 		uiAttachments := []*metadata.Texture{windowTargetTexture}
+// 		r.UIRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
+// 			1,
+// 			uiAttachments,
+// 			r.UIRenderPass,
+// 			r.FramebufferWidth,
+// 			r.FramebufferHeight,
+// 		)
+// 		if err != nil {
+// 			core.LogError(err.Error())
+// 			return
+// 		}
+// 	}
+// }

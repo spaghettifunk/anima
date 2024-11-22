@@ -3,10 +3,9 @@ package vulkan
 import (
 	vk "github.com/goki/vulkan"
 	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
-
-const VULKAN_MAX_REGISTERED_RENDERPASSES uint32 = 31
 
 /**
  * @brief Represents a Vulkan-specific buffer.
@@ -70,6 +69,12 @@ type VulkanContext struct {
 	Allocator *vk.AllocationCallbacks
 	Surface   vk.Surface
 
+	/** @brief The viewport rectangle. */
+	ViewportRect math.Vec4
+
+	/** @brief The scissor rectangle. */
+	ScissorRect math.Vec4
+
 	// TODO: only in DEBUG mode
 	debugMessenger vk.DebugReportCallback
 
@@ -77,11 +82,6 @@ type VulkanContext struct {
 
 	Swapchain *VulkanSwapchain
 
-	// TODO: not sure about the type here
-	RenderPassTableBlock interface{}
-	RenderPassTable      map[string]uint32
-	/** @brief Registered renderpasses. */
-	RegisteredPasses []*metadata.RenderPass
 	/** @brief The object vertex buffer, used to hold geometry vertices. */
 	ObjectVertexBuffer *metadata.RenderBuffer
 	/** @brief The object index buffer, used to hold geometry indices. */
@@ -110,8 +110,6 @@ type VulkanContext struct {
 
 	/** @brief Indicates if multi-threading is supported by this device. */
 	MultithreadingEnabled bool
-
-	OnRenderTargetRefreshRequired metadata.OnRenderTargetRefreshRequired
 }
 
 func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 {

@@ -35,6 +35,16 @@ const (
 	// Change the render mode for debugging purposes.
 	EVENT_CODE_SET_RENDER_MODE EventCode = 0x0A
 
+	/** @brief The hovered-over object id, if there is one.
+	 */
+	EVENT_CODE_OBJECT_HOVER_ID_CHANGED EventCode = 0x15
+
+	/**
+	 * @brief An event fired by the renderer backend to indicate when any render targets
+	 * associated with the default window resources need to be refreshed (i.e. a window resize)
+	 */
+	EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED EventCode = 0x16
+
 	MAX_EVENT_CODE EventCode = 0xFF
 )
 

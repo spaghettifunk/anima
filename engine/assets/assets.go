@@ -62,6 +62,10 @@ func (am *AssetManager) Initialize(assetsDir string) error {
 	am.registerLoader(metadata.ResourceTypeBinary, &loaders.BinaryLoader{})
 	am.registerLoader(metadata.ResourceTypeImage, &loaders.ImageLoader{})
 	am.registerLoader(metadata.ResourceTypeMaterial, &loaders.MaterialLoader{})
+	am.registerLoader(metadata.ResourceTypeBitmapFont, &loaders.BitmapFontLoader{
+		ResourcePath: assetsDir,
+	})
+	am.registerLoader(metadata.ResourceTypeSystemFont, &loaders.SystemFontLoader{})
 
 	return nil
 }
@@ -134,6 +138,12 @@ func (am *AssetManager) LoadAsset(filename string, resourceType metadata.Resourc
 		asset = am.assetExists(path)
 	case metadata.ResourceTypeMaterial:
 		path = fmt.Sprintf("assets/materials/%s.amt", filename)
+		asset = am.assetExists(path)
+	case metadata.ResourceTypeSystemFont:
+		path = fmt.Sprintf("assets/fonts/%s.fontcfg", filename)
+		asset = am.assetExists(path)
+	case metadata.ResourceTypeBitmapFont:
+		path = fmt.Sprintf("assets/fonts/%s.fnt", filename)
 		asset = am.assetExists(path)
 	default:
 		err := fmt.Errorf("unknown resource type")
@@ -261,6 +271,10 @@ func determineAssetType(path string) metadata.ResourceType {
 	switch filepath.Ext(path) {
 	case ".shadercfg":
 		return metadata.ResourceTypeShader
+	case ".fontcfg", ".ksf":
+		return metadata.ResourceTypeSystemFont
+	case ".fnt", ".kbf":
+		return metadata.ResourceTypeBitmapFont
 	case ".spv":
 		return metadata.ResourceTypeBinary
 	case ".png", ".jpg", ".tga":

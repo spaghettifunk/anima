@@ -1,6 +1,8 @@
 package metadata
 
-import "fmt"
+import (
+	"fmt"
+)
 
 /**
  * @brief Represents the current state of a given shader.
@@ -50,6 +52,16 @@ type ShaderAttribute struct {
 	/** @brief The attribute Size in bytes. */
 	Size uint32
 }
+
+type ShaderFlags uint32
+
+const (
+	SHADER_FLAG_NONE        ShaderFlags = 0x0
+	SHADER_FLAG_DEPTH_TEST  ShaderFlags = 0x1
+	SHADER_FLAG_DEPTH_WRITE ShaderFlags = 0x2
+)
+
+type ShaderFlagBits uint32
 
 /**
  * @brief Represents a shader on the frontend.
@@ -125,6 +137,8 @@ type Shader struct {
 
 	/** @brief aUsed to ensure the shader's globals are only updated once per frame. */
 	RenderFrameNumber uint64
+
+	Flags ShaderFlagBits
 
 	/** @brief An opaque pointer to hold renderer API specific data. Renderer is responsible for creation and destruction of this.  */
 	InternalData interface{}
@@ -330,4 +344,11 @@ type ShaderConfig struct {
 	StageNames []string
 	/** @brief The collection of stage file names to be loaded (one per stage). Must align with stages array. */
 	StageFilenames []string
+	/** @brief Indicates if depth testing should be done. */
+	DepthTest bool
+	/**
+	 * @brief Indicates if the results of depth testing should be written to the depth buffer.
+	 * NOTE: This is ignored if depth_test is false.
+	 */
+	DepthWrite bool
 }

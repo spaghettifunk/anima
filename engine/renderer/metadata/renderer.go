@@ -4,21 +4,9 @@ import (
 	"github.com/spaghettifunk/anima/engine/math"
 )
 
-const (
-	BUILTIN_SHADER_NAME_SKYBOX   string = "Shader.Builtin.Skybox"
-	BUILTIN_SHADER_NAME_MATERIAL string = "Shader.Builtin.Material"
-	BUILTIN_SHADER_NAME_UI       string = "Shader.Builtin.UI"
-)
-
-type OnRenderTargetRefreshRequired func()
-
 type RendererBackendConfig struct {
 	/** @brief The name of the application */
 	ApplicationName string
-	/** @brief An array configurations for renderpasses. Will be initialized on the backend automatically. */
-	PassConfigs []RenderPassConfig
-	/** @brief A callback that will be made when the backend requires a refresh/regeneration of the render targets. */
-	OnRenderTargetRefreshRequired OnRenderTargetRefreshRequired
 }
 
 type RendererDebugViewMode uint32
@@ -31,14 +19,62 @@ const (
 
 /** @brief Represents a render target, which is used for rendering to a texture or set of textures. */
 type RenderTarget struct {
-	/** @brief Indicates if this render target should be updated on window resize. */
-	SyncToWindowSize bool
 	/** @brief The number of attachments */
 	AttachmentCount uint8
 	/** @brief An array of Attachments (pointers to textures). */
-	Attachments []*Texture
+	Attachments []*RenderTargetAttachment
 	/** @brief The renderer API internal framebuffer object. */
 	InternalFramebuffer interface{}
+}
+
+type RenderTargetAttachmentType uint32
+
+const (
+	RENDER_TARGET_ATTACHMENT_TYPE_COLOUR  RenderTargetAttachmentType = 0x1
+	RENDER_TARGET_ATTACHMENT_TYPE_DEPTH   RenderTargetAttachmentType = 0x2
+	RENDER_TARGET_ATTACHMENT_TYPE_STENCIL RenderTargetAttachmentType = 0x4
+)
+
+type RenderTargetAttachmentSource uint32
+
+const (
+	RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT RenderTargetAttachmentSource = 0x1
+	RENDER_TARGET_ATTACHMENT_SOURCE_VIEW    RenderTargetAttachmentSource = 0x2
+)
+
+type RenderTargetAttachmentLoadOperation uint32
+
+const (
+	RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE RenderTargetAttachmentLoadOperation = 0x0
+	RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD      RenderTargetAttachmentLoadOperation = 0x1
+)
+
+type RenderTargetAttachmentStoreOperation uint32
+
+const (
+	RENDER_TARGET_ATTACHMENT_STORE_OPERATION_DONT_CARE RenderTargetAttachmentStoreOperation = 0x0
+	RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE     RenderTargetAttachmentStoreOperation = 0x1
+)
+
+type RenderTargetAttachmentConfig struct {
+	RenderTargetAttachmentType RenderTargetAttachmentType
+	Source                     RenderTargetAttachmentSource
+	LoadOperation              RenderTargetAttachmentLoadOperation
+	StoreOperation             RenderTargetAttachmentStoreOperation
+	PresentAfter               bool
+}
+
+type RenderTargetConfig struct {
+	Attachments []*RenderTargetAttachmentConfig
+}
+
+type RenderTargetAttachment struct {
+	RenderTargetAttachmentType RenderTargetAttachmentType
+	Source                     RenderTargetAttachmentSource
+	LoadOperation              RenderTargetAttachmentLoadOperation
+	StoreOperation             RenderTargetAttachmentStoreOperation
+	PresentAfter               bool
+	Texture                    *Texture
 }
 
 /**
@@ -48,7 +84,7 @@ type RenderTarget struct {
 type RenderpassClearFlag uint32
 
 const (
-	/** @brief No clearing shoudl be done. */
+	/** @brief No clearing should be done. */
 	RENDERPASS_CLEAR_NONE_FLAG RenderpassClearFlag = 0x0
 	/** @brief Clear the colour buffer. */
 	RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG RenderpassClearFlag = 0x1
@@ -61,16 +97,18 @@ const (
 type RenderPassConfig struct {
 	/** @brief The Name of this renderpass. */
 	Name string
-	/** @brief The name of the previous renderpass. */
-	PrevName string
-	/** @brief The name of the next renderpass. */
-	NextName string
 	/** @brief The current render area of the renderpass. */
 	RenderArea math.Vec4
 	/** @brief The clear colour used for this renderpass. */
 	ClearColour math.Vec4
 	/** @brief The clear flags for this renderpass. */
 	ClearFlags RenderpassClearFlag
+	Depth      float32
+	Stencil    uint32
+	/** @brief The number of render targets created according to the render target config. */
+	RenderTargetCount uint8
+	/** @brief The render target configuration. */
+	Target *RenderTargetConfig
 }
 
 /**
@@ -146,6 +184,8 @@ const (
 	RENDERER_VIEW_KNOWN_TYPE_UI RenderViewKnownType = 0x02
 	/** @brief A view which only renders skybox objects. */
 	RENDERER_VIEW_KNOWN_TYPE_SKYBOX RenderViewKnownType = 0x03
+	/** @brief A view which only renders ui and world objects to be picked. */
+	RENDERER_VIEW_KNOWN_TYPE_PICK RenderViewKnownType = 0x04
 )
 
 /** @brief Known view matrix sources. */
@@ -164,11 +204,6 @@ const (
 	RENDER_VIEW_PROJECTION_MATRIX_SOURCE_DEFAULT_PERSPECTIVE  RenderViewProjectionMatrixSource = 0x01
 	RENDER_VIEW_PROJECTION_MATRIX_SOURCE_DEFAULT_ORTHOGRAPHIC RenderViewProjectionMatrixSource = 0x02
 )
-
-/** @brief configuration for a renderpass to be associated with a view */
-type RenderViewPassConfig struct {
-	Name string
-}
 
 /**
  * @brief The configuration of a render view.
@@ -196,7 +231,7 @@ type RenderViewConfig struct {
 	/** @brief The number of renderpasses used in this view. */
 	PassCount uint8
 	/** @brief The configuration of renderpasses used in this view. */
-	Passes []RenderViewPassConfig
+	Passes []*RenderPassConfig
 }
 
 type RenderViewView interface {
@@ -206,13 +241,13 @@ type RenderViewView interface {
 	 * @param self A pointer to the view being created.
 	 * @return True on success; otherwise false.
 	 */
-	OnCreateRenderView(uniforms map[string]uint16) bool
+	OnCreate(uniforms map[string]uint16) bool
 	/**
 	 * @brief A pointer to a function to be called when this view is destroyed.
 	 *
 	 * @param self A pointer to the view being destroyed.
 	 */
-	OnDestroyRenderView() error
+	OnDestroy() error
 	/**
 	 * @brief A pointer to a function to be called when the owner of this view (such
 	 * as the window) is resized.
@@ -221,7 +256,7 @@ type RenderViewView interface {
 	 * @param width The new width in pixels.
 	 * @param width The new height in pixels.
 	 */
-	OnResizeRenderView(width, height uint32)
+	OnResize(width, height uint32)
 	/**
 	 * @brief Builds a render view packet using the provided view and meshes.
 	 *
@@ -230,13 +265,13 @@ type RenderViewView interface {
 	 * @param out_packet A pointer to hold the generated packet.
 	 * @return True on success; otherwise false.
 	 */
-	OnBuildPacketRenderView(data interface{}) (*RenderViewPacket, error)
+	OnBuildPacket(data interface{}) (*RenderViewPacket, error)
 	/**
 	 * @brief Destroys the provided render view packet.
 	 * @param self A pointer to the view to use.
 	 * @param packet A pointer to the packet to be destroyed.
 	 */
-	OnDestroyPacketRenderView(packet *RenderViewPacket)
+	OnDestroyPacket(packet *RenderViewPacket)
 	/**
 	 * @brief Uses the given view and packet to render the contents therein.
 	 *
@@ -246,7 +281,16 @@ type RenderViewView interface {
 	 * @param render_target_index The current render target index for renderers that use multiple render targets at once (i.e. Vulkan).
 	 * @return True on success; otherwise false.
 	 */
-	OnRenderRenderView(view *RenderView, packet *RenderViewPacket, frame_number, render_target_index uint64) bool
+	OnRender(packet *RenderViewPacket, frame_number, render_target_index uint64) bool
+	/**
+	 * @brief Regenerates the resources for the given attachment at the provided pass index.
+	 *
+	 * @param self A pointer to the view to use.
+	 * @param pass_index The index of the renderpass to generate for.
+	 * @param attachment A pointer to the attachment whose resources are to be regenerated.
+	 * @return True on success; otherwise false.
+	 */
+	RegenerateAttachmentTarget(passIndex uint32, attachment *RenderTargetAttachment) bool
 }
 
 /**
@@ -272,8 +316,9 @@ type RenderView struct {
 	CustomShaderName string
 	/** @brief The internal, view-specific data for this view. */
 	InternalData interface{}
-	View         RenderViewView
-	ViewConfig   *RenderViewConfig
+
+	View       RenderViewView
+	ViewConfig *RenderViewConfig
 }
 
 /**
@@ -304,6 +349,7 @@ type RenderViewPacket struct {
 type GeometryRenderData struct {
 	Model    math.Mat4
 	Geometry *Geometry
+	UniqueID uint32
 }
 
 type MeshPacketData struct {
@@ -311,11 +357,23 @@ type MeshPacketData struct {
 	Meshes    []*Mesh
 }
 
-// type UIPacketData struct {
-// 	MeshData *MeshPacketData
-// 	// TODO: temp
-// 	Texts []*UIText
-// }
+type UIPacketData struct {
+	MeshData *MeshPacketData
+	Texts    []*UIText
+}
+
+type PickPacketData struct {
+	WorldMeshData      *MeshPacketData
+	WorldGeometryCount uint32
+	UIMeshData         *MeshPacketData
+	UIGeometryCount    uint32
+	// TODO: temp
+	TextCount uint32
+	Texts     []*UIText
+
+	// This is only neede for when we build the packet
+	RequiredInstanceCount uint32
+}
 
 type SkyboxPacketData struct {
 	Skybox *Skybox

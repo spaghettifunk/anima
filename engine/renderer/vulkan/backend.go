@@ -4,6 +4,7 @@ import (
 	"fmt"
 	m "math"
 	"runtime"
+	"sync"
 	"unsafe"
 
 	"github.com/go-gl/glfw/v3.3/glfw"
@@ -36,6 +37,8 @@ type VulkanRenderer struct {
 	debug bool
 }
 
+var queueMutex sync.Mutex
+
 func New(p *platform.Platform, am *assets.AssetManager) *VulkanRenderer {
 	defaultTextures := metadata.NewDefaultTexture()
 	defaultTextures.CreateSkeletonTextures()
@@ -52,7 +55,6 @@ func New(p *platform.Platform, am *assets.AssetManager) *VulkanRenderer {
 			Allocator:                     nil,
 			FramebufferSizeGeneration:     0,
 			FramebufferSizeLastGeneration: 0,
-			RegisteredPasses:              make([]*metadata.RenderPass, VULKAN_MAX_REGISTERED_RENDERPASSES),
 		},
 		FramebufferWidth:  0,
 		FramebufferHeight: 0,
@@ -76,19 +78,19 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	// TODO: custom allocator.
 	vr.context.Allocator = nil
 
-	vr.context.OnRenderTargetRefreshRequired = config.OnRenderTargetRefreshRequired
-
-	vr.FramebufferWidth = 800
-	vr.FramebufferHeight = 600
+	vr.context.FramebufferWidth = 1280
+	vr.context.FramebufferHeight = 720
 
 	// Setup Vulkan instance.
 	appInfo := &vk.ApplicationInfo{
 		SType:              vk.StructureTypeApplicationInfo,
-		ApiVersion:         uint32(vk.MakeVersion(1, 0, 0)),
+		ApiVersion:         uint32(vk.MakeVersion(1, 2, 0)),
 		ApplicationVersion: uint32(vk.MakeVersion(1, 0, 0)),
 		PApplicationName:   VulkanSafeString(config.ApplicationName),
 		PEngineName:        VulkanSafeString("Anima Engine"),
+		EngineVersion:      uint32(vk.MakeVersion(1, 0, 0)),
 	}
+	appInfo.Deref()
 
 	createInfo := vk.InstanceCreateInfo{
 		SType:            vk.StructureTypeInstanceCreateInfo,
@@ -137,12 +139,12 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 		// Obtain a list of available validation layers
 		var available_layer_count uint32
-		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, nil); res != vk.Success {
+		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, nil); !VulkanResultIsSuccess(res) {
 			return nil
 		}
 
 		available_layers := make([]vk.LayerProperties, available_layer_count)
-		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, available_layers); res != vk.Success {
+		if res := vk.EnumerateInstanceLayerProperties(&available_layer_count, available_layers); !VulkanResultIsSuccess(res) {
 			return nil
 		}
 
@@ -171,9 +173,10 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 	createInfo.EnabledLayerCount = uint32(len(required_validation_layer_names))
 	createInfo.PpEnabledLayerNames = VulkanSafeStrings(required_validation_layer_names)
+	createInfo.Deref()
 
 	var instance vk.Instance
-	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &instance); res != vk.Success {
+	if res := vk.CreateInstance(&createInfo, vr.context.Allocator, &instance); !VulkanResultIsSuccess(res) {
 		err := fmt.Errorf("failed in creating the Vulkan Instance with error `%s`", VulkanResultString(res, true))
 		core.LogError(err.Error())
 		return err
@@ -190,10 +193,6 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 	// Debugger
 	if vr.debug {
 		core.LogDebug("Creating Vulkan debugger...")
-		// log_severity := vk.DebugUtilsMessageSeverityErrorBit |
-		// 	vk.DebugUtilsMessageSeverityWarningBit |
-		// 	vk.DebugUtilsMessageSeverityInfoBit //|
-		// 	//    VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
 
 		debugCreateInfo := vk.DebugReportCallbackCreateInfo{
 			SType:       vk.StructureTypeDebugReportCallbackCreateInfo,
@@ -243,52 +242,6 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 
 	*windowRenderTargetCount = uint8(vr.context.Swapchain.ImageCount)
 
-	// Hold registered renderpasses.
-	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
-		vr.context.RegisteredPasses[i] = &metadata.RenderPass{
-			ID: metadata.InvalidIDUint16,
-			InternalData: &VulkanRenderPass{
-				State: NOT_ALLOCATED,
-			},
-		}
-	}
-
-	// Renderpasses
-	vr.context.RenderPassTable = make(map[string]uint32, len(config.PassConfigs))
-	for i := 0; i < len(config.PassConfigs); i++ {
-		id := metadata.InvalidID
-		// Snip up a new id.
-		for j := uint32(0); j < VULKAN_MAX_REGISTERED_RENDERPASSES; j++ {
-			if vr.context.RegisteredPasses[j].ID == metadata.InvalidIDUint16 {
-				// Found one.
-				vr.context.RegisteredPasses[j].ID = uint16(j)
-				id = j
-				break
-			}
-		}
-
-		// Verify we got an id
-		if id == metadata.InvalidID {
-			err := fmt.Errorf("no space was found for a new renderpass. Increase VULKAN_MAX_REGISTERED_RENDERPASSES. Initialization failed")
-			core.LogError(err.Error())
-			return err
-		}
-
-		// Setup the renderpass.
-		vr.context.RegisteredPasses[id].ClearFlags = uint8(config.PassConfigs[i].ClearFlags)
-		vr.context.RegisteredPasses[id].ClearColour = config.PassConfigs[i].ClearColour
-		vr.context.RegisteredPasses[id].RenderArea = config.PassConfigs[i].RenderArea
-
-		rp, err := vr.RenderPassCreate(vr.context.RegisteredPasses[id], 1.0, 0, config.PassConfigs[i].PrevName != "", config.PassConfigs[i].NextName != "")
-		if err != nil {
-			return err
-		}
-		vr.context.RegisteredPasses[id] = rp
-
-		// Update the table with the new id.
-		vr.context.RenderPassTable[config.PassConfigs[i].Name] = id
-	}
-
 	// Create command buffers.
 	vr.createCommandBuffers()
 
@@ -303,17 +256,21 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 		}
 		semaphoreCreateInfo.Deref()
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.ImageAvailableSemaphores[i]); res != vk.Success {
+		var sem vk.Semaphore
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &sem); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on image available")
 			core.LogError(err.Error())
 			return err
 		}
+		vr.context.ImageAvailableSemaphores[i] = sem
 
-		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &vr.context.QueueCompleteSemaphores[i]); res != vk.Success {
+		var sem2 vk.Semaphore
+		if res := vk.CreateSemaphore(vr.context.Device.LogicalDevice, &semaphoreCreateInfo, vr.context.Allocator, &sem2); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create semaphore on queue complete")
 			core.LogError(err.Error())
 			return err
 		}
+		vr.context.QueueCompleteSemaphores[i] = sem2
 
 		// Create the fence in a signaled state, indicating that the first frame has already been "rendered".
 		// This will prevent the application from waiting indefinitely for the first frame to render since it
@@ -370,7 +327,9 @@ func (vr *VulkanRenderer) Initialize(config *metadata.RendererBackendConfig, win
 }
 
 func (vr *VulkanRenderer) Shutdow() error {
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Destroy in the opposite order of creation.
 	// Destroy buffers
@@ -408,13 +367,6 @@ func (vr *VulkanRenderer) Shutdow() error {
 	}
 	vr.context.GraphicsCommandBuffers = nil
 
-	// Renderpasses
-	for i := uint32(0); i < VULKAN_MAX_REGISTERED_RENDERPASSES; i++ {
-		if vr.context.RegisteredPasses[i].ID != metadata.InvalidIDUint16 {
-			vr.RenderPassDestroy(vr.context.RegisteredPasses[i])
-		}
-	}
-
 	// Swapchain
 	vr.context.Swapchain.SwapchainDestroy(vr.context)
 
@@ -448,8 +400,8 @@ func (vr *VulkanRenderer) Shutdow() error {
 func (vr *VulkanRenderer) Resized(width, height uint32) error {
 	// Update the "framebuffer size generation", a counter which indicates when the
 	// framebuffer size has been updated.
-	vr.FramebufferWidth = width
-	vr.FramebufferHeight = height
+	vr.context.FramebufferWidth = width
+	vr.context.FramebufferHeight = height
 	vr.context.FramebufferSizeGeneration++
 
 	core.LogInfo("Vulkan renderer backend.resized: w/h/gen: %d/%d/%d", width, height, vr.context.FramebufferSizeGeneration)
@@ -462,7 +414,9 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Check if recreating swap chain and boot out.
 	if vr.context.RecreatingSwapchain {
+		queueMutex.Lock()
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
+		queueMutex.Unlock()
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (1) failed: '%s'", VulkanResultString(result, true))
 			return err
@@ -473,7 +427,9 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Check if the framebuffer has been resized. If so, a new swapchain must be created.
 	if vr.context.FramebufferSizeGeneration != vr.context.FramebufferSizeLastGeneration {
+		queueMutex.Lock()
 		result := vk.DeviceWaitIdle(device.LogicalDevice)
+		queueMutex.Unlock()
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("func BeginFrame vkDeviceWaitIdle (2) failed: '%s'", VulkanResultString(result, true))
 			return err
@@ -492,10 +448,9 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
 	f := vr.context.InFlightFences[vr.context.CurrentFrame]
-	core.LogDebug("fence: %+v", f)
 
 	inFlightsFences := []vk.Fence{f}
-	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64)
+	result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64-1)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("func BeginFram In-flight fence wait failure! error: %s", VulkanResultString(result, true))
 		return err
@@ -503,7 +458,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
 	// This same semaphore will later be waited on by the queue submission to ensure this image is available.
-	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, vk.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
+	imageIndex, ok := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, vk.MaxUint64-1, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok {
 		err := fmt.Errorf("failed to swapchain aquire next image index")
 		return err
@@ -515,32 +470,11 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 	command_buffer.Reset()
 	command_buffer.Begin(false, false, false)
 
-	// Dynamic state
-	viewport := vk.Viewport{
-		X:        0.0,
-		Y:        float32(vr.context.FramebufferHeight),
-		Width:    float32(vr.context.FramebufferWidth),
-		Height:   float32(vr.context.FramebufferHeight),
-		MinDepth: 0.0,
-		MaxDepth: 1.0,
-	}
-	viewport.Deref()
+	vr.context.ViewportRect = math.NewVec4(0.0, float32(vr.context.FramebufferHeight), float32(vr.context.FramebufferWidth), -float32(vr.context.FramebufferHeight))
+	vr.SetViewport()
 
-	// Scissor
-	scissor := vk.Rect2D{
-		Offset: vk.Offset2D{
-			X: 0,
-			Y: 0,
-		},
-		Extent: vk.Extent2D{
-			Width:  vr.context.FramebufferWidth,
-			Height: vr.context.FramebufferHeight,
-		},
-	}
-	scissor.Deref()
-
-	vk.CmdSetViewport(command_buffer.Handle, 0, 1, []vk.Viewport{viewport})
-	vk.CmdSetScissor(command_buffer.Handle, 0, 1, []vk.Rect2D{scissor})
+	vr.context.ScissorRect = math.NewVec4(0, 0, float32(vr.context.FramebufferWidth), float32(vr.context.FramebufferHeight))
+	vr.SetScissor()
 
 	return nil
 }
@@ -563,8 +497,8 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	vr.context.ImagesInFlight[vr.context.ImageIndex] = vr.context.InFlightFences[vr.context.CurrentFrame]
 
 	// Reset the fence for use on the next frame
-	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}); res != vk.Success {
-		err := fmt.Errorf("func EndFrame failed to reset fences")
+	if res := vk.ResetFences(vr.context.Device.LogicalDevice, 1, []vk.Fence{vr.context.InFlightFences[vr.context.CurrentFrame]}); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("func EndFrame failed to reset fences with error %s", VulkanResultString(res, true))
 		return err
 	}
 
@@ -590,11 +524,12 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	flags := vk.PipelineStageFlags(vk.PipelineStageColorAttachmentOutputBit)
 	submit_info.PWaitDstStageMask = []vk.PipelineStageFlags{flags}
 
+	queueMutex.Lock()
 	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, vr.context.InFlightFences[vr.context.CurrentFrame]); result != vk.Success {
 		err := fmt.Errorf("vkQueueSubmit failed with result: %s", VulkanResultString(result, true))
-		core.LogError(err.Error())
 		return err
 	}
+	queueMutex.Unlock()
 
 	commandBuffer.UpdateSubmitted()
 	// End queue submission
@@ -608,6 +543,43 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 		vr.context.ImageIndex)
 
 	return nil
+}
+
+func (vr *VulkanRenderer) SetViewport() {
+	// Dynamic state
+	viewport := vk.Viewport{
+		X:        vr.context.ViewportRect.X,
+		Y:        vr.context.ViewportRect.Y,
+		Width:    vr.context.ViewportRect.Z,
+		Height:   vr.context.ViewportRect.W,
+		MinDepth: 0.0,
+		MaxDepth: 1.0,
+	}
+	command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
+	vk.CmdSetViewport(command_buffer.Handle, 0, 1, []vk.Viewport{viewport})
+}
+
+func (vr *VulkanRenderer) ResetViewport() {
+	vr.SetViewport()
+}
+
+func (vr *VulkanRenderer) SetScissor() {
+	scissor := vk.Rect2D{
+		Offset: vk.Offset2D{
+			X: int32(vr.context.ScissorRect.X),
+			Y: int32(vr.context.ScissorRect.Y),
+		},
+		Extent: vk.Extent2D{
+			Width:  uint32(vr.context.ScissorRect.Z),
+			Height: uint32(vr.context.ScissorRect.W),
+		},
+	}
+	command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
+	vk.CmdSetScissor(command_buffer.Handle, 0, 1, []vk.Rect2D{scissor})
+}
+
+func (vr *VulkanRenderer) ResetScissor() {
+	vr.SetScissor()
 }
 
 func (vr *VulkanRenderer) createCommandBuffers() error {
@@ -647,7 +619,9 @@ func (vr *VulkanRenderer) recreateSwapchain() bool {
 	vr.context.RecreatingSwapchain = true
 
 	// Wait for any operations to complete.
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Clear these out just in case.
 	for i := 0; i < int(vr.context.Swapchain.ImageCount); i++ {
@@ -672,10 +646,10 @@ func (vr *VulkanRenderer) recreateSwapchain() bool {
 		vr.context.GraphicsCommandBuffers[i].Free(vr.context, vr.context.Device.GraphicsCommandPool)
 	}
 
-	// Tell the renderer that a refresh is required.
-	if vr.context.OnRenderTargetRefreshRequired != nil {
-		vr.context.OnRenderTargetRefreshRequired()
+	eventContext := core.EventContext{
+		Type: core.EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED,
 	}
+	core.EventFire(eventContext)
 
 	vr.createCommandBuffers()
 
@@ -700,22 +674,7 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		return false
 	}
 
-	// Check if this is a re-upload. If it is, need to free old data afterward.
-	// isReupload := geometry.InternalID != metadata.InvalidID
-	// oldRange := &VulkanGeometryData{}
-
 	var internalData *VulkanGeometryData
-	// if isReupload {
-	// 	internalData = vr.context.Geometries[geometry.InternalID]
-
-	// 	// Take a copy of the old range.
-	// 	oldRange.IndexBufferOffset = internalData.IndexBufferOffset
-	// 	oldRange.IndexCount = internalData.IndexCount
-	// 	oldRange.IndexElementSize = internalData.IndexElementSize
-	// 	oldRange.VertexBufferOffset = internalData.VertexBufferOffset
-	// 	oldRange.VertexCount = internalData.VertexCount
-	// 	oldRange.VertexElementSize = internalData.VertexElementSize
-	// } else {
 	// Mark all geometries as invalid
 	for i := uint32(0); i < VULKAN_MAX_GEOMETRY_COUNT; i++ {
 		if vr.context.Geometries[i] == nil {
@@ -733,7 +692,6 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 			break
 		}
 	}
-	// }
 	if internalData == nil {
 		core.LogFatal("vulkan_renderer_create_geometry failed to find a free index for a new geometry upload. Adjust config to allow for more.")
 		return false
@@ -768,24 +726,6 @@ func (vr *VulkanRenderer) CreateGeometry(geometry *metadata.Geometry, vertex_siz
 		internalData.Generation++
 	}
 
-	// at the contrary of C, data is overwritten correctly and we don't have to
-	// release memory based on offset and size. The go compiler will take care of it
-	// if isReupload {
-	// // Free vertex data
-	// if !vr.RenderBufferFree(vr.context.ObjectVertexBuffer, uint64(oldRange.VertexElementSize*oldRange.VertexCount), oldRange.VertexBufferOffset) {
-	// 	core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of vertex data.")
-	// 	return false
-	// }
-
-	// // Free index data, if applicable
-	// if oldRange.IndexElementSize > 0 {
-	// 	if !vr.RenderBufferFree(vr.context.ObjectIndexBuffer, uint64(oldRange.IndexElementSize*oldRange.IndexCount), oldRange.IndexBufferOffset) {
-	// 		core.LogError("vulkan_renderer_create_geometry free operation failed during reupload of index data.")
-	// 		return false
-	// 	}
-	// }
-	// }
-
 	return true
 }
 
@@ -807,7 +747,7 @@ func (vr *VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Textur
 	// different options here.
 	image, err := ImageCreate(
 		vr.context,
-		vk.ImageType(texture.TextureType),
+		texture.TextureType,
 		texture.Width,
 		texture.Height,
 		image_format,
@@ -832,7 +772,9 @@ func (vr *VulkanRenderer) TextureCreate(pixels []uint8, texture *metadata.Textur
 }
 
 func (vr *VulkanRenderer) TextureDestroy(texture *metadata.Texture) {
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 	if texture.InternalData != nil {
 		image := texture.InternalData.(*VulkanImage)
 		if image != nil {
@@ -859,30 +801,25 @@ func (vr *VulkanRenderer) channel_count_to_format(channel_count uint8, default_f
 }
 
 func (vr *VulkanRenderer) TextureCreateWriteable(texture *metadata.Texture) error {
-	// Internal data creation.
-	texture.InternalData = &VulkanImage{}
-
-	image_format := vr.channel_count_to_format(texture.ChannelCount, vk.FormatR8g8b8a8Unorm)
-	// TODO: Lots of assumptions here, different texture types will require
-	// different options here.
-	image, err := ImageCreate(
-		vr.context,
-		vk.ImageType(texture.TextureType),
-		texture.Width,
-		texture.Height,
-		image_format,
-		vk.ImageTilingOptimal,
-		vk.ImageUsageFlags(vk.ImageUsageTransferSrcBit)|vk.ImageUsageFlags(vk.ImageUsageTransferDstBit)|vk.ImageUsageFlags(vk.ImageUsageSampledBit)|vk.ImageUsageFlags(vk.ImageUsageColorAttachmentBit),
-		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit),
-		true,
-		vk.ImageAspectFlags(vk.ImageAspectColorBit),
-	)
+	var usage vk.ImageUsageFlagBits
+	var aspect vk.ImageAspectFlagBits
+	var image_format vk.Format
+	if (metadata.TextureFlag(texture.Flags) & metadata.TextureFlagDepth) != 0 {
+		usage = vk.ImageUsageDepthStencilAttachmentBit
+		aspect = vk.ImageAspectDepthBit
+		image_format = vr.context.Device.DepthFormat
+	} else {
+		usage = vk.ImageUsageTransferSrcBit | vk.ImageUsageTransferDstBit | vk.ImageUsageSampledBit | vk.ImageUsageColorAttachmentBit
+		aspect = vk.ImageAspectColorBit
+		image_format = vr.channel_count_to_format(texture.ChannelCount, vk.FormatR8g8b8a8Unorm)
+	}
+	image, err := ImageCreate(vr.context, texture.TextureType, texture.Width, texture.Height, image_format, vk.ImageTilingOptimal, vk.ImageUsageFlags(usage),
+		vk.MemoryPropertyFlags(vk.MemoryPropertyDeviceLocalBit), true, vk.ImageAspectFlags(aspect))
 	if err != nil {
 		return err
 	}
 
 	texture.InternalData = image
-
 	texture.Generation++
 
 	return nil
@@ -902,7 +839,7 @@ func (vr *VulkanRenderer) TextureResize(texture *metadata.Texture, new_width, ne
 		// different options here.
 		image, err := ImageCreate(
 			vr.context,
-			vk.ImageType(texture.TextureType),
+			texture.TextureType,
 			new_width,
 			new_height,
 			image_format,
@@ -994,7 +931,10 @@ func (vr *VulkanRenderer) TextureWriteData(texture *metadata.Texture, offset, si
 
 func (vr *VulkanRenderer) DestroyGeometry(geometry *metadata.Geometry) error {
 	if geometry != nil && geometry.InternalID != metadata.InvalidID {
-		if !VulkanResultIsSuccess(vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)) {
+		queueMutex.Lock()
+		res := vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+		queueMutex.Unlock()
+		if !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to wait for device")
 			return err
 		}
@@ -1043,113 +983,240 @@ func (vr *VulkanRenderer) DrawGeometry(data *metadata.GeometryRenderData) error 
 	return nil
 }
 
-func (vr *VulkanRenderer) RenderPassCreate(renderPass *metadata.RenderPass, depth float32, stencil uint32, has_prev_pass, has_next_pass bool) (*metadata.RenderPass, error) {
-	// return outRenderpass, nil
-	internal_data := renderPass.InternalData.(*VulkanRenderPass)
-	internal_data.HasPrevPass = has_prev_pass
-	internal_data.HasNextPass = has_next_pass
-	internal_data.Depth = depth
-	internal_data.Stencil = stencil
+func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pass *metadata.RenderPass) (*metadata.RenderPass, error) {
+	if config == nil {
+		return nil, fmt.Errorf("renderpass config needs to be a valid pointer")
+	}
+
+	if config.RenderTargetCount == 0 {
+		return nil, fmt.Errorf("cannot have a renderpass target count of 0")
+	}
+
+	if pass == nil {
+		pass = &metadata.RenderPass{
+			InternalData: &VulkanRenderPass{},
+		}
+	}
+
+	pass.RenderTargetCount = config.RenderTargetCount
+	pass.Targets = make([]*metadata.RenderTarget, config.RenderTargetCount)
+	pass.ClearColour = config.ClearColour
+	pass.ClearFlags = uint8(config.ClearFlags)
+	pass.RenderArea = config.RenderArea
+
+	// Copy over config for each target.
+	for t := 0; t < int(pass.RenderTargetCount); t++ {
+		target := pass.Targets[t]
+		if target == nil {
+			target = &metadata.RenderTarget{}
+		}
+		target.AttachmentCount = uint8(len(config.Target.Attachments))
+		target.Attachments = make([]*metadata.RenderTargetAttachment, len(config.Target.Attachments))
+
+		// Each attachment for the target.
+		for a := 0; a < int(target.AttachmentCount); a++ {
+			attachment := target.Attachments[a]
+			if attachment == nil {
+				attachment = &metadata.RenderTargetAttachment{}
+			}
+			attachment_config := config.Target.Attachments[a]
+
+			attachment.Source = attachment_config.Source
+			attachment.RenderTargetAttachmentType = attachment_config.RenderTargetAttachmentType
+			attachment.LoadOperation = attachment_config.LoadOperation
+			attachment.StoreOperation = attachment_config.StoreOperation
+			attachment.Texture = nil
+
+			target.Attachments[a] = attachment
+		}
+		pass.Targets[t] = target
+	}
 
 	// Main subpass
 	subpass := vk.SubpassDescription{
-		PipelineBindPoint: vk.PipelineBindPointGraphics,
+		PipelineBindPoint:       vk.PipelineBindPointGraphics,
+		PDepthStencilAttachment: nil,
+		ColorAttachmentCount:    0,
+		PColorAttachments:       nil,
+		// Input from a shader
+		InputAttachmentCount: 0,
+		PInputAttachments:    nil,
+		// Attachments used for multisampling colour attachments
+		PResolveAttachments: nil,
+		// Attachments not used in this subpass, but must be preserved for the next.
+		PreserveAttachmentCount: 0,
+		PPreserveAttachments:    nil,
 	}
 
-	// Attachments TODO: make this configurable.
-	attachment_description_count := uint32(0)
-	attachment_descriptions := make([]vk.AttachmentDescription, 2)
+	// Attachments.
+	attachmentDescriptions := make([]vk.AttachmentDescription, 0)
+	colourAttachmentDescs := make([]vk.AttachmentDescription, 0)
+	depthAttachmentDescs := make([]vk.AttachmentDescription, 0)
 
-	// Color attachment
-	do_clear_colour := (renderPass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG)) != 0
-	color_attachment := vk.AttachmentDescription{
-		Format:         vr.context.Swapchain.ImageFormat.Format, // TODO: configurable
-		Samples:        vk.SampleCount1Bit,
-		LoadOp:         vk.AttachmentLoadOpClear,
-		StoreOp:        vk.AttachmentStoreOpStore,
-		StencilLoadOp:  vk.AttachmentLoadOpDontCare,
-		StencilStoreOp: vk.AttachmentStoreOpDontCare,
-		// If coming from a previous pass, should already be VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise undefined.
-		InitialLayout: vk.ImageLayoutColorAttachmentOptimal,
-		// If going to another pass, use VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise VK_IMAGE_LAYOUT_PRESENT_SRC_KHR.
-		FinalLayout: vk.ImageLayoutColorAttachmentOptimal, // Transitioned to after the render pass
-		Flags:       0,
-	}
+	// Can always just look at the first target since they are all the same (one per frame).
+	for i := 0; i < len(config.Target.Attachments); i++ {
+		attachment_config := config.Target.Attachments[i]
 
-	if do_clear_colour {
-		color_attachment.LoadOp = vk.AttachmentLoadOpLoad
-	}
+		attachment_desc := vk.AttachmentDescription{}
+		if attachment_config.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR {
+			// Colour attachment.
+			do_clear_colour := (pass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG)) != 0
 
-	if !has_prev_pass {
-		color_attachment.InitialLayout = vk.ImageLayoutUndefined
-	}
-
-	if !has_next_pass {
-		color_attachment.FinalLayout = vk.ImageLayoutPresentSrc
-	}
-
-	attachment_descriptions[attachment_description_count] = color_attachment
-	attachment_description_count++
-
-	color_attachment_reference := []vk.AttachmentReference{
-		{
-			Attachment: 0, // Attachment description array index
-			Layout:     vk.ImageLayoutColorAttachmentOptimal,
-		},
-	}
-
-	subpass.ColorAttachmentCount = 1
-	subpass.PColorAttachments = color_attachment_reference
-
-	// Depth attachment, if there is one
-	do_clear_depth := (renderPass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG)) != 0
-	if do_clear_depth {
-		depth_attachment := vk.AttachmentDescription{
-			Format:         vr.context.Device.DepthFormat,
-			Samples:        vk.SampleCount1Bit,
-			StoreOp:        vk.AttachmentStoreOpDontCare,
-			StencilLoadOp:  vk.AttachmentLoadOpDontCare,
-			StencilStoreOp: vk.AttachmentStoreOpDontCare,
-			InitialLayout:  vk.ImageLayoutUndefined,
-			FinalLayout:    vk.ImageLayoutDepthStencilAttachmentOptimal,
-		}
-
-		if has_prev_pass {
-			depth_attachment.LoadOp = vk.AttachmentLoadOpClear
-			if do_clear_depth {
-				depth_attachment.LoadOp = vk.AttachmentLoadOpLoad
+			if attachment_config.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT {
+				attachment_desc.Format = vr.context.Swapchain.ImageFormat.Format
+			} else {
+				// TODO: configurable format?
+				attachment_desc.Format = vk.FormatR8g8b8a8Unorm
 			}
-		} else {
-			depth_attachment.LoadOp = vk.AttachmentLoadOpDontCare
+
+			attachment_desc.Samples = vk.SampleCount1Bit
+
+			// Determine which load operation to use.
+			if attachment_config.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE {
+				// If we don't care, the only other thing that needs checking is if the attachment is being cleared.
+				attachment_desc.LoadOp = vk.AttachmentLoadOpClear
+				if !do_clear_colour {
+					attachment_desc.LoadOp = vk.AttachmentLoadOpDontCare
+				}
+			} else {
+				// If we are loading, check if we are also clearing. This combination doesn't make sense, and should be warned about.
+				if attachment_config.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+					if do_clear_colour {
+						core.LogWarn("colour attachment load operation set to load, but is also set to clear. This combination is invalid, and will err toward clearing. Verify attachment configuration")
+						attachment_desc.LoadOp = vk.AttachmentLoadOpClear
+					} else {
+						attachment_desc.LoadOp = vk.AttachmentLoadOpLoad
+					}
+				} else {
+					core.LogFatal("Invalid and unsupported combination of load operation (0x%x) and clear flags (0x%x) for colour attachment.", attachment_desc.LoadOp, pass.ClearFlags)
+					return nil, nil
+				}
+			}
+
+			// Determine which store operation to use.
+			if attachment_config.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_DONT_CARE {
+				attachment_desc.StoreOp = vk.AttachmentStoreOpDontCare
+			} else if attachment_config.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE {
+				attachment_desc.StoreOp = vk.AttachmentStoreOpStore
+			} else {
+				core.LogFatal("invalid store operation (0x%d) set for depth attachment. Check configuration", attachment_config.StoreOperation)
+				return nil, nil
+			}
+
+			// NOTE: these will never be used on a colour attachment.
+			attachment_desc.StencilLoadOp = vk.AttachmentLoadOpDontCare
+			attachment_desc.StencilStoreOp = vk.AttachmentStoreOpDontCare
+			// If loading, that means coming from another pass, meaning the format should be VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise it is undefined.
+			attachment_desc.InitialLayout = vk.ImageLayoutColorAttachmentOptimal
+			if attachment_config.LoadOperation != metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+				attachment_desc.InitialLayout = vk.ImageLayoutUndefined
+			}
+
+			// If this is the last pass writing to this attachment, present after should be set to true.
+			attachment_desc.FinalLayout = vk.ImageLayoutPresentSrc
+			if !attachment_config.PresentAfter {
+				attachment_desc.FinalLayout = vk.ImageLayoutColorAttachmentOptimal // Transitioned to after the render pass
+			}
+			attachment_desc.Flags = 0
+
+			// Push to colour attachments array.
+			colourAttachmentDescs = append(colourAttachmentDescs, attachment_desc)
+		} else if attachment_config.RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH {
+			// Depth attachment.
+			do_clear_depth := (pass.ClearFlags & uint8(metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG)) != 0
+
+			if attachment_config.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT {
+				attachment_desc.Format = vr.context.Device.DepthFormat
+			} else {
+				// TODO: There may be a more optimal format to use when not the default depth target.
+				attachment_desc.Format = vr.context.Device.DepthFormat
+			}
+
+			attachment_desc.Samples = vk.SampleCount1Bit
+			// Determine which load operation to use.
+			if attachment_config.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE {
+				// If we don't care, the only other thing that needs checking is if the attachment is being cleared.
+				attachment_desc.LoadOp = vk.AttachmentLoadOpClear
+				if !do_clear_depth {
+					attachment_desc.LoadOp = vk.AttachmentLoadOpDontCare
+				}
+			} else {
+				// If we are loading, check if we are also clearing. This combination doesn't make sense, and should be warned about.
+				if attachment_config.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+					if do_clear_depth {
+						core.LogWarn("depth attachment load operation set to load, but is also set to clear. This combination is invalid, and will err toward clearing. Verify attachment configuration")
+						attachment_desc.LoadOp = vk.AttachmentLoadOpClear
+					} else {
+						attachment_desc.LoadOp = vk.AttachmentLoadOpLoad
+					}
+				} else {
+					core.LogFatal("invalid and unsupported combination of load operation (0x%d) and clear flags (0x%d) for depth attachment.", attachment_desc.LoadOp, pass.ClearFlags)
+					return nil, nil
+				}
+			}
+
+			// Determine which store operation to use.
+			if attachment_config.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_DONT_CARE {
+				attachment_desc.StoreOp = vk.AttachmentStoreOpDontCare
+			} else if attachment_config.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE {
+				attachment_desc.StoreOp = vk.AttachmentStoreOpStore
+			} else {
+				core.LogFatal("invalid store operation (0x%d) set for depth attachment. Check configuration", attachment_config.StoreOperation)
+				return nil, nil
+			}
+
+			// TODO: Configurability for stencil attachments.
+			attachment_desc.StencilLoadOp = vk.AttachmentLoadOpDontCare
+			attachment_desc.StencilStoreOp = vk.AttachmentStoreOpDontCare
+			// If coming from a previous pass, should already be VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Otherwise undefined.
+			attachment_desc.InitialLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
+			if attachment_config.LoadOperation != metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+				attachment_desc.InitialLayout = vk.ImageLayoutUndefined
+			}
+			// Final layout for depth stencil attachments is always this.
+			attachment_desc.FinalLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
+			attachment_desc.Deref()
+
+			// Push to colour attachments array.
+			depthAttachmentDescs = append(depthAttachmentDescs, attachment_desc)
 		}
+		// Push to general array.
+		attachmentDescriptions = append(attachmentDescriptions, attachment_desc)
+	}
 
-		attachment_descriptions[attachment_description_count] = depth_attachment
-		attachment_description_count++
+	// Setup the attachment references.
+	attachments_added := uint32(0)
 
+	// Colour attachment reference.
+	colour_attachment_references := make([]vk.AttachmentReference, 0)
+	colour_attachment_count := len(colourAttachmentDescs)
+	if colour_attachment_count > 0 {
+		colour_attachment_references = make([]vk.AttachmentReference, colour_attachment_count)
+		for i := 0; i < colour_attachment_count; i++ {
+			colour_attachment_references[i].Attachment = attachments_added // Attachment description array index
+			colour_attachment_references[i].Layout = vk.ImageLayoutColorAttachmentOptimal
+			attachments_added++
+		}
+		subpass.ColorAttachmentCount = uint32(colour_attachment_count)
+		subpass.PColorAttachments = colour_attachment_references
+	}
+
+	// Depth attachment reference.
+	depth_attachment_count := len(depthAttachmentDescs)
+	if depth_attachment_count > 0 {
+		if depth_attachment_count > 1 {
+			core.LogFatal("multiple depth attachments not supported")
+			return nil, nil
+		}
 		// Depth attachment reference
 		depth_attachment_reference := vk.AttachmentReference{
 			Attachment: 1,
 			Layout:     vk.ImageLayoutDepthStencilAttachmentOptimal,
 		}
-
-		// TODO: other attachment types (input, resolve, preserve)
-
 		// Depth stencil data.
 		subpass.PDepthStencilAttachment = &depth_attachment_reference
-	} else {
-		subpass.PDepthStencilAttachment = nil
 	}
-
-	// Input from a shader
-	subpass.InputAttachmentCount = 0
-	subpass.PInputAttachments = nil
-
-	// Attachments used for multisampling colour attachments
-	subpass.PResolveAttachments = nil
-
-	// Attachments not used in this subpass, but must be preserved for the next.
-	subpass.PreserveAttachmentCount = 0
-	subpass.PPreserveAttachments = nil
+	subpass.Deref()
 
 	// Render pass dependencies. TODO: make this configurable.
 	dependency := vk.SubpassDependency{
@@ -1161,12 +1228,13 @@ func (vr *VulkanRenderer) RenderPassCreate(renderPass *metadata.RenderPass, dept
 		DstAccessMask:   vk.AccessFlags(vk.AccessColorAttachmentReadBit) | vk.AccessFlags(vk.AccessColorAttachmentWriteBit),
 		DependencyFlags: 0,
 	}
+	dependency.Deref()
 
 	// Render pass create.
 	render_pass_create_info := vk.RenderPassCreateInfo{
 		SType:           vk.StructureTypeRenderPassCreateInfo,
-		AttachmentCount: attachment_description_count,
-		PAttachments:    attachment_descriptions,
+		AttachmentCount: uint32(len(attachmentDescriptions)),
+		PAttachments:    attachmentDescriptions,
 		SubpassCount:    1,
 		PSubpasses:      []vk.SubpassDescription{subpass},
 		DependencyCount: 1,
@@ -1174,21 +1242,46 @@ func (vr *VulkanRenderer) RenderPassCreate(renderPass *metadata.RenderPass, dept
 		PNext:           nil,
 		Flags:           0,
 	}
+	render_pass_create_info.Deref()
 
-	if res := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &render_pass_create_info, vr.context.Allocator, &internal_data.Handle); res != vk.Success {
-		err := fmt.Errorf("failed to create renderpass")
+	var handle vk.RenderPass
+	result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &render_pass_create_info, vr.context.Allocator, &handle)
+	if !VulkanResultIsSuccess(result) {
+		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
 	}
+	pass.InternalData.(*VulkanRenderPass).Handle = handle
 
-	return renderPass, nil
+	// Cleanup
+	if len(attachmentDescriptions) > 0 {
+		attachmentDescriptions = nil
+	}
+
+	if len(colourAttachmentDescs) > 0 {
+		colourAttachmentDescs = nil
+	}
+	if len(colour_attachment_references) > 0 {
+		colour_attachment_references = nil
+	}
+
+	if len(depthAttachmentDescs) > 0 {
+		depthAttachmentDescs = nil
+	}
+
+	return pass, nil
 }
 
 func (vr *VulkanRenderer) RenderPassDestroy(pass *metadata.RenderPass) {
-	if pass != nil && pass.InternalData != nil {
-		internalData := pass.InternalData.(*VulkanRenderPass)
-		vk.DestroyRenderPass(vr.context.Device.LogicalDevice, internalData.Handle, vr.context.Allocator)
-		internalData.Handle = nil
-		pass.InternalData = nil
+	// Destroy its rendertargets.
+	for i := 0; i < int(pass.RenderTargetCount); i++ {
+		target := pass.Targets[i]
+		if target != nil && target.InternalFramebuffer != nil {
+			buff := *target.InternalFramebuffer.(*vk.Framebuffer)
+			vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, buff, vr.context.Allocator)
+			target.InternalFramebuffer = nil
+			target.Attachments = nil
+			target.AttachmentCount = 0
+		}
 	}
 }
 
@@ -1201,7 +1294,7 @@ func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *met
 	begin_info := vk.RenderPassBeginInfo{
 		SType:       vk.StructureTypeRenderPassBeginInfo,
 		RenderPass:  internal_data.Handle,
-		Framebuffer: target.InternalFramebuffer.(vk.Framebuffer),
+		Framebuffer: *target.InternalFramebuffer.(*vk.Framebuffer),
 		RenderArea: vk.Rect2D{
 			Offset: vk.Offset2D{
 				X: int32(pass.RenderArea.X),
@@ -1237,14 +1330,21 @@ func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *met
 			clear_values[begin_info.ClearValueCount].SetDepthStencil(internal_data.Depth, 0)
 		}
 		begin_info.ClearValueCount++
+	} else {
+		for i := 0; i < len(target.Attachments); i++ {
+			if target.Attachments[i].RenderTargetAttachmentType == metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH {
+				// If there is a depth attachment, make sure to add the clear count, but don't bother copying the data.
+				begin_info.ClearValueCount++
+			}
+		}
 	}
 
 	if begin_info.ClearValueCount > 0 {
 		begin_info.PClearValues = clear_values
 	}
+	begin_info.Deref()
 
 	vk.CmdBeginRenderPass(command_buffer.Handle, &begin_info, vk.SubpassContentsInline)
-	begin_info.Deref()
 
 	command_buffer.State = COMMAND_BUFFER_STATE_IN_RENDER_PASS
 
@@ -1256,16 +1356,141 @@ func (vr *VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) bool {
 	// End the renderpass.
 	vk.CmdEndRenderPass(command_buffer.Handle)
 	command_buffer.State = COMMAND_BUFFER_STATE_RECORDING
+
 	return true
 }
 
-func (vr *VulkanRenderer) RenderPassGet(name string) *metadata.RenderPass {
-	id := vr.context.RenderPassTable[name]
-	if id == metadata.InvalidID {
-		core.LogWarn("there is no registered renderpass named '%s'.", name)
-		return nil
+func (vr *VulkanRenderer) TextureReadData(texture *metadata.Texture, offset, size uint32) (interface{}, error) {
+	image := texture.InternalData.(*VulkanImage)
+	image_format := vr.channel_count_to_format(texture.ChannelCount, vk.FormatR8g8b8a8Unorm)
+	// Create a staging buffer and load data into it.
+	staging, err := vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_READ, uint64(size), false)
+	if err != nil {
+		core.LogError("failed to create staging buffer for texture read")
+		return nil, err
 	}
-	return vr.context.RegisteredPasses[id]
+
+	vr.RenderBufferBind(staging, 0)
+
+	pool := vr.context.Device.GraphicsCommandPool
+	queue := vr.context.Device.GraphicsQueue
+
+	temp_buffer, err := AllocateAndBeginSingleUse(vr.context, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	// NOTE: transition to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	// Transition the layout from whatever it is currently to optimal for handing out data.
+	if err := image.ImageTransitionLayout(
+		vr.context,
+		texture.TextureType,
+		temp_buffer,
+		image_format,
+		vk.ImageLayoutUndefined,
+		vk.ImageLayoutTransferSrcOptimal); err != nil {
+		return nil, err
+	}
+	// Copy the data to the buffer.
+	buff := staging.InternalData.(*VulkanBuffer)
+	if err := image.ImageCopyFromBuffer(vr.context, texture.TextureType, buff.Handle, temp_buffer); err != nil {
+		return nil, err
+	}
+	// Transition from optimal for data reading to shader-read-only optimal layout.
+	if err := image.ImageTransitionLayout(
+		vr.context,
+		texture.TextureType,
+		temp_buffer,
+		image_format,
+		vk.ImageLayoutTransferSrcOptimal,
+		vk.ImageLayoutShaderReadOnlyOptimal); err != nil {
+		return nil, err
+	}
+
+	if err := temp_buffer.EndSingleUse(vr.context, pool, queue); err != nil {
+		return nil, err
+	}
+	out_memory, err := vr.RenderBufferRead(staging, uint64(offset), uint64(size))
+	if err != nil {
+		core.LogError("vulkan_buffer_read failed.")
+		return nil, err
+	}
+	if !vr.RenderBufferUnbind(staging) {
+		err := fmt.Errorf("failed to unbind renderbuffer")
+		return nil, err
+	}
+
+	vr.RenderBufferDestroy(staging)
+
+	return out_memory, nil
+}
+
+func (vr *VulkanRenderer) TextureReadPixel(texture *metadata.Texture, x, y uint32) ([]uint8, error) {
+	image := texture.InternalData.(*VulkanImage)
+	image_format := vr.channel_count_to_format(texture.ChannelCount, vk.FormatR8g8b8a8Unorm)
+	// TODO: creating a buffer every time isn't great. Could optimize this by creating a buffer once
+	// and just reusing it.
+	// Create a staging buffer and load data into it.
+	staging, err := vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_READ, uint64(unsafe.Sizeof(uint8(1))*4), false)
+	if err != nil {
+		core.LogError("failed to create staging buffer for texture pixel read")
+		return nil, err
+	}
+
+	vr.RenderBufferBind(staging, 0)
+
+	pool := vr.context.Device.GraphicsCommandPool
+	queue := vr.context.Device.GraphicsQueue
+
+	temp_buffer, err := AllocateAndBeginSingleUse(vr.context, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	// NOTE: transition to VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL
+	// Transition the layout from whatever it is currently to optimal for handing out data.
+	if err := image.ImageTransitionLayout(
+		vr.context,
+		texture.TextureType,
+		temp_buffer,
+		image_format,
+		vk.ImageLayoutUndefined,
+		vk.ImageLayoutTransferSrcOptimal); err != nil {
+		return nil, err
+	}
+
+	// Copy the data to the buffer.
+	buff := staging.InternalData.(*VulkanBuffer)
+	image.ImageCopyPixelToBuffer(vr.context, texture.TextureType, buff.Handle, x, y, temp_buffer)
+
+	// Transition from optimal for data reading to shader-read-only optimal layout.
+	if err := image.ImageTransitionLayout(
+		vr.context,
+		texture.TextureType,
+		temp_buffer,
+		image_format,
+		vk.ImageLayoutTransferSrcOptimal,
+		vk.ImageLayoutShaderReadOnlyOptimal); err != nil {
+		return nil, err
+	}
+
+	if err := temp_buffer.EndSingleUse(vr.context, pool, queue); err != nil {
+		return nil, err
+	}
+
+	out_rgba, err := vr.RenderBufferRead(staging, 0, uint64(unsafe.Sizeof(uint8(1))*4))
+	if err != nil {
+		core.LogError("vulkan_buffer_read failed.")
+		return nil, err
+	}
+	if !vr.RenderBufferUnbind(staging) {
+		err := fmt.Errorf("failed to unbind renderbuffer")
+		return nil, err
+	}
+
+	vr.RenderBufferDestroy(staging)
+
+	return out_rgba.([]uint8), nil
 }
 
 func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stageCount uint8, stageFilenames []string, stages []metadata.ShaderStage) bool {
@@ -1309,19 +1534,19 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	maxDescriptorAllocateCount := uint16(1024)
 
 	// Take a copy of the pointer to the context.
-	outShader := shader.InternalData.(*VulkanShader)
+	internalShader := shader.InternalData.(*VulkanShader)
 
 	// initialize descriptorsets
-	for i := range outShader.Config.DescriptorSets {
-		outShader.Config.DescriptorSets[i] = &VulkanDescriptorSetConfig{
+	for i := range internalShader.Config.DescriptorSets {
+		internalShader.Config.DescriptorSets[i] = &VulkanDescriptorSetConfig{
 			Bindings: make([]vk.DescriptorSetLayoutBinding, VULKAN_SHADER_MAX_BINDINGS),
 		}
 	}
 
-	outShader.Renderpass = pass.InternalData.(*VulkanRenderPass)
+	internalShader.Renderpass = pass.InternalData.(*VulkanRenderPass)
 
 	// Build out the configuration.
-	outShader.Config.MaxDescriptorSetCount = maxDescriptorAllocateCount
+	internalShader.Config.MaxDescriptorSetCount = maxDescriptorAllocateCount
 
 	// Iterate provided stages.
 	for i := uint8(0); i < stageCount; i++ {
@@ -1339,59 +1564,59 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 		}
 
 		// Set the stage and bump the counter.
-		outShader.Config.Stages[i].Stage = stageFlag
-		outShader.Config.Stages[i].FileName = stageFilenames[i]
+		internalShader.Config.Stages[i].Stage = stageFlag
+		internalShader.Config.Stages[i].FileName = stageFilenames[i]
 	}
 
 	// Zero out arrays and counts.
-	outShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
-	outShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
+	internalShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
+	internalShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
 
 	// Get the uniform counts.
-	outShader.GlobalUniformCount = 0
-	outShader.GlobalUniformSamplerCount = 0
-	outShader.InstanceUniformCount = 0
-	outShader.InstanceUniformSamplerCount = 0
-	outShader.LocalUniformCount = 0
+	internalShader.GlobalUniformCount = 0
+	internalShader.GlobalUniformSamplerCount = 0
+	internalShader.InstanceUniformCount = 0
+	internalShader.InstanceUniformSamplerCount = 0
+	internalShader.LocalUniformCount = 0
 
 	totalCount := len(config.Uniforms)
 	for i := 0; i < totalCount; i++ {
 		switch config.Uniforms[i].Scope {
 		case metadata.ShaderScopeGlobal:
 			if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
-				outShader.GlobalUniformSamplerCount++
+				internalShader.GlobalUniformSamplerCount++
 			} else {
-				outShader.GlobalUniformCount++
+				internalShader.GlobalUniformCount++
 			}
 		case metadata.ShaderScopeInstance:
 			if config.Uniforms[i].ShaderUniformType == metadata.ShaderUniformTypeSampler {
-				outShader.InstanceUniformSamplerCount++
+				internalShader.InstanceUniformSamplerCount++
 			} else {
-				outShader.InstanceUniformCount++
+				internalShader.InstanceUniformCount++
 			}
 		case metadata.ShaderScopeLocal:
-			outShader.LocalUniformCount++
+			internalShader.LocalUniformCount++
 		}
 	}
 
 	// For now, shaders will only ever have these 2 types of descriptor pools.
-	outShader.Config.PoolSizes[0] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeUniformBuffer, DescriptorCount: 1024}        // HACK: max number of ubo descriptor sets.
-	outShader.Config.PoolSizes[1] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeCombinedImageSampler, DescriptorCount: 4096} // HACK: max number of image sampler descriptor sets.
+	internalShader.Config.PoolSizes[0] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeUniformBuffer, DescriptorCount: 1024}        // HACK: max number of ubo descriptor sets.
+	internalShader.Config.PoolSizes[1] = vk.DescriptorPoolSize{Type: vk.DescriptorTypeCombinedImageSampler, DescriptorCount: 4096} // HACK: max number of image sampler descriptor sets.
 
-	outShader.Config.PoolSizes[0].Deref()
-	outShader.Config.PoolSizes[1].Deref()
+	internalShader.Config.PoolSizes[0].Deref()
+	internalShader.Config.PoolSizes[1].Deref()
 
 	// Global descriptor set Config.
 	descriptorSetCount := 0
-	if outShader.GlobalUniformCount > 0 || outShader.GlobalUniformSamplerCount > 0 {
+	if internalShader.GlobalUniformCount > 0 || internalShader.GlobalUniformSamplerCount > 0 {
 		// Global descriptor set Config.
-		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
+		setConfig := internalShader.Config.DescriptorSets[descriptorSetCount]
 		if len(setConfig.Bindings) == 0 {
 			// we do not know the size in advance
 			setConfig.Bindings = []vk.DescriptorSetLayoutBinding{{}}
 		}
 		// Global UBO binding is first, if present.
-		if outShader.GlobalUniformCount > 0 {
+		if internalShader.GlobalUniformCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
 				Binding:         uint32(setConfig.BindingCount),
 				DescriptorCount: 1,
@@ -1402,10 +1627,10 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 			setConfig.BindingCount++
 		}
 		// Add a binding for Samplers if used.
-		if outShader.GlobalUniformSamplerCount > 0 {
+		if internalShader.GlobalUniformSamplerCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
 				Binding:         uint32(setConfig.BindingCount),
-				DescriptorCount: uint32(outShader.GlobalUniformSamplerCount), // One descriptor per sampler.
+				DescriptorCount: uint32(internalShader.GlobalUniformSamplerCount), // One descriptor per sampler.
 				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
@@ -1418,15 +1643,15 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	}
 
 	// If using instance uniforms, add a UBO descriptor set.
-	if outShader.InstanceUniformCount > 0 || outShader.InstanceUniformSamplerCount > 0 {
+	if internalShader.InstanceUniformCount > 0 || internalShader.InstanceUniformSamplerCount > 0 {
 		// In that set, add a binding for UBO if used.
-		setConfig := outShader.Config.DescriptorSets[descriptorSetCount]
+		setConfig := internalShader.Config.DescriptorSets[descriptorSetCount]
 		if len(setConfig.Bindings) == 0 {
 			// we do not know the size in advance
 			setConfig.Bindings = make([]vk.DescriptorSetLayoutBinding, 1)
 		}
 
-		if outShader.InstanceUniformCount > 0 {
+		if internalShader.InstanceUniformCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
 				Binding:         uint32(setConfig.BindingCount),
 				DescriptorCount: 1,
@@ -1437,10 +1662,10 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 			setConfig.BindingCount++
 		}
 		// Add a binding for Samplers if used.
-		if outShader.InstanceUniformSamplerCount > 0 {
+		if internalShader.InstanceUniformSamplerCount > 0 {
 			setConfig.Bindings[setConfig.BindingCount] = vk.DescriptorSetLayoutBinding{
 				Binding:         uint32(setConfig.BindingCount),
-				DescriptorCount: uint32(outShader.InstanceUniformSamplerCount), // One descriptor per sampler.
+				DescriptorCount: uint32(internalShader.InstanceUniformSamplerCount), // One descriptor per sampler.
 				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
 				StageFlags:      vk.ShaderStageFlags(vk.ShaderStageVertexBit) | vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
 			}
@@ -1455,17 +1680,17 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	// Invalidate all instance states.
 	// TODO: dynamic
 	for i := 0; i < 1024; i++ {
-		if outShader.InstanceStates[i] == nil {
-			outShader.InstanceStates[i] = &VulkanShaderInstanceState{
+		if internalShader.InstanceStates[i] == nil {
+			internalShader.InstanceStates[i] = &VulkanShaderInstanceState{
 				ID: metadata.InvalidID,
 			}
 			continue
 		}
-		outShader.InstanceStates[i].ID = metadata.InvalidID
+		internalShader.InstanceStates[i].ID = metadata.InvalidID
 	}
 
 	// Keep a copy of the cull mode.
-	outShader.Config.CullMode = config.CullMode
+	internalShader.Config.CullMode = config.CullMode
 
 	return true
 }
@@ -1530,19 +1755,19 @@ var shaderAttributeFormats = []vk.Format{
 }
 
 func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
-	logical_device := vr.context.Device.LogicalDevice
-	vk_allocator := vr.context.Allocator
-	s := shader.InternalData.(*VulkanShader)
+	logicalDevice := vr.context.Device.LogicalDevice
+	vkAllocator := vr.context.Allocator
+	internalShader := shader.InternalData.(*VulkanShader)
 
 	// Create a module for each stage.
-	s.Stages = make([]*VulkanShaderStage, VULKAN_SHADER_MAX_STAGES)
+	internalShader.Stages = make([]*VulkanShaderStage, VULKAN_SHADER_MAX_STAGES)
 
-	for i := 0; i < len(s.Config.Stages); i++ {
-		if s.Stages[i] == nil {
-			s.Stages[i] = &VulkanShaderStage{}
+	for i := 0; i < len(internalShader.Config.Stages); i++ {
+		if internalShader.Stages[i] == nil {
+			internalShader.Stages[i] = &VulkanShaderStage{}
 		}
-		if err := vr.createModule(s, s.Config.Stages[i], s.Stages[i]); err != nil {
-			core.LogError("Unable to create %s shader module for '%s'. Shader will be destroyed", s.Config.Stages[i].FileName, shader.Name)
+		if err := vr.createModule(internalShader, internalShader.Config.Stages[i], internalShader.Stages[i]); err != nil {
+			core.LogError("Unable to create %s shader module for '%s'. Shader will be destroyed", internalShader.Config.Stages[i].FileName, shader.Name)
 			return err
 		}
 	}
@@ -1560,7 +1785,7 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 		attribute.Deref()
 
 		// Push into the config's attribute collection and add to the stride.
-		s.Config.Attributes[i] = attribute
+		internalShader.Config.Attributes[i] = attribute
 
 		offset += shader.Attributes[i].Size
 	}
@@ -1569,38 +1794,38 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	pool_info := vk.DescriptorPoolCreateInfo{
 		SType:         vk.StructureTypeDescriptorPoolCreateInfo,
 		PoolSizeCount: 2,
-		PPoolSizes:    s.Config.PoolSizes,
-		MaxSets:       uint32(s.Config.MaxDescriptorSetCount),
+		PPoolSizes:    internalShader.Config.PoolSizes,
+		MaxSets:       uint32(internalShader.Config.MaxDescriptorSetCount),
 		Flags:         vk.DescriptorPoolCreateFlags(vk.DescriptorPoolCreateFreeDescriptorSetBit),
 	}
 	pool_info.Deref()
 
 	// Create descriptor pool.
 	var pDescriptorPool vk.DescriptorPool
-	result := vk.CreateDescriptorPool(logical_device, &pool_info, vk_allocator, &pDescriptorPool)
+	result := vk.CreateDescriptorPool(logicalDevice, &pool_info, vkAllocator, &pDescriptorPool)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 		return err
 	}
-	s.DescriptorPool = pDescriptorPool
+	internalShader.DescriptorPool = pDescriptorPool
 
 	// Create descriptor set layouts.
-	s.DescriptorSetLayouts = make([]vk.DescriptorSetLayout, 2)
-	for i := 0; i < len(s.Config.DescriptorSets); i++ {
+	internalShader.DescriptorSetLayouts = make([]vk.DescriptorSetLayout, 2)
+	for i := 0; i < len(internalShader.Config.DescriptorSets); i++ {
 		layout_info := vk.DescriptorSetLayoutCreateInfo{
 			SType:        vk.StructureTypeDescriptorSetLayoutCreateInfo,
-			BindingCount: uint32(s.Config.DescriptorSets[i].BindingCount),
-			PBindings:    s.Config.DescriptorSets[i].Bindings,
+			BindingCount: uint32(internalShader.Config.DescriptorSets[i].BindingCount),
+			PBindings:    internalShader.Config.DescriptorSets[i].Bindings,
 		}
 		layout_info.Deref()
 
 		var pSetLayout vk.DescriptorSetLayout
-		result = vk.CreateDescriptorSetLayout(logical_device, &layout_info, vk_allocator, &pSetLayout)
+		result = vk.CreateDescriptorSetLayout(logicalDevice, &layout_info, vkAllocator, &pSetLayout)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 			return err
 		}
-		s.DescriptorSetLayouts[i] = pSetLayout
+		internalShader.DescriptorSetLayouts[i] = pSetLayout
 	}
 
 	// TODO: This feels wrong to have these here, at least in this fashion. Should probably
@@ -1629,31 +1854,28 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	}
 	scissor.Deref()
 
-	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, len(s.Config.Stages))
-	for i := 0; i < len(s.Config.Stages); i++ {
-		stage_create_infos[i] = s.Stages[i].ShaderStageCreateInfo
+	stage_create_infos := make([]vk.PipelineShaderStageCreateInfo, len(internalShader.Config.Stages))
+	for i := 0; i < len(internalShader.Config.Stages); i++ {
+		stage_create_infos[i] = internalShader.Stages[i].ShaderStageCreateInfo
 		stage_create_infos[i].Deref()
 	}
 
-	pipeline, err := NewGraphicsPipeline(
-		vr.context,
-		s.Renderpass,
-		uint32(shader.AttributeStride),
-		uint32(len(s.Config.Attributes)),
-		s.Config.Attributes, // shader.attributes,
-		uint32(len(s.DescriptorSetLayouts)),
-		s.DescriptorSetLayouts,
-		uint32(len(stage_create_infos)),
-		stage_create_infos,
-		viewport,
-		scissor,
-		s.Config.CullMode,
-		false,
-		true,
-		uint32(shader.PushConstantRangeCount),
-		shader.PushConstantRanges,
-	)
-	s.Pipeline = pipeline
+	pipConfig := &VulkanPipelineConfig{
+		Renderpass:           internalShader.Renderpass,
+		Stride:               uint32(shader.AttributeStride),
+		Attributes:           internalShader.Config.Attributes,
+		DescriptorSetLayouts: internalShader.DescriptorSetLayouts,
+		Stages:               stage_create_infos,
+		Viewport:             viewport,
+		Scissor:              scissor,
+		CullMode:             internalShader.Config.CullMode,
+		PushConstantRanges:   shader.PushConstantRanges,
+		IsWireframe:          false,
+		ShaderFlags:          shader.Flags,
+	}
+
+	pipeline, err := NewGraphicsPipeline(vr.context, pipConfig)
+	internalShader.Pipeline = pipeline
 
 	if err != nil {
 		core.LogError("failed to load graphics pipeline for object shader")
@@ -1672,40 +1894,40 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 	// Uniform  buffer.
 	// TODO: max count should be configurable, or perhaps long term support of buffer resizing.
 	total_buffer_size := shader.GlobalUboStride + (shader.UboStride * uint64(VULKAN_MAX_MATERIAL_COUNT)) // global + (locals)
-	s.UniformBuffer, err = vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_UNIFORM, total_buffer_size, true)
+	internalShader.UniformBuffer, err = vr.RenderBufferCreate(metadata.RENDERBUFFER_TYPE_UNIFORM, total_buffer_size, true)
 	if err != nil {
 		core.LogError("Vulkan buffer creation failed for object shader.")
 		return err
 	}
-	vr.RenderBufferBind(s.UniformBuffer, 0)
+	vr.RenderBufferBind(internalShader.UniformBuffer, 0)
 
 	// Map the entire buffer's memory.
-	s.MappedUniformBufferBlock = vr.RenderBufferMapMemory(s.UniformBuffer, 0, vk.WholeSize)
+	internalShader.MappedUniformBufferBlock = vr.RenderBufferMapMemory(internalShader.UniformBuffer, 0, vk.WholeSize)
 
 	// Allocate global descriptor sets, one per frame. Global is always the first set.
 	global_layouts := []vk.DescriptorSetLayout{
-		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
-		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
-		s.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+		internalShader.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+		internalShader.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
+		internalShader.DescriptorSetLayouts[DESC_SET_INDEX_GLOBAL],
 	}
 
 	alloc_info := vk.DescriptorSetAllocateInfo{
 		SType:              vk.StructureTypeDescriptorSetAllocateInfo,
-		DescriptorPool:     s.DescriptorPool,
+		DescriptorPool:     internalShader.DescriptorPool,
 		DescriptorSetCount: 3,
 		PSetLayouts:        global_layouts,
 	}
 	alloc_info.Deref()
 
-	s.GlobalDescriptorSets = make([]vk.DescriptorSet, 3)
-	for i := 0; i < len(s.GlobalDescriptorSets); i++ {
-		gds := s.GlobalDescriptorSets[i]
+	internalShader.GlobalDescriptorSets = make([]vk.DescriptorSet, 3)
+	for i := 0; i < len(internalShader.GlobalDescriptorSets); i++ {
+		gds := internalShader.GlobalDescriptorSets[i]
 		result = vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &gds)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		s.GlobalDescriptorSets[i] = gds // not necessary in theory but hey...
+		internalShader.GlobalDescriptorSets[i] = gds // not necessary in theory but hey...
 	}
 
 	return nil
@@ -1959,14 +2181,17 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 	instance_state := internal.InstanceStates[out_instance_id]
 	sampler_binding_index := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
 	instance_texture_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
-	// Wipe out the memory for the entire array, even if it isn't all used.
-	instance_state.InstanceTextureMaps = make([]metadata.TextureMap, shader.InstanceTextureCount)
 
-	// Set unassigned texture pointers to default until assigned.
-	for i := uint32(0); i < instance_texture_count; i++ {
-		if maps[i].Texture != nil {
-			instance_state.InstanceTextureMaps[i].Texture = vr.defaultTexture.DefaultTexture
-			instance_state.InstanceTextureMaps[i].InternalData = *new(vk.Sampler)
+	// Only setup if the shader actually requires it.
+	if shader.InstanceTextureCount > 0 {
+		instance_state.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
+		for i := uint32(0); i < instance_texture_count; i++ {
+			if maps[i].Texture != nil {
+				instance_state.InstanceTextureMaps[i] = &metadata.TextureMap{
+					Texture:      vr.defaultTexture.DefaultTexture,
+					InternalData: *new(vk.Sampler),
+				}
+			}
 		}
 	}
 
@@ -2021,7 +2246,9 @@ func (vr *VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader
 	instance_state := internal.InstanceStates[instance_id]
 
 	// Wait for any pending operations using the descriptor set to finish.
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Free 3 descriptor sets (one per frame)
 	for _, ds := range instance_state.DescriptorSetState.DescriptorSets {
@@ -2050,15 +2277,42 @@ func (vr *VulkanRenderer) SetUniform(shader *metadata.Shader, uniform metadata.S
 		if uniform.Scope == metadata.ShaderScopeGlobal {
 			shader.GlobalTextureMaps[uniform.Location] = value.(*metadata.TextureMap)
 		} else {
-			internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[uniform.Location] = value.(metadata.TextureMap)
+			internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[uniform.Location] = value.(*metadata.TextureMap)
 		}
 	} else {
 		if uniform.Scope == metadata.ShaderScopeLocal {
 			// Is local, using push constants. Do this immediately.
 			command_buffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex].Handle
-			vk.CmdPushConstants(command_buffer, internal.Pipeline.PipelineLayout, vk.ShaderStageFlags(vk.ShaderStageVertexBit)|vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
-				uint32(uniform.Offset), uint32(uniform.Size), unsafe.Pointer(&value),
+
+			var dataPtr unsafe.Pointer
+			var dataSize int
+			switch v := value.(type) {
+			case math.Mat4:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v.Data[0])
+			case math.Vec3:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v)
+			case float32:
+				dataSize = int(unsafe.Sizeof(v))
+				dataPtr = unsafe.Pointer(&v)
+			default:
+				core.LogError("unsupported push constant type: %T", value)
+				return false
+			}
+
+			// Check size consistency
+			if dataSize != int(uniform.Size) {
+				core.LogDebug("size mismatch: expected %d, got %d", uniform.Size, dataSize)
+				return false
+			}
+
+			vk.CmdPushConstants(command_buffer, internal.Pipeline.PipelineLayout,
+				vk.ShaderStageFlags(vk.ShaderStageVertexBit)|vk.ShaderStageFlags(vk.ShaderStageFragmentBit),
+				uint32(uniform.Offset), uint32(uniform.Size), dataPtr,
 			)
+			// Ensure the Go pointer is kept alive during the Vulkan call
+			runtime.KeepAlive(value)
 		} else {
 			// Map the appropriate memory location and copy the data over.
 			addr := internal.MappedUniformBufferBlock.(uint64)
@@ -2108,23 +2362,26 @@ func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.Textu
 func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.TextureMap) {
 	if texture_map != nil {
 		// Make sure there's no way this is in use.
+		queueMutex.Lock()
 		vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+		queueMutex.Unlock()
 		vk.DestroySampler(vr.context.Device.LogicalDevice, texture_map.InternalData.(vk.Sampler), vr.context.Allocator)
 		texture_map.InternalData = 0
 	}
 }
 
-func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.Texture, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
+func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments []*metadata.RenderTargetAttachment, pass *metadata.RenderPass, width, height uint32) (*metadata.RenderTarget, error) {
 	// Max number of attachments
 	attachment_views := make([]vk.ImageView, 32)
 	for i := uint32(0); i < uint32(attachment_count); i++ {
-		attachment_views[i] = (attachments[i].InternalData.(*VulkanImage)).View
+		attachment_views[i] = (attachments[i].Texture.InternalData.(*VulkanImage)).View
 	}
 
 	// Take a copy of the attachments and count.
 	out_target := &metadata.RenderTarget{
-		AttachmentCount: attachment_count,
-		Attachments:     make([]*metadata.Texture, attachment_count),
+		AttachmentCount:     attachment_count,
+		Attachments:         attachments,
+		InternalFramebuffer: new(vk.Framebuffer),
 	}
 
 	framebuffer_create_info := vk.FramebufferCreateInfo{
@@ -2136,10 +2393,10 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments
 		Height:          height,
 		Layers:          1,
 	}
+	framebuffer_create_info.Deref()
 
-	// fb := out_target.InternalFramebuffer
-	var fb vk.Framebuffer
-	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, &fb)
+	fb := out_target.InternalFramebuffer.(*vk.Framebuffer)
+	result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebuffer_create_info, vr.context.Allocator, fb)
 	if !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("%s", VulkanResultString(result, true))
 		return nil, err
@@ -2344,9 +2601,9 @@ func (vr *VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offse
 	return true
 }
 
-func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) ([]interface{}, error) {
+func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset, size uint64) (interface{}, error) {
 	if buffer == nil || buffer.InternalData == nil {
-		err := fmt.Errorf("vulkan_buffer_read requires a valid pointer to a buffer and out_memory, and the size must be nonzero.")
+		err := fmt.Errorf("vulkan_buffer_read requires a valid pointer to a buffer and out_memory, and the size must be nonzero")
 		return nil, err
 	}
 
@@ -2396,7 +2653,6 @@ func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset
 		// kcopy_memory(*out_memory, data_ptr, size);
 		vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
 	}
-
 	return out_memory, nil
 }
 
@@ -2417,6 +2673,10 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 
 	var new_buffer vk.Buffer
 	result := vk.CreateBuffer(vr.context.Device.LogicalDevice, &buffer_info, vr.context.Allocator, &new_buffer)
+	if !VulkanResultIsSuccess(result) {
+		core.LogError("failed to create buffer with error %s", VulkanResultString(result, true))
+		return false
+	}
 
 	// Gather memory requirements.
 	requirements := vk.MemoryRequirements{}
@@ -2428,6 +2688,7 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 		AllocationSize:  requirements.Size,
 		MemoryTypeIndex: uint32(internal_buffer.MemoryIndex),
 	}
+	allocate_info.Deref()
 
 	// Allocate the memory.
 	var new_memory vk.DeviceMemory
@@ -2445,11 +2706,13 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	}
 
 	// Copy over the data.
-	vr.vulkan_buffer_copy_range_internal(internal_buffer.Handle, 0, new_buffer, 0, buffer.TotalSize)
+	vr.vulkanBufferCopyRangeInternal(internal_buffer.Handle, 0, new_buffer, 0, buffer.TotalSize)
 
 	// Make sure anything potentially using these is finished.
 	// NOTE: We could use vkQueueWaitIdle here if we knew what queue this buffer would be used with...
+	queueMutex.Lock()
 	vk.DeviceWaitIdle(vr.context.Device.LogicalDevice)
+	queueMutex.Unlock()
 
 	// Destroy the old
 	if internal_buffer.Memory != nil {
@@ -2536,7 +2799,7 @@ func (vr *VulkanRenderer) RenderBufferCopyRange(source *metadata.RenderBuffer, s
 		return false
 	}
 
-	return vr.vulkan_buffer_copy_range_internal(
+	return vr.vulkanBufferCopyRangeInternal(
 		(source.InternalData.(*VulkanBuffer)).Handle,
 		source_offset,
 		(dest.InternalData.(*VulkanBuffer)).Handle,
@@ -2560,10 +2823,14 @@ func (vr *VulkanRenderer) vulkanBufferIsHostCoherent(buffer *VulkanBuffer) bool 
 	return (buffer.MemoryPropertyFlags & uint32(vk.MemoryPropertyHostCoherentBit)) == uint32(vk.MemoryPropertyHostCoherentBit)
 }
 
-func (vr *VulkanRenderer) vulkan_buffer_copy_range_internal(source vk.Buffer, source_offset uint64, dest vk.Buffer, dest_offset, size uint64) bool {
+func (vr *VulkanRenderer) vulkanBufferCopyRangeInternal(source vk.Buffer, source_offset uint64, dest vk.Buffer, dest_offset, size uint64) bool {
 	// TODO: Assuming queue and pool usage here. Might want dedicated queue.
 	queue := vr.context.Device.GraphicsQueue
+
+	queueMutex.Lock()
 	vk.QueueWaitIdle(queue)
+	queueMutex.Unlock()
+
 	// Create a one-time-use command buffer.
 	temp_command_buffer, err := AllocateAndBeginSingleUse(vr.context, vr.context.Device.GraphicsCommandPool)
 	if err != nil {
@@ -2611,7 +2878,7 @@ func (vr *VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset
 
 func (vr *VulkanRenderer) WindowAttachmentGet(index uint8) *metadata.Texture {
 	if index >= uint8(vr.context.Swapchain.ImageCount) {
-		core.LogFatal("attempting to get attachment index out of range: %d. Attachment count: %d", index, vr.context.Swapchain.ImageCount)
+		core.LogFatal("attempting to get colour attachment index out of range: %d. Attachment count: %d", index, vr.context.Swapchain.ImageCount)
 		return nil
 	}
 	return vr.context.Swapchain.RenderTextures[index]
@@ -2621,8 +2888,16 @@ func (vr *VulkanRenderer) WindowAttachmentIndexGet() uint64 {
 	return uint64(vr.context.ImageIndex)
 }
 
-func (vr *VulkanRenderer) DepthAttachmentGet() *metadata.Texture {
-	return vr.context.Swapchain.DepthTexture
+func (vr *VulkanRenderer) DepthAttachmentGet(index uint8) *metadata.Texture {
+	if index >= uint8(vr.context.Swapchain.ImageCount) {
+		core.LogFatal("attempting to get depth attachment index out of range: %d. Attachment count: %d", index, vr.context.Swapchain.ImageCount)
+		return nil
+	}
+	return vr.context.Swapchain.DepthTextures[index]
+}
+
+func (vr *VulkanRenderer) GetWindowAttachmentCount() uint8 {
+	return uint8(vr.context.Swapchain.ImageCount)
 }
 
 func (vr *VulkanRenderer) convertRepeatType(axis string, repeat metadata.TextureRepeat) vk.SamplerAddressMode {

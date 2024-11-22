@@ -7,8 +7,8 @@ name = "Shader.Builtin.Skybox"
 renderpass = "Renderpass.Builtin.Skybox"
 stages = ["vertex", "fragment"]
 stagefiles = ["shaders/Builtin.SkyboxShader.vert.spv", "shaders/Builtin.SkyboxShader.frag.spv"]
-use_instance = true
-use_local = false
+depth_test = 0
+depth_write = 0
 
 # Attributes
 [[attribute]]

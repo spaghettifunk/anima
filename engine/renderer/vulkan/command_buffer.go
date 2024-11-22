@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	vk "github.com/goki/vulkan"
-	"github.com/spaghettifunk/anima/engine/core"
 )
 
 type VulkanCommandBufferState int
@@ -34,20 +33,22 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 		level = vk.CommandBufferLevelSecondary
 	}
 
-	var allocate_info vk.CommandBufferAllocateInfo = vk.CommandBufferAllocateInfo{
+	allocate_info := vk.CommandBufferAllocateInfo{
 		SType:              vk.StructureTypeCommandBufferAllocateInfo,
 		CommandPool:        pool,
 		CommandBufferCount: 1,
 		Level:              level,
 		PNext:              nil,
 	}
+	allocate_info.Deref()
 
 	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
-	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); res != vk.Success {
-		err := fmt.Errorf("failed to allocate command buffer")
-		core.LogError(err.Error())
+	queueMutex.Lock()
+	if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("failed to allocate command buffer with error %s", VulkanResultString(res, true))
 		return nil, err
 	}
+	queueMutex.Unlock()
 	vCommandBuffer.Handle = pCommandBuffers[0]
 	vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
 
@@ -56,6 +57,7 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 
 func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) {
 	vk.FreeCommandBuffers(context.Device.LogicalDevice, pool, 1, []vk.CommandBuffer{v.Handle})
+
 	v.Handle = nil
 	v.State = COMMAND_BUFFER_STATE_NOT_ALLOCATED
 }
@@ -63,7 +65,6 @@ func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) 
 func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimultaneousUse bool) error {
 	vBeginInfo := vk.CommandBufferBeginInfo{
 		SType: vk.StructureTypeCommandBufferBeginInfo,
-		Flags: 0,
 	}
 
 	if isSingleUse {
@@ -75,25 +76,27 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 	if isSimultaneousUse {
 		vBeginInfo.Flags |= vk.CommandBufferUsageFlags(vk.CommandBufferUsageSimultaneousUseBit)
 	}
-
 	vBeginInfo.Deref()
 
-	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); res != vk.Success {
-		err := fmt.Errorf("failed to begin command buffer")
-		core.LogError(err.Error())
+	queueMutex.Lock()
+	if res := vk.BeginCommandBuffer(v.Handle, &vBeginInfo); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("failed to begin command buffer with error %s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
+
 	v.State = COMMAND_BUFFER_STATE_RECORDING
 
 	return nil
 }
 
 func (v *VulkanCommandBuffer) End() error {
-	if res := vk.EndCommandBuffer(v.Handle); res != vk.Success {
-		err := fmt.Errorf("failed to end command buffer")
-		core.LogError(err.Error())
+	queueMutex.Lock()
+	if res := vk.EndCommandBuffer(v.Handle); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("failed to end command buffer with error %s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
 	v.State = COMMAND_BUFFER_STATE_RECORDING_ENDED
 	return nil
 }
@@ -114,6 +117,7 @@ func AllocateAndBeginSingleUse(context *VulkanContext, pool vk.CommandPool) (*Vu
 	if err != nil {
 		return nil, err
 	}
+
 	if err := cb.Begin(true, false, false); err != nil {
 		return nil, err
 	}
@@ -135,19 +139,22 @@ func (v *VulkanCommandBuffer) EndSingleUse(context *VulkanContext, pool vk.Comma
 		CommandBufferCount: 1,
 		PCommandBuffers:    []vk.CommandBuffer{v.Handle},
 	}
+	submit_info.Deref()
 
-	if res := vk.QueueSubmit(queue, 1, []vk.SubmitInfo{submit_info}, nil); res != vk.Success {
-		err := fmt.Errorf("failed submit info to queue")
-		core.LogError(err.Error())
+	queueMutex.Lock()
+	if res := vk.QueueSubmit(queue, 1, []vk.SubmitInfo{submit_info}, nil); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("%s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
 
 	// Wait for it to finish
-	if res := vk.QueueWaitIdle(queue); res != vk.Success {
-		err := fmt.Errorf("queue failed to wait in idle mode")
-		core.LogError(err.Error())
+	queueMutex.Lock()
+	if res := vk.QueueWaitIdle(queue); !VulkanResultIsSuccess(res) {
+		err := fmt.Errorf("%s", VulkanResultString(res, true))
 		return err
 	}
+	queueMutex.Unlock()
 
 	// Free the command buffer.
 	v.Free(context, pool)

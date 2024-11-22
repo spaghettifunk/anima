@@ -264,14 +264,14 @@ func InputWasButtonUp(button Button) bool {
 	return !inputState.MousePrevious.Buttons[button]
 }
 
-func InputGetMousePosition(x int32, y int32) (int32, int32) {
+func InputGetMousePosition() (int32, int32) {
 	if !inputInitialized {
 		return 0, 0
 	}
 	return int32(inputState.MouseCurrent.X), int32(inputState.MouseCurrent.Y)
 }
 
-func InputGetPreviousMousePosition(x int32, y int32) (int32, int32) {
+func InputGetPreviousMousePosition() (int32, int32) {
 	if !inputInitialized {
 		return 0, 0
 	}

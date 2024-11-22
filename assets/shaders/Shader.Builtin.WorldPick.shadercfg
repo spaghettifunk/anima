@@ -1,0 +1,50 @@
+# Using TOML as base of the sahder configuration
+# Different extension to determine which Go structure to invoke to populate the data
+
+version = "1.0"
+name = "Shader.Builtin.WorldPick"
+renderpass = "Renderpass.Builtin.Pick"
+stages = ["vertex", "fragment"]
+stagefiles = ["shaders/Builtin.WorldPickShader.vert.spv", "shaders/Builtin.WorldPickShader.frag.spv"]
+depth_test = 1
+depth_write = 1
+
+[[attribute]]
+type = "vec3"
+name = "in_position"
+
+[[attribute]]
+type = "vec3"
+name = "in_normal"
+
+[[attribute]]
+type = "vec2"
+name = "in_texcoord"
+
+[[attribute]]
+type = "vec4"
+name = "in_colour"
+
+[[attribute]]
+type = "vec3"
+name = "in_tangent"
+
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "projection"
+
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "view"
+
+[[uniform]]
+type = "vec3"
+scope = 1
+name = "id_colour"
+
+[[uniform]]
+type = "mat4"
+scope = 2
+name = "model"

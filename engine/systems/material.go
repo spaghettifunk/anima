@@ -235,7 +235,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			return nil, err
 		}
 		// Save off the locations for known types for quick lookups.
-		if ms.MaterialShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_MATERIAL {
+		if ms.MaterialShaderID == metadata.InvalidID && config.ShaderName == "Shader.Builtin.Material" {
 			ms.MaterialShaderID = shader.ID
 			ms.MaterialLocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.MaterialLocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -248,7 +248,7 @@ func (ms *MaterialSystem) AcquireFromConfig(config *metadata.MaterialConfig) (*m
 			ms.MaterialLocations.Shininess = ms.shaderSystem.GetUniformIndex(shader, "shininess")
 			ms.MaterialLocations.Model = ms.shaderSystem.GetUniformIndex(shader, "model")
 			ms.MaterialLocations.RenderMode = ms.shaderSystem.GetUniformIndex(shader, "mode")
-		} else if ms.UIShaderID == metadata.InvalidID && config.ShaderName == metadata.BUILTIN_SHADER_NAME_UI {
+		} else if ms.UIShaderID == metadata.InvalidID && config.ShaderName == "Shader.Builtin.UI" {
 			ms.UIShaderID = shader.ID
 			ms.UILocations.Projection = ms.shaderSystem.GetUniformIndex(shader, "projection")
 			ms.UILocations.View = ms.shaderSystem.GetUniformIndex(shader, "view")
@@ -390,27 +390,27 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
 	if needsUpdate {
 		if material.ShaderID == ms.MaterialShaderID {
 			// Material shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, &material.DiffuseColour); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, material.DiffuseColour); !ok {
 				return ms.materialFail("msState.MaterialLocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, &material.DiffuseMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, material.DiffuseMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.DiffuseTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, &material.SpecularMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, material.SpecularMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.SpecularTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, &material.NormalMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, material.NormalMap); !ok {
 				return ms.materialFail("msState.MaterialLocations.NormalTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, &material.Shininess); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, material.Shininess); !ok {
 				return ms.materialFail("msState.MaterialLocations.Shininess")
 			}
 		} else if material.ShaderID == ms.UIShaderID {
 			// UI shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, &material.DiffuseColour); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, material.DiffuseColour); !ok {
 				return ms.materialFail("msState.UILocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, &material.DiffuseMap); !ok {
+			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, material.DiffuseMap); !ok {
 				return ms.materialFail("msState.UILocations.DiffuseTexture")
 			}
 		} else {
@@ -478,7 +478,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.DiffuseMapName) > 0 {
 		material.DiffuseMap.Use = metadata.TextureUseMapDiffuse
-		t, err := ms.textureSystem.Acquire(config.DiffuseMapName, true)
+		t, err := ms.textureSystem.Aquire(config.DiffuseMapName, true)
 		if err != nil {
 			return nil, err
 		}
@@ -501,7 +501,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.SpecularMapName) > 0 {
 		material.SpecularMap.Use = metadata.TextureUseMapSpecular
-		t, err := ms.textureSystem.Acquire(config.SpecularMapName, true)
+		t, err := ms.textureSystem.Aquire(config.SpecularMapName, true)
 		if err != nil {
 			return nil, err
 		}
@@ -523,7 +523,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 	if len(config.NormalMapName) > 0 {
 		material.NormalMap.Use = metadata.TextureUseMapNormal
-		t, err := ms.textureSystem.Acquire(config.NormalMapName, true)
+		t, err := ms.textureSystem.Aquire(config.NormalMapName, true)
 		if err != nil {
 			return nil, err
 		}
@@ -611,7 +611,7 @@ func (ms *MaterialSystem) createDefaultMaterial() bool {
 
 	texture_maps := []*metadata.TextureMap{ms.DefaultMaterial.DiffuseMap, ms.DefaultMaterial.SpecularMap, ms.DefaultMaterial.NormalMap}
 
-	shader, err := ms.shaderSystem.GetShader(metadata.BUILTIN_SHADER_NAME_MATERIAL)
+	shader, err := ms.shaderSystem.GetShader("Shader.Builtin.Material")
 	if err != nil {
 		core.LogError(err.Error())
 		return false

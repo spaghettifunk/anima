@@ -12,16 +12,16 @@ import (
 type ShaderLoader struct{}
 
 type tmpShaderConfig struct {
-	Version     string      `toml:"version"`
-	Name        string      `toml:"name"`
-	CullMode    string      `toml:"cull_mode"`
-	Renderpass  string      `toml:"renderpass"`
-	Stages      []string    `toml:"stages"`
-	StageFiles  []string    `toml:"stagefiles"`
-	UseInstance bool        `toml:"use_instance"`
-	UseLocal    bool        `toml:"use_local"`
-	Attributes  []attribute `toml:"attribute"`
-	Uniforms    []uniform   `toml:"uniform"`
+	Version    string      `toml:"version"`
+	Name       string      `toml:"name"`
+	CullMode   string      `toml:"cull_mode"`
+	Renderpass string      `toml:"renderpass"`
+	Stages     []string    `toml:"stages"`
+	StageFiles []string    `toml:"stagefiles"`
+	DepthTest  int         `toml:"depth_test"`
+	DepthWrite int         `toml:"depth_write"`
+	Attributes []attribute `toml:"attribute"`
+	Uniforms   []uniform   `toml:"uniform"`
 }
 
 // attribute represents a single attribute entry
@@ -62,6 +62,8 @@ func (config *tmpShaderConfig) TransformToShaderConfig() (*metadata.ShaderConfig
 		RenderpassName: config.Renderpass,
 		StageNames:     config.StageFiles,
 		StageFilenames: config.StageFiles,
+		DepthTest:      config.DepthTest != 0,
+		DepthWrite:     config.DepthWrite != 0,
 	}
 
 	stages := make([]metadata.ShaderStage, len(config.Stages))

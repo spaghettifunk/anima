@@ -19,6 +19,7 @@ type SystemManager struct {
 	ShaderSystem     *ShaderSystem
 	TextureSystem    *TextureSystem
 	RendererSystem   *RendererSystem
+	FontSystem       *FontSystem
 	AssetManager     *assets.AssetManager
 }
 
@@ -68,9 +69,34 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		return nil, err
 	}
 
+	fs, err := NewFontSystem(&FontSystemConfig{
+		AutoRelease:            false,
+		DefaultBitmapFontCount: 1,
+		DefaultSystemFontCount: 1,
+		MaxSystemFontCount:     101,
+		MaxBitmapFontCount:     101,
+		BitmapFontConfigs: []*metadata.BitmapFontConfig{
+			{
+				Name:         "Ubuntu Mono 21px",
+				ResourceName: "UbuntuMono21px",
+				Size:         21,
+			},
+		},
+		SystemFontConfigs: []*metadata.SystemFontConfig{
+			{
+				DefaultSize:  20,
+				Name:         "Noto Sans",
+				ResourceName: "NotoSansCJK",
+			},
+		},
+	}, ts, ssys, am, renderer)
+	if err != nil {
+		return nil, err
+	}
+
 	rvs, err := NewRenderViewSystem(RenderViewSystemConfig{
 		MaxViewCount: 251,
-	}, renderer, ssys, cs, ms)
+	}, renderer, ssys, cs, ms, fs)
 	if err != nil {
 		return nil, err
 	}
@@ -86,6 +112,7 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 	if err != nil {
 		return nil, err
 	}
+
 	return &SystemManager{
 		RendererSystem:   renderer,
 		CameraSystem:     cs,
@@ -96,12 +123,13 @@ func NewSystemManager(appName string, width, height uint32, platform *platform.P
 		GeometrySystem:   gs,
 		MeshLoaderSystem: mls,
 		RenderViewSystem: rvs,
+		FontSystem:       fs,
 		AssetManager:     am,
 	}, nil
 }
 
 func (sm *SystemManager) Initialize() error {
-	if err := sm.RendererSystem.Initialize(sm.ShaderSystem); err != nil {
+	if err := sm.RendererSystem.Initialize(sm.ShaderSystem, sm.RenderViewSystem); err != nil {
 		return err
 	}
 	if err := sm.TextureSystem.Initialize(); err != nil {
@@ -113,6 +141,9 @@ func (sm *SystemManager) Initialize() error {
 	if err := sm.GeometrySystem.Initialize(); err != nil {
 		return err
 	}
+	// if err := sm.FontSystem.Initialize(); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
@@ -142,6 +173,9 @@ func (sm *SystemManager) Shutdown() error {
 	if err := sm.RenderViewSystem.Shutdown(); err != nil {
 		return err
 	}
+	// if err := sm.FontSystem.Shutdown(); err != nil {
+	// 	return err
+	// }
 	if err := sm.MeshLoaderSystem.Shutdown(); err != nil {
 		return err
 	}

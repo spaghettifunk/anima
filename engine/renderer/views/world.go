@@ -23,6 +23,7 @@ type RenderViewWorld struct {
 
 	// Shader
 	Shader *metadata.Shader
+	View   *metadata.RenderView
 }
 
 type GeometryDistance struct {
@@ -30,12 +31,15 @@ type GeometryDistance struct {
 	Distance           float32
 }
 
-func NewRenderViewWorld(shader *metadata.Shader, camera *components.Camera) *RenderViewWorld {
-	return &RenderViewWorld{
+func NewRenderViewWorld(view *metadata.RenderView, shader *metadata.Shader, camera *components.Camera) *RenderViewWorld {
+	rvw := &RenderViewWorld{
 		ShaderID:    shader.ID,
 		Shader:      shader,
 		WorldCamera: camera,
+		View:        view,
 	}
+	view.InternalData = rvw
+	return rvw
 }
 
 func (vw *RenderViewWorld) renderViewOnEvent(context core.EventContext) {
@@ -60,7 +64,7 @@ func (vw *RenderViewWorld) renderViewOnEvent(context core.EventContext) {
 	}
 }
 
-func (vw *RenderViewWorld) OnCreateRenderView(uniforms map[string]uint16) bool {
+func (vw *RenderViewWorld) OnCreate(uniforms map[string]uint16) bool {
 	// Get either the custom shader override or the defined default.
 	// TODO: Set from configuration.
 	vw.NearClip = 0.1
@@ -79,16 +83,16 @@ func (vw *RenderViewWorld) OnCreateRenderView(uniforms map[string]uint16) bool {
 	return true
 }
 
-func (vw *RenderViewWorld) OnDestroyRenderView() error {
+func (vw *RenderViewWorld) OnDestroy() error {
 	return nil
 }
 
-func (vw *RenderViewWorld) OnResizeRenderView(width, height uint32) {
+func (vw *RenderViewWorld) OnResize(width, height uint32) {
 	aspect := float32(width / height)
 	vw.ProjectionMatrix = math.NewMat4Perspective(vw.FOV, aspect, vw.NearClip, vw.FarClip)
 }
 
-func (vw *RenderViewWorld) OnBuildPacketRenderView(data interface{}) (*metadata.RenderViewPacket, error) {
+func (vw *RenderViewWorld) OnBuildPacket(data interface{}) (*metadata.RenderViewPacket, error) {
 	mesh_data := data.(*metadata.MeshPacketData)
 
 	out_packet := &metadata.RenderViewPacket{
@@ -97,6 +101,7 @@ func (vw *RenderViewWorld) OnBuildPacketRenderView(data interface{}) (*metadata.
 		ViewMatrix:       vw.WorldCamera.GetView(),
 		ViewPosition:     vw.WorldCamera.GetPosition(),
 		AmbientColour:    vw.AmbientColour,
+		View:             vw.View,
 	}
 
 	// Obtain all geometries from the current scene.
@@ -153,11 +158,15 @@ func (vw *RenderViewWorld) OnBuildPacketRenderView(data interface{}) (*metadata.
 	return out_packet, nil
 }
 
-func (vw *RenderViewWorld) OnDestroyPacketRenderView(packet *metadata.RenderViewPacket) {
+func (vw *RenderViewWorld) OnDestroyPacket(packet *metadata.RenderViewPacket) {
 	packet.Geometries = nil
 	packet = nil
 }
 
-func (vw *RenderViewWorld) OnRenderRenderView(view *metadata.RenderView, packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
+func (vw *RenderViewWorld) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
+	return true
+}
+
+func (vw *RenderViewWorld) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
 	return true
 }

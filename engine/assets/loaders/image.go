@@ -1,9 +1,9 @@
 package loaders
 
 /*
-#cgo CFLAGS: -I../vendors
+#cgo CFLAGS: -I../../vendors
 #define STB_IMAGE_IMPLEMENTATION
-#include "../vendors/stb_image.h"
+#include "../../vendors/stb_image.h"
 */
 import "C"
 import (

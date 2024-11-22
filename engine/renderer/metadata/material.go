@@ -38,6 +38,7 @@ type MaterialReference struct {
  * a file or created in code to load a material from.
  */
 type MaterialConfig struct {
+	Version float32
 	/** @brief The name of the material. */
 	Name string
 	/** @brief The material type. */

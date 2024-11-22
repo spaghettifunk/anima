@@ -1,0 +1,38 @@
+# Using TOML as base of the sahder configuration
+# Different extension to determine which Go structure to invoke to populate the data
+
+version = "1.0"
+name = "Shader.Builtin.UIPick"
+renderpass = "Renderpass.Builtin.Pick"
+stages = ["vertex", "fragment"]
+stagefiles = ["shaders/Builtin.UIPickShader.vert.spv", "shaders/Builtin.UIPickShader.frag.spv"]
+depth_test = 0
+depth_write = 0
+
+[[attribute]]
+type = "vec2"
+name = "in_position"
+
+[[attribute]]
+type = "vec2"
+name = "in_texcoord"
+
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "projection"
+
+[[uniform]]
+type = "mat4"
+scope = 0
+name = "view"
+
+[[uniform]]
+type = "vec3"
+scope = 1
+name = "id_colour"
+
+[[uniform]]
+type = "mat4"
+scope = 2
+name = "model"

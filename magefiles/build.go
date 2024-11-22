@@ -32,6 +32,18 @@ func buildShaders() error {
 	if _, err := executeCmd(fmt.Sprintf("%s/bin/glslc", vkSDKPath), withArgs("-fshader-stage=frag", "assets/shaders/Builtin.UIShader.frag.glsl", "-o", "assets/shaders/Builtin.UIShader.frag.spv"), withStream()); err != nil {
 		return err
 	}
+	if _, err := executeCmd(fmt.Sprintf("%s/bin/glslc", vkSDKPath), withArgs("-fshader-stage=vert", "assets/shaders/Builtin.UIPickShader.vert.glsl", "-o", "assets/shaders/Builtin.UIPickShader.vert.spv"), withStream()); err != nil {
+		return err
+	}
+	if _, err := executeCmd(fmt.Sprintf("%s/bin/glslc", vkSDKPath), withArgs("-fshader-stage=frag", "assets/shaders/Builtin.UIPickShader.frag.glsl", "-o", "assets/shaders/Builtin.UIPickShader.frag.spv"), withStream()); err != nil {
+		return err
+	}
+	if _, err := executeCmd(fmt.Sprintf("%s/bin/glslc", vkSDKPath), withArgs("-fshader-stage=vert", "assets/shaders/Builtin.WorldPickShader.vert.glsl", "-o", "assets/shaders/Builtin.WorldPickShader.vert.spv"), withStream()); err != nil {
+		return err
+	}
+	if _, err := executeCmd(fmt.Sprintf("%s/bin/glslc", vkSDKPath), withArgs("-fshader-stage=frag", "assets/shaders/Builtin.WorldPickShader.frag.glsl", "-o", "assets/shaders/Builtin.WorldPickShader.frag.spv"), withStream()); err != nil {
+		return err
+	}
 	return nil
 }
 
