@@ -298,22 +298,24 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 	}
 
 	// If the begin frame returned successfully, mid-frame operations may continue.
-	if err := r.backend.BeginFrame(packet.DeltaTime); err == nil {
-		attachmentIndex := r.backend.WindowAttachmentIndexGet()
+	if err := r.backend.BeginFrame(packet.DeltaTime); err != nil {
+		return err
+	}
 
-		// Render each view.
-		for i := 0; i < len(packet.Views); i++ {
-			if err := renderViewSystem.OnRender(packet.Views[i].View, packet.Views[i], r.backend.FrameNumber, attachmentIndex); err != nil {
-				core.LogError("error rendering view index %d", i)
-				return err
-			}
-		}
+	attachmentIndex := r.backend.WindowAttachmentIndexGet()
 
-		// End the frame. If this fails, it is likely unrecoverable.
-		if err := r.backend.EndFrame(packet.DeltaTime); err != nil {
-			err := fmt.Errorf("backend func EndFrame failed. Application shutting down")
+	// Render each view.
+	for i := 0; i < len(packet.Views); i++ {
+		if err := renderViewSystem.OnRender(packet.Views[i].View, packet.Views[i], r.backend.FrameNumber, attachmentIndex); err != nil {
+			core.LogError("error rendering view index %d", i)
 			return err
 		}
+	}
+
+	// End the frame. If this fails, it is likely unrecoverable.
+	if err := r.backend.EndFrame(packet.DeltaTime); err != nil {
+		core.LogError("backend func EndFrame failed. Application shutting down")
+		return err
 	}
 	return nil
 }
@@ -355,6 +357,10 @@ func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig, pas
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {
+	// Destroy its rendertargets.
+	for i := 0; i < int(pass.RenderTargetCount); i++ {
+		r.backend.RenderTargetDestroy(pass.Targets[i], true)
+	}
 	r.backend.RenderPassDestroy(pass)
 }
 

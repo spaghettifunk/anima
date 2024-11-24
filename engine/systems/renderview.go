@@ -694,6 +694,7 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			err := fmt.Errorf("failed to apply projection matrix")
 			return err
 		}
+
 		if !rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ViewLocation, data.WorldShaderInfo.View) {
 			err := fmt.Errorf("failed to apply view matrix")
 			return err
@@ -797,7 +798,7 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 
 			needs_update := !data.InstanceUpdated[current_instance_id]
 			if !rvs.shaderSystem.ApplyInstance(needs_update) {
-				err := fmt.Errorf("failed to apply instance shader")
+				err := fmt.Errorf("failed to apply instance shader for the rest of the geometry")
 				return err
 			}
 
@@ -882,6 +883,11 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 }
 
 func (rvs *RenderViewSystem) pickOnBuildPacket(view *metadata.RenderView, data interface{}) (*metadata.RenderViewPacket, error) {
+	rvp, err := view.View.OnBuildPacket(data)
+	if err != nil {
+		return nil, err
+	}
+
 	packet := data.(*metadata.PickPacketData)
 	internalData := view.InternalData.(*views.RenderViewPick)
 
@@ -907,11 +913,7 @@ func (rvs *RenderViewSystem) pickOnBuildPacket(view *metadata.RenderView, data i
 			internalData.InstanceUpdated = append(internalData.InstanceUpdated, false)
 		}
 	}
-	op, err := view.View.OnBuildPacket(data)
-	if err != nil {
-		return nil, err
-	}
-	return op, nil
+	return rvp, nil
 }
 
 func (rvs *RenderViewSystem) pickOnDestroy(view *views.RenderViewPick) error {

@@ -525,7 +525,7 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	submit_info.PWaitDstStageMask = []vk.PipelineStageFlags{flags}
 
 	queueMutex.Lock()
-	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, vr.context.InFlightFences[vr.context.CurrentFrame]); result != vk.Success {
+	if result := vk.QueueSubmit(vr.context.Device.GraphicsQueue, 1, []vk.SubmitInfo{submit_info}, vr.context.InFlightFences[vr.context.CurrentFrame]); !VulkanResultIsSuccess(result) {
 		err := fmt.Errorf("vkQueueSubmit failed with result: %s", VulkanResultString(result, true))
 		return err
 	}
@@ -1569,8 +1569,8 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	}
 
 	// Zero out arrays and counts.
-	internalShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
-	internalShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
+	// internalShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
+	// internalShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
 
 	// Get the uniform counts.
 	internalShader.GlobalUniformCount = 0
@@ -2103,12 +2103,12 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 
 		// Iterate samplers.
 		if internal.InstanceUniformSamplerCount > 0 {
-			sampler_binding_index := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
-			total_sampler_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
-			update_sampler_count := uint32(0)
-			image_infos := make([]vk.DescriptorImageInfo, VULKAN_SHADER_MAX_GLOBAL_TEXTURES)
+			samplerBindingIndex := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
+			totalSamplerCount := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[samplerBindingIndex].DescriptorCount
+			updateSamplerCount := uint32(0)
+			imageInfos := make([]vk.DescriptorImageInfo, VULKAN_SHADER_MAX_GLOBAL_TEXTURES)
 
-			for i := uint32(0); i < total_sampler_count; i++ {
+			for i := uint32(0); i < totalSamplerCount; i++ {
 				// TODO: only update in the list if actually needing an update.
 				texture_map := internal.InstanceStates[shader.BoundInstanceID].InstanceTextureMaps[i]
 				texture := texture_map.Texture
@@ -2129,9 +2129,9 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 				}
 
 				image := texture.InternalData.(*VulkanImage)
-				image_infos[i].ImageLayout = vk.ImageLayoutShaderReadOnlyOptimal
-				image_infos[i].ImageView = image.View
-				image_infos[i].Sampler = texture_map.InternalData.(vk.Sampler)
+				imageInfos[i].ImageLayout = vk.ImageLayoutShaderReadOnlyOptimal
+				imageInfos[i].ImageView = image.View
+				imageInfos[i].Sampler = texture_map.InternalData.(vk.Sampler)
 
 				// TODO: change up descriptor state to handle this properly.
 				// Sync frame generation if not using a default texture.
@@ -2140,7 +2140,7 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 				//     *descriptor_id = t.id;
 				// }
 
-				update_sampler_count++
+				updateSamplerCount++
 			}
 
 			sampler_descriptor := vk.WriteDescriptorSet{
@@ -2148,8 +2148,8 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 				DstSet:          object_descriptor_set,
 				DstBinding:      descriptor_index,
 				DescriptorType:  vk.DescriptorTypeCombinedImageSampler,
-				DescriptorCount: update_sampler_count,
-				PImageInfo:      image_infos,
+				DescriptorCount: updateSamplerCount,
+				PImageInfo:      imageInfos,
 			}
 			sampler_descriptor.Deref()
 
@@ -2158,7 +2158,18 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 		}
 
 		if descriptor_count > 0 {
-			vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, descriptor_count, descriptor_writes, 0, nil)
+			descrWritesNil := true
+			for _, d := range descriptor_writes {
+				if !vr.isWriteDescriptorValid(d) {
+					descrWritesNil = false
+					break
+				}
+			}
+			if descrWritesNil {
+				vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, descriptor_count, descriptor_writes, 0, nil)
+			} else {
+				vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, 0, nil, 0, nil)
+			}
 		}
 	}
 
@@ -2168,32 +2179,48 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needs_upd
 	return true
 }
 
+// Wrapper function to safely validate a descriptor set
+func (vr *VulkanRenderer) isWriteDescriptorValid(descriptor vk.WriteDescriptorSet) (isValid bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			core.LogInfo("recovered from panic: %v", r)
+			isValid = false
+		}
+	}()
+	// Validation logic - potential nil access
+	if descriptor.DstSet == vk.NullDescriptorSet {
+		panic("descriptor contains invalid DstSet resources")
+	}
+	// If no panic occurred, it's valid
+	return true
+}
+
 func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
 	internal := shader.InternalData.(*VulkanShader)
 	// TODO: dynamic
-	out_instance_id := metadata.InvalidID
+	outInstanceID := metadata.InvalidID
 	for i := uint32(0); i < 1024; i++ {
 		if internal.InstanceStates[i].ID == metadata.InvalidID {
 			internal.InstanceStates[i].ID = i
-			out_instance_id = i
+			outInstanceID = i
 			break
 		}
 	}
-	if out_instance_id == metadata.InvalidID {
+	if outInstanceID == metadata.InvalidID {
 		err := fmt.Errorf("vulkan_shader_acquire_instance_resources failed to acquire new id")
 		return 0, err
 	}
 
-	instance_state := internal.InstanceStates[out_instance_id]
-	sampler_binding_index := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
-	instance_texture_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[sampler_binding_index].DescriptorCount
+	instanceState := internal.InstanceStates[outInstanceID]
+	samplerBindingIndex := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
+	instanceTextureCount := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[samplerBindingIndex].DescriptorCount
 
 	// Only setup if the shader actually requires it.
 	if shader.InstanceTextureCount > 0 {
-		instance_state.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
-		for i := uint32(0); i < instance_texture_count; i++ {
+		instanceState.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
+		for i := uint32(0); i < instanceTextureCount; i++ {
 			if maps[i].Texture == nil {
-				instance_state.InstanceTextureMaps[i] = &metadata.TextureMap{
+				instanceState.InstanceTextureMaps[i] = &metadata.TextureMap{
 					Texture:      vr.defaultTexture.DefaultTexture,
 					InternalData: *new(vk.Sampler),
 				}
@@ -2203,7 +2230,7 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 
 	// Allocate some space in the UBO - by the stride, not the size.
 	internal.UniformBuffer.Buffer = make([]interface{}, uint32(m.Max(1, float64(shader.UboStride))))
-	set_state := instance_state.DescriptorSetState
+	set_state := instanceState.DescriptorSetState
 
 	// Each descriptor binding in the set
 	binding_count := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].BindingCount
@@ -2234,17 +2261,17 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 	}
 	alloc_info.Deref()
 
-	for i := 0; i < len(instance_state.DescriptorSetState.DescriptorSets); i++ {
+	for i := 0; i < len(set_state.DescriptorSets); i++ {
 		var pDescriptorSets vk.DescriptorSet
 		result := vk.AllocateDescriptorSets(vr.context.Device.LogicalDevice, &alloc_info, &pDescriptorSets)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("error allocating instance descriptor sets in shader: '%s'", VulkanResultString(result, true))
 			return 0, err
 		}
-		instance_state.DescriptorSetState.DescriptorSets[i] = pDescriptorSets
+		set_state.DescriptorSets[i] = pDescriptorSets
 	}
 
-	return out_instance_id, nil
+	return outInstanceID, nil
 }
 
 func (vr *VulkanRenderer) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
@@ -2613,8 +2640,7 @@ func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset
 		return nil, err
 	}
 
-	out_memory := make([]interface{}, 1)
-
+	var out_memory interface{}
 	internal_buffer := buffer.InternalData.(*VulkanBuffer)
 	if vr.vulkanBufferIsDeviceLocal(internal_buffer) && !vr.vulkanBufferIsHostVisible(internal_buffer) {
 		// NOTE: If a read buffer is needed (i.e.) the target buffer's memory is not host visible but is device-local,
@@ -2633,15 +2659,17 @@ func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset
 		vr.RenderBufferCopyRange(buffer, offset, read, 0, size)
 
 		// Map/copy/unmap
-		var mapped_data interface{}
-		md := unsafe.Pointer(&mapped_data)
-		result := vk.MapMemory(vr.context.Device.LogicalDevice, read_internal.Memory, 0, vk.DeviceSize(size), 0, &md)
+		var dataPtr unsafe.Pointer
+		result := vk.MapMemory(vr.context.Device.LogicalDevice, read_internal.Memory, 0, vk.DeviceSize(size), 0, &dataPtr)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return nil, err
 		}
 
 		// kcopy_memory(*out_memory, mapped_data, size);
+		slice := unsafe.Slice(&dataPtr, size)
+		out_memory = *(*[]uint8)(unsafe.Pointer(&slice))
+
 		vk.UnmapMemory(vr.context.Device.LogicalDevice, read_internal.Memory)
 
 		// Clean up the read buffer.
@@ -2649,14 +2677,18 @@ func (vr *VulkanRenderer) RenderBufferRead(buffer *metadata.RenderBuffer, offset
 		vr.RenderBufferDestroy(read)
 	} else {
 		// If no staging buffer is needed, map/copy/unmap.
-		var data_ptr interface{}
-		dp := unsafe.Pointer(&data_ptr)
-		result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &dp)
+		var dataPtr unsafe.Pointer
+		result := vk.MapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory, vk.DeviceSize(offset), vk.DeviceSize(size), 0, &dataPtr)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return nil, err
 		}
 		// kcopy_memory(*out_memory, data_ptr, size);
+		// Create a slice header
+		slice := unsafe.Slice(&dataPtr, size)
+
+		// Convert the slice header to a []uint8
+		out_memory = *(*[]uint8)(unsafe.Pointer(&slice))
 		vk.UnmapMemory(vr.context.Device.LogicalDevice, internal_buffer.Memory)
 	}
 	return out_memory, nil
