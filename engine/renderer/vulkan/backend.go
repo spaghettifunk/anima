@@ -1601,7 +1601,7 @@ func (vr *VulkanRenderer) TextureReadPixel(texture *metadata.Texture, x, y uint3
 	return outRGBA.([]uint8), nil
 }
 
-func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stageCount uint8, stageFilenames []string, stages []metadata.ShaderStage) bool {
+func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stageCount uint8, stageFilenames []string, stages []metadata.ShaderStage) error {
 	shader.InternalData = &VulkanShader{
 		Config: &VulkanShaderConfig{
 			PoolSizes:      make([]vk.DescriptorPoolSize, 2),
@@ -1677,8 +1677,8 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	}
 
 	// Zero out arrays and counts.
-	// internalShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
-	// internalShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
+	internalShader.Config.DescriptorSets[0].SamplerBindingIndex = metadata.InvalidIDUint8
+	internalShader.Config.DescriptorSets[1].SamplerBindingIndex = metadata.InvalidIDUint8
 
 	// Get the uniform counts.
 	internalShader.GlobalUniformCount = 0
@@ -1790,7 +1790,8 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	for i := 0; i < 1024; i++ {
 		if internalShader.InstanceStates[i] == nil {
 			internalShader.InstanceStates[i] = &VulkanShaderInstanceState{
-				ID: metadata.InvalidID,
+				ID:                 metadata.InvalidID,
+				DescriptorSetState: &VulkanShaderDescriptorSetState{},
 			}
 			continue
 		}
@@ -1800,14 +1801,14 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	// Keep a copy of the cull mode.
 	internalShader.Config.CullMode = config.CullMode
 
-	return true
+	return nil
 }
 
 func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) error {
 	if s != nil && s.InternalData != nil {
 		shader := s.InternalData.(*VulkanShader)
 		if shader != nil {
-			err := fmt.Errorf("vulkan_renderer_shader_destroy requires a valid pointer to a shader.")
+			err := fmt.Errorf("vulkan_renderer_shader_destroy requires a valid pointer to a shader")
 			return err
 		}
 
@@ -1819,11 +1820,11 @@ func (vr *VulkanRenderer) ShaderDestroy(s *metadata.Shader) error {
 			if shader.DescriptorSetLayouts[i] != vk.NullDescriptorSetLayout {
 				if err := lockPool.SafeCall(PipelineManagement, func() error {
 					vk.DestroyDescriptorSetLayout(logicalDevice, shader.DescriptorSetLayouts[i], vkAllocator)
-					shader.DescriptorSetLayouts[i] = nil
 					return nil
 				}); err != nil {
 					return err
 				}
+				shader.DescriptorSetLayouts[i] = nil
 			}
 		}
 
@@ -1928,18 +1929,17 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 
 	// Create descriptor pool.
 	var pDescriptorPool vk.DescriptorPool
-
 	if err := lockPool.SafeCall(PipelineManagement, func() error {
 		result := vk.CreateDescriptorPool(logicalDevice, &poolInfo, vkAllocator, &pDescriptorPool)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 			return err
 		}
-		internalShader.DescriptorPool = pDescriptorPool
 		return nil
 	}); err != nil {
 		return err
 	}
+	internalShader.DescriptorPool = pDescriptorPool
 
 	// Create descriptor set layouts.
 	internalShader.DescriptorSetLayouts = make([]vk.DescriptorSetLayout, 2)
@@ -1958,11 +1958,11 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 				err := fmt.Errorf("vulkan_shader_initialize failed creating descriptor pool: '%s'", VulkanResultString(result, true))
 				return err
 			}
-			internalShader.DescriptorSetLayouts[i] = pSetLayout
 			return nil
 		}); err != nil {
 			return err
 		}
+		internalShader.DescriptorSetLayouts[i] = pSetLayout
 	}
 
 	// TODO: This feels wrong to have these here, at least in this fashion. Should probably
@@ -2068,11 +2068,11 @@ func (vr *VulkanRenderer) ShaderInitialize(shader *metadata.Shader) error {
 				err := fmt.Errorf("%s", VulkanResultString(result, true))
 				return err
 			}
-			internalShader.GlobalDescriptorSets[i] = gds // not necessary in theory but hey...
 			return nil
 		}); err != nil {
 			return err
 		}
+		internalShader.GlobalDescriptorSets[i] = gds // not necessary in theory but hey...
 	}
 	return nil
 }
@@ -2137,18 +2137,21 @@ func (vr *VulkanRenderer) ShaderBindGlobals(shader *metadata.Shader) error {
 	return nil
 }
 
-func (vr *VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
+func (vr *VulkanRenderer) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) error {
 	if shader == nil {
-		return false
+		return fmt.Errorf("shader is nil")
 	}
 
-	internal := shader.InternalData.(*VulkanShader)
+	internal, ok := shader.InternalData.(*VulkanShader)
+	if !ok {
+		return fmt.Errorf("shader internal data is not of type *VulkanShader")
+	}
 
 	shader.BoundInstanceID = instance_id
 	state := internal.InstanceStates[instance_id]
 	shader.BoundUboOffset = uint32(state.Offset)
 
-	return true
+	return nil
 }
 
 func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
@@ -2177,8 +2180,7 @@ func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
 	}
 	uboWrite.Deref()
 
-	descriptorWrites := make([]vk.WriteDescriptorSet, 1)
-	descriptorWrites[0] = uboWrite
+	descriptorWrites := []vk.WriteDescriptorSet{uboWrite}
 
 	globalSetBindingCount := uint32(internal.Config.DescriptorSets[DESC_SET_INDEX_GLOBAL].BindingCount)
 	if globalSetBindingCount > 1 {
@@ -2190,7 +2192,6 @@ func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
 		// descriptor_writes[1] = ...
 	}
 
-	// var pDescriptorCopies []vk.CopyDescriptorSet
 	if err := lockPool.SafeCall(PipelineManagement, func() error {
 		vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, globalSetBindingCount, descriptorWrites, 0, nil)
 		return nil
@@ -2205,6 +2206,7 @@ func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
 	}); err != nil {
 		return err
 	}
+	internal.GlobalDescriptorSets[imageIndex] = globalDescriptor
 
 	return nil
 }
@@ -2317,19 +2319,8 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needsUpda
 		}
 
 		if descriptorCount > 0 {
-			// descrWritesNil := true
-			// for _, d := range descriptorWrites {
-			// 	if !vr.isWriteDescriptorValid(d) {
-			// 		descrWritesNil = false
-			// 		break
-			// 	}
-			// }
 			if err := lockPool.SafeCall(PipelineManagement, func() error {
-				// if descrWritesNil {
 				vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, descriptorCount, descriptorWrites, 0, nil)
-				// } else {
-				// 	vk.UpdateDescriptorSets(vr.context.Device.LogicalDevice, 0, nil, 0, nil)
-				// }
 				return nil
 			}); err != nil {
 				return err
@@ -2344,25 +2335,10 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needsUpda
 	}); err != nil {
 		return err
 	}
+	objectState.DescriptorSetState.DescriptorSets[imageIndex] = objectDescriptorSet
 
 	return nil
 }
-
-// Wrapper function to safely validate a descriptor set
-// func (vr *VulkanRenderer) isWriteDescriptorValid(descriptor vk.WriteDescriptorSet) (isValid bool) {
-// 	defer func() {
-// 		if r := recover(); r != nil {
-// 			core.LogInfo("recovered from panic: %v", r)
-// 			isValid = false
-// 		}
-// 	}()
-// 	// Validation logic - potential nil access
-// 	if descriptor.DstSet == vk.NullDescriptorSet {
-// 		panic("descriptor contains invalid DstSet resources")
-// 	}
-// 	// If no panic occurred, it's valid
-// 	return true
-// }
 
 func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
 	internal := shader.InternalData.(*VulkanShader)
@@ -2438,11 +2414,11 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 				err := fmt.Errorf("error allocating instance descriptor sets in shader: '%s'", VulkanResultString(result, true))
 				return err
 			}
-			setState.DescriptorSets[i] = pDescriptorSets
 			return nil
 		}); err != nil {
 			return 0, err
 		}
+		setState.DescriptorSets[i] = pDescriptorSets
 	}
 
 	return outInstanceID, nil

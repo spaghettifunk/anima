@@ -81,7 +81,7 @@ type VulkanShaderInstanceState struct {
 	/** @brief The Offset in bytes in the instance uniform buffer. */
 	Offset uint64
 	/** @brief  A state for the descriptor set. */
-	DescriptorSetState VulkanShaderDescriptorSetState
+	DescriptorSetState *VulkanShaderDescriptorSetState
 	/**
 	 * @brief Instance texture map pointers, which are used during rendering. These
 	 * are set by calls to set_sampler.

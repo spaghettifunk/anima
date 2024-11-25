@@ -384,7 +384,7 @@ func (ms *MaterialSystem) ApplyGlobal(shaderID uint32, renderer_frame_number uin
  */
 func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate bool) bool {
 	// Apply instance-level uniforms.
-	if ok := ms.shaderSystem.BindInstance(material.InternalID); !ok {
+	if err := ms.shaderSystem.BindInstance(material.InternalID); err != nil {
 		return ms.materialFail("material.InternalID")
 	}
 	if needsUpdate {

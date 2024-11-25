@@ -405,7 +405,11 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 			return err
 		}
 
-		if err := rvs.shaderSystem.useByID(vs.ShaderID); err != nil {
+		if vs.ShaderID != vs.Shader.ID {
+			return fmt.Errorf("shader ID not correct")
+		}
+
+		if err := rvs.shaderSystem.UseShaderByID(vs.ShaderID); err != nil {
 			core.LogError("failed to use skybox shader. Render frame failed")
 			return err
 		}
@@ -417,13 +421,7 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 		view_matrix.Data[14] = 0.0
 
 		// Apply globals
-		// TODO: This is terrible. Need to bind by id.
-		shader, err := rvs.shaderSystem.GetShaderByID(vs.ShaderID)
-		if err != nil {
-			return err
-		}
-
-		if err := rvs.renderer.ShaderBindGlobals(shader); err != nil {
+		if err := rvs.renderer.ShaderBindGlobals(vs.Shader); err != nil {
 			core.LogError("failed to bind shader globals")
 			return err
 		}
@@ -441,8 +439,8 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 		}
 
 		// Instance
-		if !rvs.shaderSystem.BindInstance(skybox_data.Skybox.InstanceID) {
-			err := fmt.Errorf("failed to to bind shader instance for skybox")
+		if err := rvs.shaderSystem.BindInstance(skybox_data.Skybox.InstanceID); err != nil {
+			core.LogError("failed to to bind shader instance for skybox")
 			return err
 		}
 
@@ -556,7 +554,7 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 			return err
 		}
 
-		if err := rvs.shaderSystem.useByID(data.ShaderID); err != nil {
+		if err := rvs.shaderSystem.UseShaderByID(data.ShaderID); err != nil {
 			core.LogError("failed to use material shader. Render frame failed")
 			return err
 		}
@@ -684,7 +682,7 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 		packet_data := packet.ExtendedData.(*metadata.PickPacketData)
 
 		// World
-		if err := rvs.shaderSystem.useByID(data.WorldShaderInfo.Shader.ID); err != nil {
+		if err := rvs.shaderSystem.UseShaderByID(data.WorldShaderInfo.Shader.ID); err != nil {
 			core.LogError("failed to use world pick shader. Render frame failed")
 			return err
 		}
@@ -713,8 +711,8 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			}
 			current_instance_id := geo.UniqueID
 
-			if !rvs.shaderSystem.BindInstance(current_instance_id) {
-				err := fmt.Errorf("failed to bind instance for shader with id %d", current_instance_id)
+			if err := rvs.shaderSystem.BindInstance(current_instance_id); err != nil {
+				core.LogError("failed to bind instance for shader with id %d", current_instance_id)
 				return err
 			}
 
@@ -758,7 +756,7 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 		}
 
 		// UI
-		if err := rvs.shaderSystem.useByID(data.UIShaderInfo.Shader.ID); err != nil {
+		if err := rvs.shaderSystem.UseShaderByID(data.UIShaderInfo.Shader.ID); err != nil {
 			core.LogError("failed to use material shader. Render frame failed")
 			return err
 		}
@@ -783,8 +781,8 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			geo := packet.Geometries[i]
 			current_instance_id := geo.UniqueID
 
-			if !rvs.shaderSystem.BindInstance(current_instance_id) {
-				err := fmt.Errorf("failed to bind instance shader")
+			if err := rvs.shaderSystem.BindInstance(current_instance_id); err != nil {
+				core.LogError("failed to bind instance shader")
 				return err
 			}
 

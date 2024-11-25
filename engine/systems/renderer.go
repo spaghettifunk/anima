@@ -186,72 +186,72 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 		return err
 	}
 
-	// Pick pass.
-	pick_view_config := &metadata.RenderViewConfig{
-		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
-		Width:            uint16(r.FramebufferWidth),
-		Height:           uint16(r.FramebufferHeight),
-		Name:             "pick",
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-		PassCount:        2,
-		Passes: []*metadata.RenderPassConfig{
-			{
-				// World pass
-				Name:        "Renderpass.Builtin.WorldPick",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0), // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id,
-				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-					},
-				},
-				RenderTargetCount: 1,
-			},
-			{
-				Name:        "Renderpass.Builtin.UIPick",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							// Obtain the attachment from the view.
-							Source:        metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW,
-							LoadOperation: metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
-							// Need to store it so it can be sampled afterward.
-							StoreOperation: metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:   false,
-						},
-					},
-				},
-				RenderTargetCount: 1,
-			},
-		},
-	}
+	// // Pick pass.
+	// pick_view_config := &metadata.RenderViewConfig{
+	// 	RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
+	// 	Width:            uint16(r.FramebufferWidth),
+	// 	Height:           uint16(r.FramebufferHeight),
+	// 	Name:             "pick",
+	// 	ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
+	// 	PassCount:        2,
+	// 	Passes: []*metadata.RenderPassConfig{
+	// 		{
+	// 			// World pass
+	// 			Name:        "Renderpass.Builtin.WorldPick",
+	// 			RenderArea:  math.NewVec4(0, 0, 1280, 720),
+	// 			ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0), // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id,
+	// 			ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG,
+	// 			Depth:       1.0,
+	// 			Stencil:     0,
+	// 			Target: &metadata.RenderTargetConfig{
+	// 				Attachments: []*metadata.RenderTargetAttachmentConfig{
+	// 					{
+	// 						RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+	// 						Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+	// 						LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+	// 						StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+	// 						PresentAfter:               false,
+	// 					},
+	// 					{
+	// 						RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
+	// 						Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
+	// 						LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
+	// 						StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+	// 						PresentAfter:               false,
+	// 					},
+	// 				},
+	// 			},
+	// 			RenderTargetCount: 1,
+	// 		},
+	// 		{
+	// 			Name:        "Renderpass.Builtin.UIPick",
+	// 			RenderArea:  math.NewVec4(0, 0, 1280, 720),
+	// 			ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0),
+	// 			ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
+	// 			Depth:       1.0,
+	// 			Stencil:     0,
+	// 			Target: &metadata.RenderTargetConfig{
+	// 				Attachments: []*metadata.RenderTargetAttachmentConfig{
+	// 					{
+	// 						RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
+	// 						// Obtain the attachment from the view.
+	// 						Source:        metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW,
+	// 						LoadOperation: metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
+	// 						// Need to store it so it can be sampled afterward.
+	// 						StoreOperation: metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
+	// 						PresentAfter:   false,
+	// 					},
+	// 				},
+	// 			},
+	// 			RenderTargetCount: 1,
+	// 		},
+	// 	},
+	// }
 
-	if err := renderViewSystem.Create(pick_view_config); err != nil {
-		core.LogError("Failed to create pick view. Aborting application.")
-		return err
-	}
+	// if err := renderViewSystem.Create(pick_view_config); err != nil {
+	// 	core.LogError("Failed to create pick view. Aborting application.")
+	// 	return err
+	// }
 
 	return nil
 }
@@ -372,7 +372,7 @@ func (r *RendererSystem) RenderPassEnd(pass *metadata.RenderPass) error {
 	return r.backend.RenderPassEnd(pass)
 }
 
-func (r *RendererSystem) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) bool {
+func (r *RendererSystem) ShaderCreate(shader *metadata.Shader, config *metadata.ShaderConfig, pass *metadata.RenderPass, stage_count uint8, stage_filenames []string, stages []metadata.ShaderStage) error {
 	return r.backend.ShaderCreate(shader, config, pass, stage_count, stage_filenames, stages)
 }
 
@@ -392,7 +392,7 @@ func (r *RendererSystem) ShaderBindGlobals(shader *metadata.Shader) error {
 	return r.backend.ShaderBindGlobals(shader)
 }
 
-func (r *RendererSystem) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) bool {
+func (r *RendererSystem) ShaderBindInstance(shader *metadata.Shader, instance_id uint32) error {
 	return r.backend.ShaderBindInstance(shader, instance_id)
 }
 

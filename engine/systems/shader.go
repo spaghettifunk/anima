@@ -82,7 +82,7 @@ func (shaderSystem *ShaderSystem) Shutdown() error {
 	for i := uint16(0); i < shaderSystem.Config.MaxShaderCount; i++ {
 		sh := shaderSystem.Shaders[i]
 		if sh.ID != metadata.InvalidID {
-			if err := shaderSystem.shaderDestroy(sh); err != nil {
+			if err := shaderSystem.Destroy(sh); err != nil {
 				core.LogError(err.Error())
 				return err
 			}
@@ -142,9 +142,8 @@ func (shaderSystem *ShaderSystem) CreateShader(pass *metadata.RenderPass, config
 		shader.Flags |= metadata.ShaderFlagBits(metadata.SHADER_FLAG_DEPTH_WRITE)
 	}
 
-	if !shaderSystem.renderer.ShaderCreate(shader, config, pass, uint8(len(config.Stages)), config.StageFilenames, config.Stages) {
-		err := fmt.Errorf("shader was not created")
-		core.LogError(err.Error())
+	if err := shaderSystem.renderer.ShaderCreate(shader, config, pass, uint8(len(config.Stages)), config.StageFilenames, config.Stages); err != nil {
+		core.LogError("shader was not created")
 		return nil, err
 	}
 
@@ -233,17 +232,7 @@ func (shaderSystem *ShaderSystem) UseShader(shaderName string) error {
 	if next_shader_id == metadata.InvalidID {
 		return fmt.Errorf("next shader ID is invalid")
 	}
-	return shaderSystem.useByID(next_shader_id)
-}
-
-/**
- * @brief Uses the shader with the given identifier.
- *
- * @param shaderID The identifier of the shader to be used.
- * @return True on success; otherwise false.
- */
-func (shaderSystem *ShaderSystem) UseShaderByID(shaderID uint32) bool {
-	return false
+	return shaderSystem.UseShaderByID(next_shader_id)
 }
 
 /**
@@ -366,7 +355,7 @@ func (shaderSystem *ShaderSystem) ApplyInstance(needsUpdate bool) error {
  * @param instanceID The identifier of the instance to bind.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) BindInstance(instanceID uint32) bool {
+func (shaderSystem *ShaderSystem) BindInstance(instanceID uint32) error {
 	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
 	shader.BoundInstanceID = instanceID
 	return shaderSystem.renderer.ShaderBindInstance(shader, instanceID)
@@ -582,7 +571,13 @@ func (shaderSystem *ShaderSystem) shaderUniformAddStateValid(shader *metadata.Sh
 	return true
 }
 
-func (shaderSystem *ShaderSystem) useByID(shaderID uint32) error {
+/**
+ * @brief Uses the shader with the given identifier.
+ *
+ * @param shaderID The identifier of the shader to be used.
+ * @return True on success; otherwise false.
+ */
+func (shaderSystem *ShaderSystem) UseShaderByID(shaderID uint32) error {
 	// Only perform the use if the shader id is different.
 	if shaderSystem.CurrentShaderID != shaderID {
 		nextShader, err := shaderSystem.GetShaderByID(shaderID)
@@ -602,7 +597,7 @@ func (shaderSystem *ShaderSystem) useByID(shaderID uint32) error {
 	return nil
 }
 
-func (shaderSystem *ShaderSystem) shaderDestroy(shader *metadata.Shader) error {
+func (shaderSystem *ShaderSystem) Destroy(shader *metadata.Shader) error {
 	shaderSystem.renderer.ShaderDestroy(shader)
 	// Set it to be unusable right away.
 	shader.State = metadata.SHADER_STATE_NOT_CREATED
