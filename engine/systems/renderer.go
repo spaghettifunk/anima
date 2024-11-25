@@ -340,7 +340,7 @@ func (r *RendererSystem) TextureWriteData(texture *metadata.Texture, offset, siz
 	r.backend.TextureWriteData(texture, offset, size, pixels)
 }
 
-func (r *RendererSystem) CreateGeometry(geometry *metadata.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) bool {
+func (r *RendererSystem) CreateGeometry(geometry *metadata.Geometry, vertex_size, vertex_count uint32, vertices interface{}, index_size uint32, index_count uint32, indices []uint32) error {
 	return r.backend.CreateGeometry(geometry, vertex_size, vertex_count, vertices, index_size, index_count, indices)
 }
 
@@ -364,11 +364,11 @@ func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {
 	r.backend.RenderPassDestroy(pass)
 }
 
-func (r *RendererSystem) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) bool {
+func (r *RendererSystem) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) error {
 	return r.backend.RenderPassBegin(pass, target)
 }
 
-func (r *RendererSystem) RenderPassEnd(pass *metadata.RenderPass) bool {
+func (r *RendererSystem) RenderPassEnd(pass *metadata.RenderPass) error {
 	return r.backend.RenderPassEnd(pass)
 }
 
@@ -384,11 +384,11 @@ func (r *RendererSystem) ShaderInitialize(shader *metadata.Shader) error {
 	return r.backend.ShaderInitialize(shader)
 }
 
-func (r *RendererSystem) ShaderUse(shader *metadata.Shader) bool {
+func (r *RendererSystem) ShaderUse(shader *metadata.Shader) error {
 	return r.backend.ShaderUse(shader)
 }
 
-func (r *RendererSystem) ShaderBindGlobals(shader *metadata.Shader) bool {
+func (r *RendererSystem) ShaderBindGlobals(shader *metadata.Shader) error {
 	return r.backend.ShaderBindGlobals(shader)
 }
 
@@ -396,11 +396,11 @@ func (r *RendererSystem) ShaderBindInstance(shader *metadata.Shader, instance_id
 	return r.backend.ShaderBindInstance(shader, instance_id)
 }
 
-func (r *RendererSystem) ShaderApplyGlobals(shader *metadata.Shader) bool {
+func (r *RendererSystem) ShaderApplyGlobals(shader *metadata.Shader) error {
 	return r.backend.ShaderApplyGlobals(shader)
 }
 
-func (r *RendererSystem) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) bool {
+func (r *RendererSystem) ShaderApplyInstance(shader *metadata.Shader, needs_update bool) error {
 	return r.backend.ShaderApplyInstance(shader, needs_update)
 }
 
@@ -408,15 +408,15 @@ func (r *RendererSystem) ShaderAcquireInstanceResources(shader *metadata.Shader,
 	return r.backend.ShaderAcquireInstanceResources(shader, maps)
 }
 
-func (r *RendererSystem) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) bool {
+func (r *RendererSystem) ShaderReleaseInstanceResources(shader *metadata.Shader, instance_id uint32) error {
 	return r.backend.ShaderReleaseInstanceResources(shader, instance_id)
 }
 
-func (r *RendererSystem) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) bool {
+func (r *RendererSystem) ShaderSetUniform(shader *metadata.Shader, uniform metadata.ShaderUniform, value interface{}) error {
 	return r.backend.SetUniform(shader, uniform, value)
 }
 
-func (r *RendererSystem) TextureMapAcquireResources(texture_map *metadata.TextureMap) bool {
+func (r *RendererSystem) TextureMapAcquireResources(texture_map *metadata.TextureMap) error {
 	return r.backend.TextureMapAcquireResources(texture_map)
 }
 
@@ -475,7 +475,7 @@ func (r *RendererSystem) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool 
 	return r.backend.RenderBufferUnbind(buffer)
 }
 
-func (r *RendererSystem) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) interface{} {
+func (r *RendererSystem) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) (interface{}, error) {
 	return r.backend.RenderBufferMapMemory(buffer, offset, size)
 }
 
@@ -483,7 +483,7 @@ func (r *RendererSystem) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, 
 	r.backend.RenderBufferUnmapMemory(buffer, offset, size)
 }
 
-func (r *RendererSystem) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) bool {
+func (r *RendererSystem) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) error {
 	return r.backend.RenderBufferFlush(buffer, offset, size)
 }
 
@@ -491,21 +491,20 @@ func (r *RendererSystem) RenderBufferRead(buffer *metadata.RenderBuffer, offset,
 	return r.backend.RenderBufferRead(buffer, offset, size)
 }
 
-func (r *RendererSystem) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) bool {
+func (r *RendererSystem) RenderBufferResize(buffer *metadata.RenderBuffer, new_total_size uint64) error {
 	// Sanity check.
 	if new_total_size <= buffer.TotalSize {
 		err := fmt.Errorf("func RenderBufferResize requires that new size be larger than the old. Not doing this could lead to data loss")
-		core.LogError(err.Error())
-		return false
+		return err
 	}
 
-	if r.backend.RenderBufferResize(buffer, new_total_size) {
+	if err := r.backend.RenderBufferResize(buffer, new_total_size); err != nil {
 		buffer.TotalSize = new_total_size
-		return true
+		return err
 	}
 
 	core.LogError("Failed to resize internal renderbuffer resources.")
-	return false
+	return nil
 }
 
 func (r *RendererSystem) RenderBufferAllocate(buffer *metadata.RenderBuffer, size uint64) {
@@ -528,70 +527,14 @@ func (r *RendererSystem) RenderBufferFree(buffer *metadata.RenderBuffer, size, o
 	return true
 }
 
-func (r *RendererSystem) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) bool {
+func (r *RendererSystem) RenderBufferLoadRange(buffer *metadata.RenderBuffer, offset, size uint64, data interface{}) error {
 	return r.backend.RenderBufferLoadRange(buffer, offset, size, data)
 }
 
-func (r *RendererSystem) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) bool {
+func (r *RendererSystem) RenderBufferCopyRange(source *metadata.RenderBuffer, source_offset uint64, dest *metadata.RenderBuffer, dest_offset uint64, size uint64) error {
 	return r.backend.RenderBufferCopyRange(source, source_offset, dest, dest_offset, size)
 }
 
-func (r *RendererSystem) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) bool {
+func (r *RendererSystem) RenderBufferDraw(buffer *metadata.RenderBuffer, offset uint64, element_count uint32, bind_only bool) error {
 	return r.backend.RenderBufferDraw(buffer, offset, element_count, bind_only)
 }
-
-// func (r *RendererSystem) regenerateRenderTargets() {
-// 	// Create render targets for each. TODO: Should be configurable.
-// 	for i := uint8(0); i < r.WindowRenderTargetCount; i++ {
-// 		// Destroy the old first if they exist.
-// 		r.backend.RenderTargetDestroy(r.SkyboxRenderPass.Targets[i], false)
-// 		r.backend.RenderTargetDestroy(r.WorldRenderPass.Targets[i], false)
-// 		r.backend.RenderTargetDestroy(r.UIRenderPass.Targets[i], false)
-
-// 		windowTargetTexture := r.backend.WindowAttachmentGet(i)
-// 		depthTargetTexture := r.backend.DepthAttachmentGet()
-
-// 		// Skybox render targets
-// 		skyboxAttachments := []*metadata.Texture{windowTargetTexture}
-// 		var err error
-// 		r.SkyboxRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-// 			1,
-// 			skyboxAttachments,
-// 			r.SkyboxRenderPass,
-// 			r.FramebufferWidth,
-// 			r.FramebufferHeight,
-// 		)
-// 		if err != nil {
-// 			core.LogError(err.Error())
-// 			return
-// 		}
-
-// 		// World render targets.
-// 		attachments := []*metadata.Texture{windowTargetTexture, depthTargetTexture}
-// 		r.WorldRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-// 			2,
-// 			attachments,
-// 			r.WorldRenderPass,
-// 			r.FramebufferWidth,
-// 			r.FramebufferHeight,
-// 		)
-// 		if err != nil {
-// 			core.LogError(err.Error())
-// 			return
-// 		}
-
-// 		// UI render targets
-// 		uiAttachments := []*metadata.Texture{windowTargetTexture}
-// 		r.UIRenderPass.Targets[i], err = r.backend.RenderTargetCreate(
-// 			1,
-// 			uiAttachments,
-// 			r.UIRenderPass,
-// 			r.FramebufferWidth,
-// 			r.FramebufferHeight,
-// 		)
-// 		if err != nil {
-// 			core.LogError(err.Error())
-// 			return
-// 		}
-// 	}
-// }

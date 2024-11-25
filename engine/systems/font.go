@@ -325,8 +325,8 @@ func (fs *FontSystem) SetupFontData(font *metadata.FontData) error {
 	font.Atlas.RepeatW = metadata.TextureRepeatClampToEdge
 	font.Atlas.Use = metadata.TextureUseMapDiffuse
 
-	if !fs.rendererSystem.TextureMapAcquireResources(font.Atlas) {
-		err := fmt.Errorf("unable to acquire resources for font Atlas texture map")
+	if err := fs.rendererSystem.TextureMapAcquireResources(font.Atlas); err != nil {
+		core.LogError("unable to acquire resources for font Atlas texture map")
 		return err
 	}
 
@@ -719,14 +719,14 @@ func (fs *FontSystem) UITextDraw(u_text *metadata.UIText) error {
 	text_length := uint32(len(u_text.Text))
 	quad_vert_count := uint32(4)
 
-	if !fs.rendererSystem.RenderBufferDraw(u_text.VertexBuffer, 0, text_length*quad_vert_count, true) {
-		err := fmt.Errorf("failed to draw ui font vertex buffer")
+	if err := fs.rendererSystem.RenderBufferDraw(u_text.VertexBuffer, 0, text_length*quad_vert_count, true); err != nil {
+		core.LogError("failed to draw ui font vertex buffer")
 		return err
 	}
 
 	quad_index_count := uint32(6)
-	if !fs.rendererSystem.RenderBufferDraw(u_text.IndexBuffer, 0, text_length*quad_index_count, false) {
-		err := fmt.Errorf("Failed to draw ui font index buffer.")
+	if err := fs.rendererSystem.RenderBufferDraw(u_text.IndexBuffer, 0, text_length*quad_index_count, false); err != nil {
+		core.LogError("Failed to draw ui font index buffer.")
 		return err
 	}
 	return nil
@@ -750,16 +750,16 @@ func (fs *FontSystem) regenerateGeometry(text *metadata.UIText) error {
 
 	// Resize the vertex buffer, but only if larger.
 	if vertex_buffer_size > text.VertexBuffer.TotalSize {
-		if !fs.rendererSystem.RenderBufferResize(text.VertexBuffer, vertex_buffer_size) {
-			err := fmt.Errorf("regenerate_geometry for ui text failed to resize vertex renderbuffer")
+		if err := fs.rendererSystem.RenderBufferResize(text.VertexBuffer, vertex_buffer_size); err != nil {
+			core.LogError("regenerate_geometry for ui text failed to resize vertex renderbuffer")
 			return err
 		}
 	}
 
 	// Resize the index buffer, but only if larger.
 	if index_buffer_size > text.IndexBuffer.TotalSize {
-		if !fs.rendererSystem.RenderBufferResize(text.IndexBuffer, index_buffer_size) {
-			err := fmt.Errorf("regenerate_geometry for ui text failed to resize index renderbuffer")
+		if err := fs.rendererSystem.RenderBufferResize(text.IndexBuffer, index_buffer_size); err != nil {
+			core.LogError("regenerate_geometry for ui text failed to resize index renderbuffer")
 			return err
 		}
 	}
@@ -888,22 +888,18 @@ func (fs *FontSystem) regenerateGeometry(text *metadata.UIText) error {
 	}
 
 	// Load up the data.
-	vertex_load_result := fs.rendererSystem.RenderBufferLoadRange(text.VertexBuffer, 0, vertex_buffer_size, vertex_buffer_data)
-	index_load_result := fs.rendererSystem.RenderBufferLoadRange(text.IndexBuffer, 0, index_buffer_size, index_buffer_data)
+	if err := fs.rendererSystem.RenderBufferLoadRange(text.VertexBuffer, 0, vertex_buffer_size, vertex_buffer_data); err != nil {
+		core.LogError("regenerate_geometry failed to load data into vertex buffer range")
+		return err
+	}
+	if err := fs.rendererSystem.RenderBufferLoadRange(text.IndexBuffer, 0, index_buffer_size, index_buffer_data); err != nil {
+		core.LogError("regenerate_geometry failed to load data into index buffer range")
+		return err
+	}
 
 	// Clean up.
 	vertex_buffer_data = nil
 	index_buffer_data = nil
-
-	// Verify results.
-	if !vertex_load_result {
-		err := fmt.Errorf("regenerate_geometry failed to load data into vertex buffer range")
-		return err
-	}
-	if !index_load_result {
-		err := fmt.Errorf("regenerate_geometry failed to load data into index buffer range")
-		return err
-	}
 
 	return nil
 }

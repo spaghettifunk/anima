@@ -149,37 +149,3 @@ func FindFirstZeroInByteArray(arr []byte) int {
 	}
 	return end
 }
-
-// func TextureWrapInternal(name string, width, height uint32, channel_count uint8, has_transparency, is_writeable, register_texture bool, internal_data interface{}) (*metadata.Texture, error) {
-
-//     texture := &metadata.Texture{}
-
-//     if (register_texture) {
-//         // NOTE: Wrapped textures are never auto-released because it means that thier
-//         // resources are created and managed somewhere within the renderer internals.
-//         if (!process_texture_reference(name, TEXTURE_TYPE_2D, 1, false, true, &id)) {
-//             KERROR("texture_system_wrap_internal failed to obtain a new texture id.");
-//             return;
-//         }
-//         t = &state_ptr->registered_textures[id];
-//     } else {
-//         if (out_texture) {
-//             t = out_texture;
-//         } else {
-//             t = kallocate(sizeof(texture), MEMORY_TAG_TEXTURE);
-//             // KTRACE("texture_system_wrap_internal created texture '%s', but not registering, resulting in an allocation. It is up to the caller to free this memory.", name);
-//         }
-//     }
-
-//     t->id = id;
-//     t->type = TEXTURE_TYPE_2D;
-//     string_ncopy(t->name, name, TEXTURE_NAME_MAX_LENGTH);
-//     t->width = width;
-//     t->height = height;
-//     t->channel_count = channel_count;
-//     t->generation = INVALID_ID;
-//     t->flags |= has_transparency ? TEXTURE_FLAG_HAS_TRANSPARENCY : 0;
-//     t->flags |= is_writeable ? TEXTURE_FLAG_IS_WRITEABLE : 0;
-//     t->flags |= TEXTURE_FLAG_IS_WRAPPED;
-//     t->internal_data = internal_data;
-// }

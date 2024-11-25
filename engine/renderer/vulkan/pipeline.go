@@ -44,20 +44,20 @@ type VulkanPipelineConfig struct {
 }
 
 func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (*VulkanPipeline, error) {
-	out_pipeline := &VulkanPipeline{}
+	outPipeline := &VulkanPipeline{}
 
 	// Viewport state
-	viewport_state := vk.PipelineViewportStateCreateInfo{
+	viewportState := vk.PipelineViewportStateCreateInfo{
 		SType:         vk.StructureTypePipelineViewportStateCreateInfo,
 		ViewportCount: 1,
 		PViewports:    []vk.Viewport{config.Viewport},
 		ScissorCount:  1,
 		PScissors:     []vk.Rect2D{config.Scissor},
 	}
-	viewport_state.Deref()
+	viewportState.Deref()
 
 	// Rasterizer
-	rasterizer_create_info := vk.PipelineRasterizationStateCreateInfo{
+	rasterizerCreateInfo := vk.PipelineRasterizationStateCreateInfo{
 		SType:                   vk.StructureTypePipelineRasterizationStateCreateInfo,
 		DepthClampEnable:        vk.False,
 		RasterizerDiscardEnable: vk.False,
@@ -70,24 +70,24 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		DepthBiasSlopeFactor:    0.0,
 	}
 	if !config.IsWireframe {
-		rasterizer_create_info.PolygonMode = vk.PolygonModeFill
+		rasterizerCreateInfo.PolygonMode = vk.PolygonModeFill
 	}
 	switch config.CullMode {
 	case metadata.FaceCullModeNone:
-		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeNone)
+		rasterizerCreateInfo.CullMode = vk.CullModeFlags(vk.CullModeNone)
 	case metadata.FaceCullModeFront:
-		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeFrontBit)
+		rasterizerCreateInfo.CullMode = vk.CullModeFlags(vk.CullModeFrontBit)
 	case metadata.FaceCullModeFrontAndBack:
-		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeFrontAndBack)
+		rasterizerCreateInfo.CullMode = vk.CullModeFlags(vk.CullModeFrontAndBack)
 	default:
 		fallthrough
 	case metadata.FaceCullModeBack:
-		rasterizer_create_info.CullMode = vk.CullModeFlags(vk.CullModeBackBit)
+		rasterizerCreateInfo.CullMode = vk.CullModeFlags(vk.CullModeBackBit)
 	}
-	rasterizer_create_info.Deref()
+	rasterizerCreateInfo.Deref()
 
 	// Multisampling.
-	multisampling_create_info := vk.PipelineMultisampleStateCreateInfo{
+	multisamplingCreateInfo := vk.PipelineMultisampleStateCreateInfo{
 		SType:                 vk.StructureTypePipelineMultisampleStateCreateInfo,
 		SampleShadingEnable:   vk.False,
 		RasterizationSamples:  vk.SampleCount1Bit,
@@ -96,27 +96,27 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		AlphaToCoverageEnable: vk.False,
 		AlphaToOneEnable:      vk.False,
 	}
-	multisampling_create_info.Deref()
+	multisamplingCreateInfo.Deref()
 
 	// Depth and stencil testing.
-	depth_stencil := vk.PipelineDepthStencilStateCreateInfo{
+	depthStencil := vk.PipelineDepthStencilStateCreateInfo{
 		SType:             vk.StructureTypePipelineDepthStencilStateCreateInfo,
 		DepthTestEnable:   vk.False,
 		DepthWriteEnable:  vk.False,
 		StencilTestEnable: vk.False,
 	}
 	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_TEST) != 0 {
-		depth_stencil.DepthTestEnable = vk.True
-		depth_stencil.DepthCompareOp = vk.CompareOpLess
-		depth_stencil.DepthBoundsTestEnable = vk.False
-		depth_stencil.StencilTestEnable = vk.False
+		depthStencil.DepthTestEnable = vk.True
+		depthStencil.DepthCompareOp = vk.CompareOpLess
+		depthStencil.DepthBoundsTestEnable = vk.False
+		depthStencil.StencilTestEnable = vk.False
 	}
 	if (metadata.ShaderFlags(config.ShaderFlags) & metadata.SHADER_FLAG_DEPTH_WRITE) != 0 {
-		depth_stencil.DepthWriteEnable = vk.True
+		depthStencil.DepthWriteEnable = vk.True
 	}
-	depth_stencil.Deref()
+	depthStencil.Deref()
 
-	color_blend_attachment_state := vk.PipelineColorBlendAttachmentState{
+	colorBlendAttachmentState := vk.PipelineColorBlendAttachmentState{
 		BlendEnable:         vk.True,
 		SrcColorBlendFactor: vk.BlendFactorSrcAlpha,
 		DstColorBlendFactor: vk.BlendFactorOneMinusSrcAlpha,
@@ -127,59 +127,59 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		ColorWriteMask: vk.ColorComponentFlags(vk.ColorComponentRBit) | vk.ColorComponentFlags(vk.ColorComponentGBit) |
 			vk.ColorComponentFlags(vk.ColorComponentBBit) | vk.ColorComponentFlags(vk.ColorComponentABit),
 	}
-	color_blend_attachment_state.Deref()
+	colorBlendAttachmentState.Deref()
 
-	color_blend_state_create_info := vk.PipelineColorBlendStateCreateInfo{
+	colorBlendStateCreateInfo := vk.PipelineColorBlendStateCreateInfo{
 		SType:           vk.StructureTypePipelineColorBlendStateCreateInfo,
 		LogicOpEnable:   vk.False,
 		LogicOp:         vk.LogicOpCopy,
 		AttachmentCount: 1,
-		PAttachments:    []vk.PipelineColorBlendAttachmentState{color_blend_attachment_state},
+		PAttachments:    []vk.PipelineColorBlendAttachmentState{colorBlendAttachmentState},
 	}
-	color_blend_state_create_info.Deref()
+	colorBlendStateCreateInfo.Deref()
 
 	// Dynamic state
-	dynamic_states := []vk.DynamicState{
+	dynamicStates := []vk.DynamicState{
 		vk.DynamicStateViewport,
 		vk.DynamicStateScissor,
 		vk.DynamicStateLineWidth,
 	}
 
-	dynamic_state_create_info := vk.PipelineDynamicStateCreateInfo{
+	dynamicStateCreateInfo := vk.PipelineDynamicStateCreateInfo{
 		SType:             vk.StructureTypePipelineDynamicStateCreateInfo,
-		DynamicStateCount: uint32(len(dynamic_states)),
-		PDynamicStates:    dynamic_states,
+		DynamicStateCount: uint32(len(dynamicStates)),
+		PDynamicStates:    dynamicStates,
 	}
-	dynamic_state_create_info.Deref()
+	dynamicStateCreateInfo.Deref()
 
 	// Vertex input
-	binding_description := vk.VertexInputBindingDescription{
+	bindingDescription := vk.VertexInputBindingDescription{
 		Binding:   0, // Binding index
 		Stride:    config.Stride,
 		InputRate: vk.VertexInputRateVertex, // Move to next data entry for each vertex.
 	}
-	binding_description.Deref()
+	bindingDescription.Deref()
 
 	// Attributes
-	vertex_input_info := vk.PipelineVertexInputStateCreateInfo{
+	vertexInputInfo := vk.PipelineVertexInputStateCreateInfo{
 		SType:                           vk.StructureTypePipelineVertexInputStateCreateInfo,
 		VertexBindingDescriptionCount:   1,
-		PVertexBindingDescriptions:      []vk.VertexInputBindingDescription{binding_description},
+		PVertexBindingDescriptions:      []vk.VertexInputBindingDescription{bindingDescription},
 		VertexAttributeDescriptionCount: uint32(len(config.Attributes)),
 		PVertexAttributeDescriptions:    config.Attributes,
 	}
-	vertex_input_info.Deref()
+	vertexInputInfo.Deref()
 
 	// Input assembly
-	input_assembly := vk.PipelineInputAssemblyStateCreateInfo{
+	inputAssembly := vk.PipelineInputAssemblyStateCreateInfo{
 		SType:                  vk.StructureTypePipelineInputAssemblyStateCreateInfo,
 		Topology:               vk.PrimitiveTopologyTriangleList,
 		PrimitiveRestartEnable: vk.False,
 	}
-	input_assembly.Deref()
+	inputAssembly.Deref()
 
 	// Pipeline layout
-	pipeline_layout_create_info := vk.PipelineLayoutCreateInfo{
+	pipelineLayoutCreateInfo := vk.PipelineLayoutCreateInfo{
 		SType:                  vk.StructureTypePipelineLayoutCreateInfo,
 		SetLayoutCount:         uint32(len(config.DescriptorSetLayouts)),
 		PSetLayouts:            config.DescriptorSetLayouts,
@@ -202,57 +202,69 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 			ranges[i].Size = uint32(config.PushConstantRanges[i].Size)
 			ranges[i].Deref()
 		}
-		pipeline_layout_create_info.PushConstantRangeCount = uint32(len(config.PushConstantRanges))
-		pipeline_layout_create_info.PPushConstantRanges = ranges
+		pipelineLayoutCreateInfo.PushConstantRangeCount = uint32(len(config.PushConstantRanges))
+		pipelineLayoutCreateInfo.PPushConstantRanges = ranges
 	}
-	pipeline_layout_create_info.Deref()
+	pipelineLayoutCreateInfo.Deref()
 
 	// Create the pipeline layout.
 	var pPipelineLayout vk.PipelineLayout
-	result := vk.CreatePipelineLayout(
-		context.Device.LogicalDevice,
-		&pipeline_layout_create_info,
-		context.Allocator,
-		&pPipelineLayout)
-	if !VulkanResultIsSuccess(result) {
-		err := fmt.Errorf("vkCreatePipelineLayout failed with %s", VulkanResultString(result, true))
+
+	if err := lockPool.SafeCall(PipelineManagement, func() error {
+		result := vk.CreatePipelineLayout(
+			context.Device.LogicalDevice,
+			&pipelineLayoutCreateInfo,
+			context.Allocator,
+			&pPipelineLayout)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("vkCreatePipelineLayout failed with %s", VulkanResultString(result, true))
+			return err
+		}
+		outPipeline.PipelineLayout = pPipelineLayout
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	out_pipeline.PipelineLayout = pPipelineLayout
 
 	// Pipeline create
-	pipeline_create_info := vk.GraphicsPipelineCreateInfo{
+	pipelineCreateInfo := vk.GraphicsPipelineCreateInfo{
 		SType:               vk.StructureTypeGraphicsPipelineCreateInfo,
 		StageCount:          uint32(len(config.Stages)),
 		PStages:             config.Stages,
-		PVertexInputState:   &vertex_input_info,
-		PInputAssemblyState: &input_assembly,
-		PViewportState:      &viewport_state,
-		PRasterizationState: &rasterizer_create_info,
-		PMultisampleState:   &multisampling_create_info,
-		PDepthStencilState:  &depth_stencil,
-		PColorBlendState:    &color_blend_state_create_info,
-		PDynamicState:       &dynamic_state_create_info,
+		PVertexInputState:   &vertexInputInfo,
+		PInputAssemblyState: &inputAssembly,
+		PViewportState:      &viewportState,
+		PRasterizationState: &rasterizerCreateInfo,
+		PMultisampleState:   &multisamplingCreateInfo,
+		PDepthStencilState:  &depthStencil,
+		PColorBlendState:    &colorBlendStateCreateInfo,
+		PDynamicState:       &dynamicStateCreateInfo,
 		PTessellationState:  nil,
-		Layout:              out_pipeline.PipelineLayout,
+		Layout:              outPipeline.PipelineLayout,
 		RenderPass:          config.Renderpass.Handle,
 		Subpass:             0,
 		BasePipelineHandle:  vk.NullPipeline,
 		BasePipelineIndex:   -1,
 	}
-	pipeline_create_info.Deref()
+	pipelineCreateInfo.Deref()
 
-	pPipelines := []vk.Pipeline{out_pipeline.Handle}
-	result = vk.CreateGraphicsPipelines(
-		context.Device.LogicalDevice,
-		vk.NullPipelineCache,
-		1,
-		[]vk.GraphicsPipelineCreateInfo{pipeline_create_info},
-		context.Allocator,
-		pPipelines)
+	pPipelines := []vk.Pipeline{outPipeline.Handle}
 
-	if !VulkanResultIsSuccess(result) {
-		err := fmt.Errorf("vkCreateGraphicsPipelines failed with %s", VulkanResultString(result, true))
+	if err := lockPool.SafeCall(PipelineManagement, func() error {
+		result := vk.CreateGraphicsPipelines(
+			context.Device.LogicalDevice,
+			vk.NullPipelineCache,
+			1,
+			[]vk.GraphicsPipelineCreateInfo{pipelineCreateInfo},
+			context.Allocator,
+			pPipelines)
+
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("vkCreateGraphicsPipelines failed with %s", VulkanResultString(result, true))
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -261,26 +273,42 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 		return nil, err
 	}
 
-	out_pipeline.Handle = pPipelines[0]
+	outPipeline.Handle = pPipelines[0]
 
 	core.LogDebug("Graphics pipeline created!")
-	return out_pipeline, nil
+	return outPipeline, nil
 }
 
-func (pipeline *VulkanPipeline) Destroy(context *VulkanContext) {
+func (pipeline *VulkanPipeline) Destroy(context *VulkanContext) error {
 	// Destroy pipeline
 	if pipeline.Handle != nil {
-		vk.DestroyPipeline(context.Device.LogicalDevice, pipeline.Handle, context.Allocator)
-		pipeline.Handle = nil
+		if err := lockPool.SafeCall(PipelineManagement, func() error {
+			vk.DestroyPipeline(context.Device.LogicalDevice, pipeline.Handle, context.Allocator)
+			pipeline.Handle = nil
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
-
 	// Destroy layout
 	if pipeline.PipelineLayout != nil {
-		vk.DestroyPipelineLayout(context.Device.LogicalDevice, pipeline.PipelineLayout, context.Allocator)
-		pipeline.PipelineLayout = nil
+		if err := lockPool.SafeCall(PipelineManagement, func() error {
+			vk.DestroyPipelineLayout(context.Device.LogicalDevice, pipeline.PipelineLayout, context.Allocator)
+			pipeline.PipelineLayout = nil
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (pipeline *VulkanPipeline) Bind(command_buffer *VulkanCommandBuffer, bind_point vk.PipelineBindPoint) {
-	vk.CmdBindPipeline(command_buffer.Handle, bind_point, pipeline.Handle)
+func (pipeline *VulkanPipeline) Bind(command_buffer *VulkanCommandBuffer, bind_point vk.PipelineBindPoint) error {
+	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
+		vk.CmdBindPipeline(command_buffer.Handle, bind_point, pipeline.Handle)
+		return nil
+	}); err != nil {
+		return err
+	}
+	return nil
 }

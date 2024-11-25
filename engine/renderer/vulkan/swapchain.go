@@ -45,23 +45,29 @@ func (vs *VulkanSwapchain) SwapchainDestroy(context *VulkanContext) {
 	vs.destroySwapchain(context)
 }
 
-func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool) {
+func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool, error) {
 	var outImageIndex uint32
-	result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, &outImageIndex)
-
-	if result == vk.ErrorOutOfDate {
-		// Trigger swapchain recreation, then boot out of the render loop.
-		vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
-		return 0, false
-	} else if result != vk.Success && result != vk.Suboptimal {
-		core.LogFatal("Failed to acquire swapchain image!")
-		return 0, false
+	if err := lockPool.SafeCall(SwapchainManagement, func() error {
+		result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, &outImageIndex)
+		if result == vk.ErrorOutOfDate {
+			// Trigger swapchain recreation, then boot out of the render loop.
+			sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
+			if err != nil {
+				return err
+			}
+			vs = sc
+		} else if result != vk.Success && result != vk.Suboptimal {
+			err := fmt.Errorf("failed to acquire swapchain image")
+			return err
+		}
+		return nil
+	}); err != nil {
+		return 0, false, err
 	}
-
-	return outImageIndex, true
+	return outImageIndex, true, nil
 }
 
-func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueue vk.Queue, presentQueue vk.Queue, renderCompleteSemaphore vk.Semaphore, presentImageIndex uint32) {
+func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueue vk.Queue, presentQueue vk.Queue, renderCompleteSemaphore vk.Semaphore, presentImageIndex uint32) error {
 	// Return the image to the swapchain for presentation.
 	presentInfo := vk.PresentInfo{
 		SType:              vk.StructureTypePresentInfo,
@@ -74,16 +80,28 @@ func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueu
 	}
 	presentInfo.Deref()
 
-	result := vk.QueuePresent(presentQueue, &presentInfo)
-	if result == vk.ErrorOutOfDate || result == vk.Suboptimal {
-		// Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
-		vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
-	} else if result != vk.Success {
-		core.LogFatal("Failed to present swap chain image!")
+	if err := lockPool.SafeQueueCall(context.Device.PresentQueueIndex, func() error {
+		result := vk.QueuePresent(presentQueue, &presentInfo)
+		if result == vk.ErrorOutOfDate || result == vk.Suboptimal {
+			// Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
+			sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
+			if err != nil {
+				return err
+			}
+			vs = sc
+		} else if result != vk.Success {
+			err := fmt.Errorf("failed to recreate the swapchain with error %s", VulkanResultString(result, true))
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	// Increment (and loop) the index.
 	context.CurrentFrame = (context.CurrentFrame + 1) % uint32(vs.MaxFramesInFlight)
+
+	return nil
 }
 
 func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapchain, error) {
@@ -183,19 +201,30 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	swapchainCreateInfo.Deref()
 
 	var swapchainHandle vk.Swapchain
-	if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchainHandle); res != vk.Success {
-		err := fmt.Errorf("failed to create swapchain with err `%s`", VulkanResultString(res, true))
+	if err := lockPool.SafeCall(SwapchainManagement, func() error {
+
+		if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchainHandle); res != vk.Success {
+			err := fmt.Errorf("failed to create swapchain with err `%s`", VulkanResultString(res, true))
+			return err
+		}
+		swapchain.Handle = swapchainHandle
+		return nil
+	}); err != nil {
 		return nil, err
 	}
-	swapchain.Handle = swapchainHandle
 
 	// Start with a zero frame index.
 	context.CurrentFrame = 0
 
 	// Images
 	swapchain.ImageCount = 0
-	if res := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, nil); res != vk.Success {
-		err := fmt.Errorf("failed to get swapchain images with err `%s`", VulkanResultString(res, true))
+	if err := lockPool.SafeCall(SwapchainManagement, func() error {
+		if res := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, nil); res != vk.Success {
+			err := fmt.Errorf("failed to get swapchain images with err `%s`", VulkanResultString(res, true))
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -244,13 +273,19 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 		for i := 0; i < int(swapchain.ImageCount); i++ {
 			// Just update the dimensions.
 			core.LogWarn("missing update dimensions of the rendered textures")
+			// FIXME: this needs to be handled at some point
 			// texture_system_resize(&swapchain.render_textures[i], swapchain_extent.width, swapchain_extent.height, false);
 		}
 	}
 	swapchain_images := make([]vk.Image, swapchain.ImageCount)
-	result := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain_images)
-	if !VulkanResultIsSuccess(result) {
-		err := fmt.Errorf("failed to swap-images with error %s", VulkanResultString(result, true))
+	if err := lockPool.SafeCall(SwapchainManagement, func() error {
+		result := vk.GetSwapchainImages(context.Device.LogicalDevice, swapchain.Handle, &swapchain.ImageCount, swapchain_images)
+		if !VulkanResultIsSuccess(result) {
+			err := fmt.Errorf("failed to swap-images with error %s", VulkanResultString(result, true))
+			return err
+		}
+		return nil
+	}); err != nil {
 		return nil, err
 	}
 
@@ -266,7 +301,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	for i := 0; i < int(swapchain.ImageCount); i++ {
 		image := swapchain.RenderTextures[i].InternalData.(*VulkanImage)
 
-		view_info := vk.ImageViewCreateInfo{
+		viewInfo := vk.ImageViewCreateInfo{
 			SType:    vk.StructureTypeImageViewCreateInfo,
 			Image:    image.Handle,
 			ViewType: vk.ImageViewType2d,
@@ -280,17 +315,23 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 			},
 		}
 
-		result = vk.CreateImageView(context.Device.LogicalDevice, &view_info, context.Allocator, &image.View)
-		if !VulkanResultIsSuccess(result) {
-			err := fmt.Errorf("failed to create image view with error %s", VulkanResultString(result, true))
+		if err := lockPool.SafeCall(ResourceManagement, func() error {
+			result := vk.CreateImageView(context.Device.LogicalDevice, &viewInfo, context.Allocator, &image.View)
+			if !VulkanResultIsSuccess(result) {
+				err := fmt.Errorf("failed to create image view with error %s", VulkanResultString(result, true))
+				return err
+			}
+			return nil
+		}); err != nil {
 			return nil, err
 		}
 	}
 
 	// Depth resources
-	if !DeviceDetectDepthFormat(context.Device) {
+	if err := DeviceDetectDepthFormat(context.Device); err != nil {
 		context.Device.DepthFormat = vk.FormatUndefined
-		core.LogFatal("failed to find a supported format")
+		core.LogError("failed to find a supported format")
+		return nil, err
 	}
 
 	if len(swapchain.DepthTextures) == 0 {
@@ -310,7 +351,6 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 			true,
 			vk.ImageAspectFlags(vk.ImageAspectDepthBit))
 		if err != nil {
-			core.LogError(err.Error())
 			return nil, err
 		}
 
@@ -344,10 +384,16 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	return swapchain, nil
 }
 
-func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) {
-	queueMutex.Lock()
-	vk.DeviceWaitIdle(context.Device.LogicalDevice)
-	queueMutex.Unlock()
+func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) error {
+	if err := lockPool.SafeCall(DeviceManagement, func() error {
+		if res := vk.DeviceWaitIdle(context.Device.LogicalDevice); !VulkanResultIsSuccess(res) {
+			err := fmt.Errorf("device wait idle failed with error %s", VulkanResultString(res, true))
+			return err
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 
 	for i := 0; i < int(context.Swapchain.ImageCount); i++ {
 		image := vs.DepthTextures[i].InternalData.(*VulkanImage)
@@ -359,8 +405,20 @@ func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) {
 	// destroyed when it is.
 	for i := 0; i < int(vs.ImageCount); i++ {
 		image := vs.RenderTextures[i].InternalData.(*VulkanImage)
-		vk.DestroyImageView(context.Device.LogicalDevice, image.View, context.Allocator)
+		if err := lockPool.SafeCall(ResourceManagement, func() error {
+			vk.DestroyImageView(context.Device.LogicalDevice, image.View, context.Allocator)
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 
-	vk.DestroySwapchain(context.Device.LogicalDevice, vs.Handle, context.Allocator)
+	if err := lockPool.SafeCall(SwapchainManagement, func() error {
+		vk.DestroySwapchain(context.Device.LogicalDevice, vs.Handle, context.Allocator)
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
 }

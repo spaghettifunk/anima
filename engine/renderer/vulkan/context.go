@@ -114,6 +114,7 @@ type VulkanContext struct {
 
 func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32 {
 	var memoryProperties vk.PhysicalDeviceMemoryProperties
+
 	vk.GetPhysicalDeviceMemoryProperties(vc.Device.PhysicalDevice, &memoryProperties)
 	memoryProperties.Deref()
 
@@ -124,6 +125,6 @@ func (vc *VulkanContext) FindMemoryIndex(typeFilter, propertyFlags uint32) int32
 			return int32(i)
 		}
 	}
-	core.LogWarn("Unable to find suitable memory type!")
+	core.LogError("Unable to find suitable memory type!")
 	return -1
 }

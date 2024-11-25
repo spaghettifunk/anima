@@ -228,10 +228,10 @@ func (shaderSystem *ShaderSystem) GetShader(shaderName string) (*metadata.Shader
  * @param shaderName The name of the shader to use. Case sensitive.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) UseShader(shaderName string) bool {
+func (shaderSystem *ShaderSystem) UseShader(shaderName string) error {
 	next_shader_id := shaderSystem.getShaderID(shaderName)
 	if next_shader_id == metadata.InvalidID {
-		return false
+		return fmt.Errorf("next shader ID is invalid")
 	}
 	return shaderSystem.useByID(next_shader_id)
 }
@@ -274,10 +274,10 @@ func (shaderSystem *ShaderSystem) GetUniformIndex(shader *metadata.Shader, unifo
  * @param value The value to be set.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) SetUniform(uniformName string, value interface{}) bool {
+func (shaderSystem *ShaderSystem) SetUniform(uniformName string, value interface{}) error {
 	if shaderSystem.CurrentShaderID == metadata.InvalidID {
-		core.LogError("func SetUniform called without a shader in use.")
-		return false
+		err := fmt.Errorf("func SetUniform called without a shader in use.")
+		return err
 	}
 	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
 	index := shaderSystem.GetUniformIndex(shader, uniformName)
@@ -292,7 +292,7 @@ func (shaderSystem *ShaderSystem) SetUniform(uniformName string, value interface
  * @param t A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) SetTextureSampler(samplerName string, texture *metadata.Texture) bool {
+func (shaderSystem *ShaderSystem) SetTextureSampler(samplerName string, texture *metadata.Texture) error {
 	return shaderSystem.SetUniform(samplerName, texture)
 }
 
@@ -304,7 +304,7 @@ func (shaderSystem *ShaderSystem) SetTextureSampler(samplerName string, texture 
  * @param value The value of the uniform.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interface{}) bool {
+func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interface{}) error {
 	shader := shaderSystem.Shaders[shaderSystem.CurrentShaderID]
 	uniform := shader.Uniforms[index]
 	if shader.BoundScope != uniform.Scope {
@@ -320,7 +320,7 @@ func (shaderSystem *ShaderSystem) SetUniformByIndex(index uint16, value interfac
 	return shaderSystem.renderer.ShaderSetUniform(shader, uniform, value)
 }
 
-func (shaderSystem *ShaderSystem) SetSampler(samplerName string, texture *metadata.Texture) bool {
+func (shaderSystem *ShaderSystem) SetSampler(samplerName string, texture *metadata.Texture) error {
 	return shaderSystem.SetUniform(samplerName, texture)
 }
 
@@ -332,7 +332,7 @@ func (shaderSystem *ShaderSystem) SetSampler(samplerName string, texture *metada
  * @param value A pointer to the texture to be set.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) SetSamplerByIndex(index uint16, texture *metadata.Texture) bool {
+func (shaderSystem *ShaderSystem) SetSamplerByIndex(index uint16, texture *metadata.Texture) error {
 	return shaderSystem.SetUniformByIndex(index, texture)
 }
 
@@ -342,7 +342,7 @@ func (shaderSystem *ShaderSystem) SetSamplerByIndex(index uint16, texture *metad
  *
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) ApplyGlobal() bool {
+func (shaderSystem *ShaderSystem) ApplyGlobal() error {
 	return shaderSystem.renderer.ShaderApplyGlobals(shaderSystem.Shaders[shaderSystem.CurrentShaderID])
 }
 
@@ -354,7 +354,7 @@ func (shaderSystem *ShaderSystem) ApplyGlobal() bool {
  * @param needsUpdate Indicates if shader internals need to be updated, or just to be bound.
  * @return True on success; otherwise false.
  */
-func (shaderSystem *ShaderSystem) ApplyInstance(needsUpdate bool) bool {
+func (shaderSystem *ShaderSystem) ApplyInstance(needsUpdate bool) error {
 	return shaderSystem.renderer.ShaderApplyInstance(shaderSystem.Shaders[shaderSystem.CurrentShaderID], needsUpdate)
 }
 
@@ -405,16 +405,17 @@ func (s *ShaderSystem) addAttribute(shader *metadata.Shader, config *metadata.Sh
 	return true
 }
 
-func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
+func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *metadata.ShaderUniformConfig) error {
 	// Samples can't be used for push constants.
 	if config.Scope == metadata.ShaderScopeLocal {
-		core.LogError("add_sampler cannot add a sampler at local scope.")
-		return false
+		err := fmt.Errorf("add_sampler cannot add a sampler at local scope.")
+		return err
 	}
 
 	// Verify the name is valid and unique.
 	if !shaderSystem.uniformNameValid(shader, config.Name) || !shaderSystem.shaderUniformAddStateValid(shader) {
-		return false
+		err := fmt.Errorf("failed to verify uniform name")
+		return err
 	}
 
 	// If global, push into the global list.
@@ -422,8 +423,8 @@ func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *me
 	if config.Scope == metadata.ShaderScopeGlobal {
 		global_texture_count := len(shader.GlobalTextureMaps)
 		if global_texture_count+1 > int(shaderSystem.Config.MaxGlobalTextures) {
-			core.LogError("Shader global texture count `%d` exceeds max of `%d`", global_texture_count, shaderSystem.Config.MaxGlobalTextures)
-			return false
+			err := fmt.Errorf("Shader global texture count `%d` exceeds max of `%d`", global_texture_count, shaderSystem.Config.MaxGlobalTextures)
+			return err
 		}
 		location = uint32(global_texture_count)
 
@@ -436,9 +437,9 @@ func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *me
 			RepeatW:       metadata.TextureRepeatRepeat,
 			Use:           metadata.TextureUseUnknown,
 		}
-		if !shaderSystem.renderer.TextureMapAcquireResources(default_map) {
+		if err := shaderSystem.renderer.TextureMapAcquireResources(default_map); err != nil {
 			core.LogError("Failed to acquire resources for global texture map during shader creation.")
-			return false
+			return err
 		}
 
 		// Allocate a pointer assign the texture, and push into global texture maps.
@@ -450,8 +451,8 @@ func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *me
 	} else {
 		// Otherwise, it's instance-level, so keep count of how many need to be added during the resource acquisition.
 		if shader.InstanceTextureCount+1 > shaderSystem.Config.MaxInstanceTextures {
-			core.LogError("Shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, shaderSystem.Config.MaxInstanceTextures)
-			return false
+			err := fmt.Errorf("Shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, shaderSystem.Config.MaxInstanceTextures)
+			return err
 		}
 		location = uint32(shader.InstanceTextureCount)
 		shader.InstanceTextureCount++
@@ -462,11 +463,11 @@ func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *me
 	// This allows location lookups for samplers as if they were uniforms as well (since technically they are).
 	// TODO: might need to store this elsewhere
 	if !shaderSystem.uniformAdd(shader, config.Name, 0, config.ShaderUniformType, config.Scope, location, true) {
-		core.LogError("Unable to add sampler uniform.")
-		return false
+		err := fmt.Errorf("unable to add sampler uniform")
+		return err
 	}
 
-	return true
+	return nil
 }
 
 func (shaderSystem *ShaderSystem) addUniform(shader *metadata.Shader, config *metadata.ShaderUniformConfig) bool {
@@ -581,25 +582,24 @@ func (shaderSystem *ShaderSystem) shaderUniformAddStateValid(shader *metadata.Sh
 	return true
 }
 
-func (shaderSystem *ShaderSystem) useByID(shaderID uint32) bool {
+func (shaderSystem *ShaderSystem) useByID(shaderID uint32) error {
 	// Only perform the use if the shader id is different.
 	if shaderSystem.CurrentShaderID != shaderID {
 		nextShader, err := shaderSystem.GetShaderByID(shaderID)
 		if err != nil {
-			core.LogError(err.Error())
-			return false
+			return err
 		}
 		shaderSystem.CurrentShaderID = shaderID
-		if !shaderSystem.renderer.ShaderUse(nextShader) {
+		if err := shaderSystem.renderer.ShaderUse(nextShader); err != nil {
 			core.LogError("Failed to use shader '%s'.", nextShader.Name)
-			return false
+			return err
 		}
-		if !shaderSystem.renderer.ShaderBindGlobals(nextShader) {
+		if err := shaderSystem.renderer.ShaderBindGlobals(nextShader); err != nil {
 			core.LogError("Failed to bind globals for shader '%s'.", nextShader.Name)
-			return false
+			return err
 		}
 	}
-	return true
+	return nil
 }
 
 func (shaderSystem *ShaderSystem) shaderDestroy(shader *metadata.Shader) error {

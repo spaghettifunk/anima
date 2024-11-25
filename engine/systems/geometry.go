@@ -73,8 +73,8 @@ func NewGeometrySystem(config *GeometrySystemConfig, ms *MaterialSystem, r *Rend
 }
 
 func (gs *GeometrySystem) Initialize() error {
-	if !gs.createDefaultGeometries() {
-		err := fmt.Errorf("failed to create default geometries. Application cannot continue")
+	if err := gs.createDefaultGeometries(); err != nil {
+		core.LogError("failed to create default geometries. Application cannot continue")
 		return err
 	}
 	return nil
@@ -118,13 +118,11 @@ func (gs *GeometrySystem) AcquireFromConfig(config *metadata.GeometryConfig, aut
 
 	if geometry == nil {
 		err := fmt.Errorf("unable to obtain free slot for geometry. Adjust configuration to allow more space. Returning nullptr")
-		core.LogError(err.Error())
 		return nil, err
 	}
 
-	if !gs.createGeometry(config, geometry) {
-		err := fmt.Errorf("failed to create geometry. Returning nullptr")
-		core.LogError(err.Error())
+	if err := gs.createGeometry(config, geometry); err != nil {
+		core.LogError("failed to create geometry. Returning nullptr")
 		return nil, err
 	}
 
@@ -485,7 +483,7 @@ func (gs *GeometrySystem) GenerateCubeConfig(width, height, depth, tileX, tileY 
 	return config, nil
 }
 
-func (gs *GeometrySystem) createDefaultGeometries() bool {
+func (gs *GeometrySystem) createDefaultGeometries() error {
 	verts := make([]math.Vertex3D, 4)
 
 	f := float32(10.0)
@@ -514,9 +512,9 @@ func (gs *GeometrySystem) createDefaultGeometries() bool {
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
 	gs.DefaultGeometry.InternalID = metadata.InvalidID
-	if !gs.renderer.CreateGeometry(gs.DefaultGeometry, uint32(unsafe.Sizeof(math.Vertex3D{})), 4, verts, uint32(unsafe.Sizeof(uint32(1))), 6, indices) {
-		core.LogFatal("Failed to create default geometry. Application cannot continue.")
-		return false
+	if err := gs.renderer.CreateGeometry(gs.DefaultGeometry, uint32(unsafe.Sizeof(math.Vertex3D{})), 4, verts, uint32(unsafe.Sizeof(uint32(1))), 6, indices); err != nil {
+		core.LogError("Failed to create default geometry. Application cannot continue.")
+		return err
 	}
 
 	// Acquire the default material.
@@ -548,20 +546,20 @@ func (gs *GeometrySystem) createDefaultGeometries() bool {
 	indices2d := []uint32{2, 1, 0, 3, 0, 1}
 
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	if !gs.renderer.CreateGeometry(gs.Default2DGeometry, uint32(unsafe.Sizeof(math.Vertex2D{})), 4, verts2d, uint32(unsafe.Sizeof(uint32(1))), 6, indices2d) {
-		core.LogFatal("Failed to create default 2d geometry. Application cannot continue.")
-		return false
+	if err := gs.renderer.CreateGeometry(gs.Default2DGeometry, uint32(unsafe.Sizeof(math.Vertex2D{})), 4, verts2d, uint32(unsafe.Sizeof(uint32(1))), 6, indices2d); err != nil {
+		core.LogError("Failed to create default 2d geometry. Application cannot continue.")
+		return err
 	}
 
 	// Acquire the default material.
 	gs.Default2DGeometry.Material = gs.materialSystem.GetDefault()
 
-	return true
+	return nil
 }
 
-func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geometry *metadata.Geometry) bool {
+func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geometry *metadata.Geometry) error {
 	// Send the geometry off to the renderer to be uploaded to the GPU.
-	if !gs.renderer.CreateGeometry(geometry, config.VertexSize, config.VertexCount, config.Vertices, config.IndexSize, config.IndexCount, config.Indices) {
+	if err := gs.renderer.CreateGeometry(geometry, config.VertexSize, config.VertexCount, config.Vertices, config.IndexSize, config.IndexCount, config.Indices); err != nil {
 		// Invalidate the entry.
 		gs.RegisteredGeometries[geometry.ID].ReferenceCount = 0
 		gs.RegisteredGeometries[geometry.ID].AutoRelease = false
@@ -569,7 +567,7 @@ func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geomet
 		geometry.Generation = metadata.InvalidIDUint16
 		geometry.InternalID = metadata.InvalidID
 
-		return false
+		return err
 	}
 
 	// Copy over extents, center, etc.
@@ -581,15 +579,14 @@ func (gs *GeometrySystem) createGeometry(config *metadata.GeometryConfig, geomet
 	if len(config.MaterialName) > 0 {
 		mat, err := gs.materialSystem.Acquire(config.MaterialName)
 		if err != nil {
-			core.LogError(err.Error())
-			return false
+			return err
 		}
 		geometry.Material = mat
 		if geometry.Material == nil {
 			geometry.Material = gs.materialSystem.GetDefault()
 		}
 	}
-	return true
+	return nil
 }
 
 func (gs *GeometrySystem) destroyGeometry(geometry *metadata.Geometry) {

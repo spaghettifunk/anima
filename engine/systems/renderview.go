@@ -400,13 +400,13 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 	for p := 0; p < int(view.RenderpassCount); p++ {
 		pass := view.Passes[p]
 
-		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
-			err := fmt.Errorf("render_view_skybox_on_render pass index %d failed to start", p)
+		if err := rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]); err != nil {
+			core.LogError("render_view_skybox_on_render pass index %d failed to start", p)
 			return err
 		}
 
-		if !rvs.shaderSystem.useByID(vs.ShaderID) {
-			err := fmt.Errorf("failed to use skybox shader. Render frame failed")
+		if err := rvs.shaderSystem.useByID(vs.ShaderID); err != nil {
+			core.LogError("failed to use skybox shader. Render frame failed")
 			return err
 		}
 
@@ -423,20 +423,20 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 			return err
 		}
 
-		if !rvs.renderer.ShaderBindGlobals(shader) {
-			err := fmt.Errorf("failed to bind shader globals")
+		if err := rvs.renderer.ShaderBindGlobals(shader); err != nil {
+			core.LogError("failed to bind shader globals")
 			return err
 		}
-		if !rvs.shaderSystem.SetUniformByIndex(vs.ProjectionLocation, packet.ProjectionMatrix) {
-			err := fmt.Errorf("failed to apply skybox projection uniform")
+		if err := rvs.shaderSystem.SetUniformByIndex(vs.ProjectionLocation, packet.ProjectionMatrix); err != nil {
+			core.LogError("failed to apply skybox projection uniform")
 			return err
 		}
-		if !rvs.shaderSystem.SetUniformByIndex(vs.ViewLocation, view_matrix) {
-			err := fmt.Errorf("failed to apply skybox view uniform")
+		if err := rvs.shaderSystem.SetUniformByIndex(vs.ViewLocation, view_matrix); err != nil {
+			core.LogError("failed to apply skybox view uniform")
 			return err
 		}
-		if !rvs.shaderSystem.ApplyGlobal() {
-			err := fmt.Errorf("failed to apply shader globals")
+		if err := rvs.shaderSystem.ApplyGlobal(); err != nil {
+			core.LogError("failed to apply shader globals")
 			return err
 		}
 
@@ -446,14 +446,14 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 			return err
 		}
 
-		if !rvs.shaderSystem.SetUniformByIndex(vs.CubeMapLocation, skybox_data.Skybox.Cubemap) {
-			err := fmt.Errorf("failed to apply skybox cube map uniform")
+		if err := rvs.shaderSystem.SetUniformByIndex(vs.CubeMapLocation, skybox_data.Skybox.Cubemap); err != nil {
+			core.LogError("failed to apply skybox cube map uniform")
 			return err
 		}
 
 		needs_update := skybox_data.Skybox.RenderFrameNumber != frameNumber
-		if !rvs.shaderSystem.ApplyInstance(needs_update) {
-			err := fmt.Errorf("failed to apply instance for skybox")
+		if err := rvs.shaderSystem.ApplyInstance(needs_update); err != nil {
+			core.LogError("failed to apply instance for skybox")
 			return err
 		}
 
@@ -467,8 +467,8 @@ func (rvs *RenderViewSystem) skyboxOnRenderView(view *metadata.RenderView, packe
 
 		rvs.renderer.DrawGeometry(render_data)
 
-		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_skybox_on_render pass index %d failed to end", p)
+		if err := rvs.renderer.RenderPassEnd(pass); err != nil {
+			core.LogError("render_view_skybox_on_render pass index %d failed to end", p)
 			return err
 		}
 	}
@@ -551,13 +551,13 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 
 	for p := uint32(0); p < uint32(view.RenderpassCount); p++ {
 		pass := view.Passes[p]
-		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
-			err := fmt.Errorf("render_view_world_on_render pass index %d failed to start", p)
+		if err := rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]); err != nil {
+			core.LogError("render_view_world_on_render pass index %d failed to start", p)
 			return err
 		}
 
-		if !rvs.shaderSystem.useByID(data.ShaderID) {
-			err := fmt.Errorf("failed to use material shader. Render frame failed")
+		if err := rvs.shaderSystem.useByID(data.ShaderID); err != nil {
+			core.LogError("failed to use material shader. Render frame failed")
 			return err
 		}
 
@@ -593,8 +593,8 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 			}
 
 			// Apply the locals
-			if !rvs.materialSystem.ApplyLocal(material, packet.Geometries[i].Model) {
-				err := fmt.Errorf("failed to apply local for material system")
+			if err := rvs.materialSystem.ApplyLocal(material, packet.Geometries[i].Model); err != nil {
+				core.LogError("failed to apply local for material system")
 				return err
 			}
 
@@ -602,8 +602,8 @@ func (rvs *RenderViewSystem) worldOnRenderView(view *metadata.RenderView, packet
 			rvs.renderer.DrawGeometry(packet.Geometries[i])
 		}
 
-		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_world_on_render pass index %d failed to end", p)
+		if err := rvs.renderer.RenderPassEnd(pass); err != nil {
+			core.LogError("render_view_world_on_render pass index %d failed to end", p)
 			return err
 		}
 	}
@@ -676,32 +676,32 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			data.InstanceUpdated[i] = false
 		}
 
-		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
-			err := fmt.Errorf("render_view_ui_on_render pass index %d failed to start", p)
+		if err := rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]); err != nil {
+			core.LogError("render_view_ui_on_render pass index %d failed to start", p)
 			return err
 		}
 
 		packet_data := packet.ExtendedData.(*metadata.PickPacketData)
 
 		// World
-		if !rvs.shaderSystem.useByID(data.WorldShaderInfo.Shader.ID) {
-			err := fmt.Errorf("failed to use world pick shader. Render frame failed")
+		if err := rvs.shaderSystem.useByID(data.WorldShaderInfo.Shader.ID); err != nil {
+			core.LogError("failed to use world pick shader. Render frame failed")
 			return err
 		}
 
 		// Apply globals
-		if !rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ProjectionLocation, data.WorldShaderInfo.Projection) {
-			err := fmt.Errorf("failed to apply projection matrix")
+		if err := rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ProjectionLocation, data.WorldShaderInfo.Projection); err != nil {
+			core.LogError("failed to apply projection matrix")
 			return err
 		}
 
-		if !rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ViewLocation, data.WorldShaderInfo.View) {
-			err := fmt.Errorf("failed to apply view matrix")
+		if err := rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ViewLocation, data.WorldShaderInfo.View); err != nil {
+			core.LogError("failed to apply view matrix")
 			return err
 		}
 
-		if !rvs.shaderSystem.ApplyGlobal() {
-			err := fmt.Errorf("failed to apply globals shader")
+		if err := rvs.shaderSystem.ApplyGlobal(); err != nil {
+			core.LogError("failed to apply globals shader")
 			return err
 		}
 
@@ -722,21 +722,21 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			r, g, b := math.UInt32ToRGB(geo.UniqueID)
 			id_colour := math.RGBUInt32ToVec3(r, g, b)
 
-			if !rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.IDColorLocation, id_colour) {
-				err := fmt.Errorf("failed to apply id colour uniform")
+			if err := rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.IDColorLocation, id_colour); err != nil {
+				core.LogError("failed to apply id colour uniform")
 				return err
 			}
 
 			needs_update := !data.InstanceUpdated[current_instance_id]
-			if !rvs.shaderSystem.ApplyInstance(needs_update) {
-				err := fmt.Errorf("failed to apply shader instance to world geometry")
+			if err := rvs.shaderSystem.ApplyInstance(needs_update); err != nil {
+				core.LogError("failed to apply shader instance to world geometry")
 				return err
 			}
 			data.InstanceUpdated[current_instance_id] = true
 
 			// Apply the locals
-			if !rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ModelLocation, geo.Model) {
-				err := fmt.Errorf("failed to apply model matrix for world geometry")
+			if err := rvs.shaderSystem.SetUniformByIndex(data.WorldShaderInfo.ModelLocation, geo.Model); err != nil {
+				core.LogError("failed to apply model matrix for world geometry")
 				return err
 			}
 
@@ -744,37 +744,37 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			rvs.renderer.DrawGeometry(packet.Geometries[i])
 		}
 
-		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_ui_on_render pass index %d failed to end", p)
+		if err := rvs.renderer.RenderPassEnd(pass); err != nil {
+			core.LogError("render_view_ui_on_render pass index %d failed to end", p)
 			return err
 		}
 
 		p++
 		pass = view.Passes[p] // Second pass
 
-		if !rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]) {
-			err := fmt.Errorf("render_view_ui_on_render pass index %d failed to start", p)
+		if err := rvs.renderer.RenderPassBegin(pass, pass.Targets[renderTargetIndex]); err != nil {
+			core.LogError("render_view_ui_on_render pass index %d failed to start", p)
 			return err
 		}
 
 		// UI
-		if !rvs.shaderSystem.useByID(data.UIShaderInfo.Shader.ID) {
-			err := fmt.Errorf("failed to use material shader. Render frame failed")
+		if err := rvs.shaderSystem.useByID(data.UIShaderInfo.Shader.ID); err != nil {
+			core.LogError("failed to use material shader. Render frame failed")
 			return err
 		}
 
 		// Apply globals
-		if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ProjectionLocation, data.UIShaderInfo.Projection) {
-			err := fmt.Errorf("failed to apply projection matrix")
+		if err := rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ProjectionLocation, data.UIShaderInfo.Projection); err != nil {
+			core.LogError("failed to apply projection matrix")
 			return err
 		}
-		if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ViewLocation, data.UIShaderInfo.View) {
-			err := fmt.Errorf("failed to apply view matrix")
+		if err := rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ViewLocation, data.UIShaderInfo.View); err != nil {
+			core.LogError("failed to apply view matrix")
 			return err
 		}
 
-		if !rvs.shaderSystem.ApplyGlobal() {
-			err := fmt.Errorf("failed to apply globals shader")
+		if err := rvs.shaderSystem.ApplyGlobal(); err != nil {
+			core.LogError("failed to apply globals shader")
 			return err
 		}
 
@@ -791,22 +791,22 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			// Get colour based on id
 			r, g, b := math.UInt32ToRGB(geo.UniqueID)
 			id_colour := math.RGBUInt32ToVec3(r, g, b)
-			if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.IDColorLocation, id_colour) {
-				err := fmt.Errorf("failed to apply id colour uniform")
+			if err := rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.IDColorLocation, id_colour); err != nil {
+				core.LogError("failed to apply id colour uniform")
 				return err
 			}
 
 			needs_update := !data.InstanceUpdated[current_instance_id]
-			if !rvs.shaderSystem.ApplyInstance(needs_update) {
-				err := fmt.Errorf("failed to apply instance shader for the rest of the geometry")
+			if err := rvs.shaderSystem.ApplyInstance(needs_update); err != nil {
+				core.LogError("failed to apply instance shader for the rest of the geometry")
 				return err
 			}
 
 			data.InstanceUpdated[current_instance_id] = true
 
 			// Apply the locals
-			if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ModelLocation, geo.Model) {
-				err := fmt.Errorf("failed to apply model matrix for text")
+			if err := rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ModelLocation, geo.Model); err != nil {
+				core.LogError("failed to apply model matrix for text")
 				return err
 			}
 
@@ -814,43 +814,8 @@ func (rvs *RenderViewSystem) pickOnRenderView(view *metadata.RenderView, packet 
 			rvs.renderer.DrawGeometry(packet.Geometries[i])
 		}
 
-		// Draw bitmap text
-		// for i := 0; i < int(packet_data.TextCount); i++ {
-		// 	text := packet_data.Texts[i]
-		// 	current_instance_id := text.UniqueID
-
-		// 	if !rvs.shaderSystem.BindInstance(current_instance_id) {
-		// 		err := fmt.Errorf("failed to bind shader instance with ID %d", current_instance_id)
-		// 		return err
-		// 	}
-
-		// 	// Get colour based on id
-		// 	r, g, b := math.UInt32ToRGB(text.UniqueID)
-		// 	id_colour := math.RGBUInt32ToVec3(r, g, b)
-		// 	if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.IDColorLocation, id_colour) {
-		// 		err := fmt.Errorf("failed to apply id colour uniform")
-		// 		return err
-		// 	}
-
-		// 	if !rvs.shaderSystem.ApplyInstance(true) {
-		// 		err := fmt.Errorf("failed to apply shader instance")
-		// 		return err
-		// 	}
-
-		// 	// Apply the locals
-		// 	model := text.Transform.GetWorld()
-		// 	if !rvs.shaderSystem.SetUniformByIndex(data.UIShaderInfo.ModelLocation, model) {
-		// 		err := fmt.Errorf("failed to apply model matrix for text")
-		// 		return err
-		// 	}
-
-		// 	if err := rvs.fontsystem.UITextDraw(text); err != nil {
-		// 		return err
-		// 	}
-		// }
-
-		if !rvs.renderer.RenderPassEnd(pass) {
-			err := fmt.Errorf("render_view_ui_on_render pass index %d failed to end", p)
+		if err := rvs.renderer.RenderPassEnd(pass); err != nil {
+			core.LogError("render_view_ui_on_render pass index %d failed to end", p)
 			return err
 		}
 	}
@@ -922,11 +887,13 @@ func (rvs *RenderViewSystem) pickOnDestroy(view *views.RenderViewPick) error {
 	}
 
 	for i := uint32(0); i < uint32(view.InstanceCount); i++ {
-		if !rvs.renderer.ShaderReleaseInstanceResources(view.UIShaderInfo.Shader, i) {
-			core.LogWarn("failed to release shader resources")
+		if err := rvs.renderer.ShaderReleaseInstanceResources(view.UIShaderInfo.Shader, i); err != nil {
+			core.LogError("failed to release shader resources")
+			return err
 		}
-		if !rvs.renderer.ShaderReleaseInstanceResources(view.WorldShaderInfo.Shader, i) {
-			core.LogWarn("failed to release shader resources")
+		if err := rvs.renderer.ShaderReleaseInstanceResources(view.WorldShaderInfo.Shader, i); err != nil {
+			core.LogError("failed to release shader resources")
+			return err
 		}
 	}
 

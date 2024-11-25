@@ -342,26 +342,26 @@ func (ms *MaterialSystem) ApplyGlobal(shaderID uint32, renderer_frame_number uin
 		return true
 	}
 	if shaderID == ms.MaterialShaderID {
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Projection, projection); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Projection, projection); err != nil {
 			return ms.materialFail("msState.MaterialLocations.Projection")
 		}
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.View, view); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.View, view); err != nil {
 			return ms.materialFail("msState.MaterialLocations.View")
 		}
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.AmbientColour, ambient_colour); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.AmbientColour, ambient_colour); err != nil {
 			return ms.materialFail("msState.MaterialLocations.AmbientColour")
 		}
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.ViewPosition, view_position); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.ViewPosition, view_position); err != nil {
 			return ms.materialFail("msState.MaterialLocations.ViewPosition")
 		}
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.RenderMode, &render_mode); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.RenderMode, &render_mode); err != nil {
 			return ms.materialFail("msState.MaterialLocations.RenderMode")
 		}
 	} else if shaderID == ms.UIShaderID {
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.Projection, projection); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.UILocations.Projection, projection); err != nil {
 			return ms.materialFail("msState.UILocations.Projection")
 		}
-		if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.View, view); !ok {
+		if err := ms.shaderSystem.SetUniformByIndex(ms.UILocations.View, view); err != nil {
 			return ms.materialFail("msState.UILocations.View")
 		}
 	} else {
@@ -390,27 +390,27 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
 	if needsUpdate {
 		if material.ShaderID == ms.MaterialShaderID {
 			// Material shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, material.DiffuseColour); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseColour, material.DiffuseColour); err != nil {
 				return ms.materialFail("msState.MaterialLocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, material.DiffuseMap); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.DiffuseTexture, material.DiffuseMap); err != nil {
 				return ms.materialFail("msState.MaterialLocations.DiffuseTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, material.SpecularMap); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.SpecularTexture, material.SpecularMap); err != nil {
 				return ms.materialFail("msState.MaterialLocations.SpecularTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, material.NormalMap); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.NormalTexture, material.NormalMap); err != nil {
 				return ms.materialFail("msState.MaterialLocations.NormalTexture")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, material.Shininess); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Shininess, material.Shininess); err != nil {
 				return ms.materialFail("msState.MaterialLocations.Shininess")
 			}
 		} else if material.ShaderID == ms.UIShaderID {
 			// UI shader
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, material.DiffuseColour); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseColour, material.DiffuseColour); err != nil {
 				return ms.materialFail("msState.UILocations.DiffuseColour")
 			}
-			if ok := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, material.DiffuseMap); !ok {
+			if err := ms.shaderSystem.SetUniformByIndex(ms.UILocations.DiffuseTexture, material.DiffuseMap); err != nil {
 				return ms.materialFail("msState.UILocations.DiffuseTexture")
 			}
 		} else {
@@ -418,7 +418,7 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
 			return false
 		}
 	}
-	if ok := ms.shaderSystem.ApplyInstance(needsUpdate); !ok {
+	if err := ms.shaderSystem.ApplyInstance(needsUpdate); err != nil {
 		return ms.materialFail("needsUpdate")
 	}
 	return true
@@ -431,14 +431,14 @@ func (ms *MaterialSystem) ApplyInstance(material *metadata.Material, needsUpdate
  * @param model A constant pointer to the model matrix to be applied.
  * @return True on success; otherwise false.
  */
-func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model math.Mat4) bool {
+func (ms *MaterialSystem) ApplyLocal(material *metadata.Material, model math.Mat4) error {
 	if material.ShaderID == ms.MaterialShaderID {
 		return ms.shaderSystem.SetUniformByIndex(ms.MaterialLocations.Model, model)
 	} else if material.ShaderID == ms.UIShaderID {
 		return ms.shaderSystem.SetUniformByIndex(ms.UILocations.Model, model)
 	}
-	core.LogError("Unrecognized shader id '%d'", material.ShaderID)
-	return false
+	err := fmt.Errorf("unrecognized shader id '%d'", material.ShaderID)
+	return err
 }
 
 func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metadata.Material, error) {
@@ -472,8 +472,8 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// Diffuse map
-	if !ms.renderer.TextureMapAcquireResources(material.DiffuseMap) {
-		err := fmt.Errorf("unable to acquire resources for diffuse texture map")
+	if err := ms.renderer.TextureMapAcquireResources(material.DiffuseMap); err != nil {
+		core.LogError("unable to acquire resources for diffuse texture map")
 		return nil, err
 	}
 	if len(config.DiffuseMapName) > 0 {
@@ -495,8 +495,8 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// Specular map
-	if !ms.renderer.TextureMapAcquireResources(material.SpecularMap) {
-		err := fmt.Errorf("unable to acquire resources for specular texture map")
+	if err := ms.renderer.TextureMapAcquireResources(material.SpecularMap); err != nil {
+		core.LogError("unable to acquire resources for specular texture map")
 		return nil, err
 	}
 	if len(config.SpecularMapName) > 0 {
@@ -517,8 +517,8 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	}
 
 	// Normal map
-	if !ms.renderer.TextureMapAcquireResources(material.NormalMap) {
-		err := fmt.Errorf("unable to acquire resources for normal texture map")
+	if err := ms.renderer.TextureMapAcquireResources(material.NormalMap); err != nil {
+		core.LogError("unable to acquire resources for normal texture map")
 		return nil, err
 	}
 	if len(config.NormalMapName) > 0 {
@@ -556,7 +556,7 @@ func (ms *MaterialSystem) loadMaterial(config *metadata.MaterialConfig) (*metada
 	return material, nil
 }
 
-func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
+func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) error {
 	// KTRACE("Destroying material '%s'...", material.name);
 
 	// Release texture references.
@@ -579,11 +579,10 @@ func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
 	if material.ShaderID != metadata.InvalidID && material.InternalID != metadata.InvalidID {
 		shader, err := ms.shaderSystem.GetShaderByID(material.ShaderID)
 		if err != nil {
-			core.LogError(err.Error())
-			return
+			return err
 		}
-		if !ms.renderer.ShaderReleaseInstanceResources(shader, material.InternalID) {
-			core.LogError("failed to release the shader instance resources")
+		if err := ms.renderer.ShaderReleaseInstanceResources(shader, material.InternalID); err != nil {
+			return err
 		}
 		material.ShaderID = metadata.InvalidID
 	}
@@ -593,6 +592,8 @@ func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) {
 	material.Generation = metadata.InvalidID
 	material.InternalID = metadata.InvalidID
 	material.RenderFrameNumber = metadata.InvalidID
+
+	return nil
 }
 
 func (ms *MaterialSystem) createDefaultMaterial() bool {

@@ -171,8 +171,8 @@ func (e *Engine) Initialize() error {
 	e.skybox.Cubemap.RepeatV = metadata.TextureRepeatClampToEdge
 	e.skybox.Cubemap.RepeatW = metadata.TextureRepeatClampToEdge
 	e.skybox.Cubemap.Use = metadata.TextureUseMapCubemap
-	if !e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap) {
-		err := fmt.Errorf("unable to acquire resources for cube map texture")
+	if err := e.systemManager.RendererSystem.TextureMapAcquireResources(e.skybox.Cubemap); err != nil {
+		core.LogError("unable to acquire resources for cube map texture")
 		return err
 	}
 
