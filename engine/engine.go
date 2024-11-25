@@ -358,8 +358,8 @@ func (e *Engine) Run() error {
 
 			packet := &metadata.RenderPacket{
 				DeltaTime: delta,
-				ViewCount: 3,                                     //4,
-				Views:     make([]*metadata.RenderViewPacket, 3), //4),
+				ViewCount: 4,
+				Views:     make([]*metadata.RenderViewPacket, 4),
 			}
 
 			// skybox
@@ -490,20 +490,20 @@ func (e *Engine) Run() error {
 			}
 			packet.Views[2] = rvp
 
-			// // Pick uses both world and ui packet data.
-			// pick_packet := &metadata.PickPacketData{
-			// 	UIMeshData:    ui_packet.MeshData,
-			// 	WorldMeshData: worldMeshData,
-			// 	Texts:         ui_packet.Texts,
-			// 	TextCount:     uint32(len(ui_packet.Texts)),
-			// }
+			// Pick uses both world and ui packet data.
+			pick_packet := &metadata.PickPacketData{
+				UIMeshData:    ui_packet.MeshData,
+				WorldMeshData: worldMeshData,
+				Texts:         ui_packet.Texts,
+				TextCount:     uint32(len(ui_packet.Texts)),
+			}
 
-			// rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("pick"), pick_packet)
-			// if err != nil {
-			// 	core.LogError("Failed to build packet for view 'pick'.")
-			// 	return err
-			// }
-			// packet.Views[3] = rvp
+			rvp, err = e.systemManager.RenderViewSystem.BuildPacket(e.systemManager.RenderViewSystem.Get("pick"), pick_packet)
+			if err != nil {
+				core.LogError("Failed to build packet for view 'pick'.")
+				return err
+			}
+			packet.Views[3] = rvp
 
 			// Draw frame
 			if err := e.systemManager.DrawFrame(packet); err != nil {
