@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
@@ -54,6 +55,10 @@ type Engine struct {
 	uiMeshes    []*metadata.Mesh
 	testText    *metadata.UIText
 	testSysText *metadata.UIText
+}
+
+func init() {
+	runtime.LockOSThread()
 }
 
 func New(g *Game) (*Engine, error) {
@@ -292,6 +297,10 @@ func (e *Engine) Initialize() error {
 	// END: temporary stuff
 
 	if err := e.gameInstance.FnInitialize(); err != nil {
+		return err
+	}
+
+	if err := e.systemManager.OnResize(uint16(e.width), uint16(e.height)); err != nil {
 		return err
 	}
 

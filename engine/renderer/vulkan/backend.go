@@ -459,8 +459,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 		}); err != nil {
 			return err
 		}
-		core.LogInfo("recreating swapchain, booting")
-		return nil
+		return core.ErrSwapchainBooting
 	}
 
 	// Check if the framebuffer has been resized. If so, a new swapchain must be created.
@@ -480,9 +479,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 		if err := vr.recreateSwapchain(); err != nil {
 			return err
 		}
-
-		core.LogInfo("resized, booting.")
-		return nil
+		return core.ErrSwapchainBooting
 	}
 
 	// Wait for the execution of the current frame to complete. The fence being free will allow this one to move on.
@@ -1340,11 +1337,11 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig, pa
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		pass.InternalData.(*VulkanRenderPass).Handle = handle
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	pass.InternalData.(*VulkanRenderPass).Handle = handle
 
 	// Cleanup
 	if len(attachmentDescriptions) > 0 {
@@ -1444,13 +1441,14 @@ func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *met
 	}
 	beginInfo.Deref()
 
+	core.LogDebug("CmdBeginRenderPass call...")
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
 		vk.CmdBeginRenderPass(commandBuffer.Handle, &beginInfo, vk.SubpassContentsInline)
-		commandBuffer.State = COMMAND_BUFFER_STATE_IN_RENDER_PASS
 		return nil
 	}); err != nil {
 		return err
 	}
+	commandBuffer.State = COMMAND_BUFFER_STATE_IN_RENDER_PASS
 
 	return nil
 }
@@ -1460,11 +1458,12 @@ func (vr *VulkanRenderer) RenderPassEnd(pass *metadata.RenderPass) error {
 	// End the renderpass.
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
 		vk.CmdEndRenderPass(command_buffer.Handle)
-		command_buffer.State = COMMAND_BUFFER_STATE_RECORDING
 		return nil
 	}); err != nil {
 		return err
 	}
+	core.LogDebug("CmdEndRenderPass called")
+	command_buffer.State = COMMAND_BUFFER_STATE_RECORDING
 	return nil
 }
 
@@ -1808,8 +1807,11 @@ func (vr *VulkanRenderer) ShaderCreate(shader *metadata.Shader, config *metadata
 	for i := 0; i < 1024; i++ {
 		if internalShader.InstanceStates[i] == nil {
 			internalShader.InstanceStates[i] = &VulkanShaderInstanceState{
-				ID:                 metadata.InvalidID,
-				DescriptorSetState: &VulkanShaderDescriptorSetState{},
+				ID: metadata.InvalidID,
+				DescriptorSetState: &VulkanShaderDescriptorSetState{
+					DescriptorSets:   make([]vk.DescriptorSet, 3),
+					DescriptorStates: []*VulkanDescriptorState{},
+				},
 			}
 			continue
 		}
@@ -2119,11 +2121,11 @@ func (vr *VulkanRenderer) createModule(shader *VulkanShader, config *VulkanShade
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		shaderStage.Handle = shaderModule
 		return nil
 	}); err != nil {
 		return err
 	}
+	shaderStage.Handle = shaderModule
 
 	// Release the resource.
 	if err := vr.assetManager.UnloadAsset(binaryResource); err != nil {
@@ -2179,7 +2181,6 @@ func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
 	imageIndex := vr.context.ImageIndex
 	internal := shader.InternalData.(*VulkanShader)
 	commandBuffer := vr.context.GraphicsCommandBuffers[imageIndex].Handle
-	globalDescriptor := internal.GlobalDescriptorSets[imageIndex]
 
 	// Apply UBO first
 	bufferInfo := vk.DescriptorBufferInfo{
@@ -2222,12 +2223,11 @@ func (vr *VulkanRenderer) ShaderApplyGlobals(shader *metadata.Shader) error {
 
 	// Bind the global descriptor set to be updated.
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
-		vk.CmdBindDescriptorSets(commandBuffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 0, 1, []vk.DescriptorSet{globalDescriptor}, 0, nil)
+		vk.CmdBindDescriptorSets(commandBuffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 0, 1, internal.GlobalDescriptorSets, 0, nil)
 		return nil
 	}); err != nil {
 		return err
 	}
-	internal.GlobalDescriptorSets[imageIndex] = globalDescriptor
 
 	return nil
 }
@@ -2351,18 +2351,18 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needsUpda
 
 	// Bind the descriptor set to be updated, or in case the shader changed.
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
-		vk.CmdBindDescriptorSets(commandBuffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 1, 1, []vk.DescriptorSet{objectDescriptorSet}, 0, nil)
+		vk.CmdBindDescriptorSets(commandBuffer, vk.PipelineBindPointGraphics, internal.Pipeline.PipelineLayout, 1, 1, objectState.DescriptorSetState.DescriptorSets, 0, nil)
 		return nil
 	}); err != nil {
 		return err
 	}
-	objectState.DescriptorSetState.DescriptorSets[imageIndex] = objectDescriptorSet
 
 	return nil
 }
 
 func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
 	internal := shader.InternalData.(*VulkanShader)
+
 	// TODO: dynamic
 	outInstanceID := metadata.InvalidID
 	for i := uint32(0); i < 1024; i++ {
@@ -2379,16 +2379,18 @@ func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader
 
 	instanceState := internal.InstanceStates[outInstanceID]
 	samplerBindingIndex := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].SamplerBindingIndex
-	instanceTextureCount := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[samplerBindingIndex].DescriptorCount
 
-	// Only setup if the shader actually requires it.
-	if shader.InstanceTextureCount > 0 {
-		instanceState.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
-		for i := uint32(0); i < instanceTextureCount; i++ {
-			if maps[i].Texture == nil {
-				instanceState.InstanceTextureMaps[i] = &metadata.TextureMap{
-					Texture:      vr.defaultTexture.DefaultTexture,
-					InternalData: *new(vk.Sampler),
+	if samplerBindingIndex != metadata.InvalidIDUint8 {
+		instanceTextureCount := internal.Config.DescriptorSets[DESC_SET_INDEX_INSTANCE].Bindings[samplerBindingIndex].DescriptorCount
+		// Only setup if the shader actually requires it.
+		if shader.InstanceTextureCount > 0 {
+			instanceState.InstanceTextureMaps = make([]*metadata.TextureMap, shader.InstanceTextureCount)
+			for i := uint32(0); i < instanceTextureCount; i++ {
+				if maps[i].Texture == nil {
+					instanceState.InstanceTextureMaps[i] = &metadata.TextureMap{
+						Texture:      vr.defaultTexture.DefaultTexture,
+						InternalData: *new(vk.Sampler),
+					}
 				}
 			}
 		}
@@ -2575,11 +2577,11 @@ func (vr *VulkanRenderer) TextureMapAcquireResources(texture_map *metadata.Textu
 			err := fmt.Errorf("error creating texture sampler: %s", VulkanResultString(result, true))
 			return err
 		}
-		texture_map.InternalData = pSampler
 		return nil
 	}); err != nil {
 		return err
 	}
+	texture_map.InternalData = pSampler
 	return nil
 }
 
@@ -2641,11 +2643,11 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachment_count uint8, attachments
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		outTarget.InternalFramebuffer = fb
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	outTarget.InternalFramebuffer = fb
 
 	return outTarget, nil
 }
@@ -2655,11 +2657,11 @@ func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, fre
 		fb := target.InternalFramebuffer.(*vk.Framebuffer)
 		if err := lockPool.SafeCall(PipelineManagement, func() error {
 			vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, *fb, vr.context.Allocator)
-			target.InternalFramebuffer = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		target.InternalFramebuffer = nil
 		if freeInternalMemory {
 			target.Attachments = nil
 			target.AttachmentCount = 0
@@ -2723,23 +2725,23 @@ func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBuf
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		internalBuffer.Handle = pBuffer
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	internalBuffer.Handle = pBuffer
 
 	// Gather memory requirements.
 	var pMemoryRequirements vk.MemoryRequirements
 
 	if err := lockPool.SafeCall(MemoryManagement, func() error {
 		vk.GetBufferMemoryRequirements(vr.context.Device.LogicalDevice, internalBuffer.Handle, &pMemoryRequirements)
-		pMemoryRequirements.Deref()
-		internalBuffer.MemoryRequirements = pMemoryRequirements
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	pMemoryRequirements.Deref()
+	internalBuffer.MemoryRequirements = pMemoryRequirements
 
 	internalBuffer.MemoryIndex = vr.context.FindMemoryIndex(internalBuffer.MemoryRequirements.MemoryTypeBits, internalBuffer.MemoryPropertyFlags)
 	if internalBuffer.MemoryIndex == -1 {
@@ -2764,11 +2766,11 @@ func (vr *VulkanRenderer) RenderBufferCreate(renderbufferType metadata.RenderBuf
 			err := fmt.Errorf("%s", VulkanResultString(result, true))
 			return err
 		}
-		internalBuffer.Memory = mem
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	internalBuffer.Memory = mem
 
 	// Allocate the internal state block of memory at the end once we are sure everything was created successfully.
 	outBuffer.InternalData = internalBuffer
@@ -2826,7 +2828,7 @@ func (vr *VulkanRenderer) RenderBufferUnbind(buffer *metadata.RenderBuffer) bool
 
 func (vr *VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, offset, size uint64) (interface{}, error) {
 	if buffer == nil || buffer.InternalData == nil {
-		err := fmt.Errorf("vulkan_buffer_map_memory requires a valid pointer to a buffer.")
+		err := fmt.Errorf("vulkan_buffer_map_memory requires a valid pointer to a buffer")
 		return nil, err
 	}
 	internalBuffer := buffer.InternalData.(*VulkanBuffer)
@@ -2847,7 +2849,7 @@ func (vr *VulkanRenderer) RenderBufferMapMemory(buffer *metadata.RenderBuffer, o
 
 func (vr *VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer, offset, size uint64) error {
 	if buffer == nil || buffer.InternalData == nil {
-		err := fmt.Errorf("vulkan_buffer_unmap_memory requires a valid pointer to a buffer.")
+		err := fmt.Errorf("vulkan_buffer_unmap_memory requires a valid pointer to a buffer")
 		return err
 	}
 	internalBuffer := buffer.InternalData.(*VulkanBuffer)
@@ -2863,7 +2865,7 @@ func (vr *VulkanRenderer) RenderBufferUnmapMemory(buffer *metadata.RenderBuffer,
 
 func (vr *VulkanRenderer) RenderBufferFlush(buffer *metadata.RenderBuffer, offset, size uint64) error {
 	if buffer == nil || buffer.InternalData == nil {
-		err := fmt.Errorf("vulkan_buffer_flush requires a valid pointer to a buffer.")
+		err := fmt.Errorf("vulkan_buffer_flush requires a valid pointer to a buffer")
 		return err
 	}
 	// NOTE: If not host-coherent, flush the mapped memory range.
@@ -3018,7 +3020,7 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	if err := lockPool.SafeCall(DeviceManagement, func() error {
 		result := vk.AllocateMemory(vr.context.Device.LogicalDevice, &allocateInfo, vr.context.Allocator, &newMemory)
 		if !VulkanResultIsSuccess(result) {
-			err := fmt.Errorf("Unable to resize vulkan buffer because the required memory allocation failed. Error: %s", VulkanResultString(result, true))
+			err := fmt.Errorf("unable to resize vulkan buffer because the required memory allocation failed. Error: %s", VulkanResultString(result, true))
 			return err
 		}
 		return nil
@@ -3057,20 +3059,20 @@ func (vr *VulkanRenderer) RenderBufferResize(buffer *metadata.RenderBuffer, new_
 	if internalBuffer.Memory != nil {
 		if err := lockPool.SafeCall(DeviceManagement, func() error {
 			vk.FreeMemory(vr.context.Device.LogicalDevice, internalBuffer.Memory, vr.context.Allocator)
-			internalBuffer.Memory = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		internalBuffer.Memory = nil
 	}
 	if internalBuffer.Handle != nil {
 		if err := lockPool.SafeCall(ResourceManagement, func() error {
 			vk.DestroyBuffer(vr.context.Device.LogicalDevice, internalBuffer.Handle, vr.context.Allocator)
-			internalBuffer.Handle = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		internalBuffer.Handle = nil
 	}
 
 	// Report free of the old, allocate of the new.
@@ -3262,7 +3264,7 @@ func (vr *VulkanRenderer) RenderBufferDraw(buffer *metadata.RenderBuffer, offset
 		}
 		return nil
 	} else {
-		err := fmt.Errorf("Cannot draw buffer of type: %d", buffer.RenderBufferType)
+		err := fmt.Errorf("cannot draw buffer of type: %d", buffer.RenderBufferType)
 		return err
 	}
 }

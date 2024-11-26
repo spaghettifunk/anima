@@ -1,6 +1,7 @@
 package systems
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spaghettifunk/anima/engine/assets"
@@ -268,7 +269,6 @@ func (r *RendererSystem) OnResize(width, height uint16) error {
 	// Also reset the frame count since the last  resize operation.
 	r.FramesSinceResize = 0
 
-	// return r.backend.Resized(width, height)
 	return nil
 }
 
@@ -285,7 +285,12 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 			width := r.FramebufferWidth
 			height := r.FramebufferHeight
 			renderViewSystem.OnWindowResize(width, height)
-			r.backend.Resized(width, height)
+
+			if err := r.backend.Resized(width, height); err != nil {
+				return err
+			}
+
+			renderViewSystem.OnWindowResize(width, height)
 
 			r.FramesSinceResize = 0
 			r.Resizing = false
@@ -299,6 +304,10 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 
 	// If the begin frame returned successfully, mid-frame operations may continue.
 	if err := r.backend.BeginFrame(packet.DeltaTime); err != nil {
+		if errors.Is(err, core.ErrSwapchainBooting) {
+			core.LogInfo(err.Error())
+			return nil
+		}
 		return err
 	}
 

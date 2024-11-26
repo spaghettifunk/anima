@@ -47,23 +47,26 @@ func (vs *VulkanSwapchain) SwapchainDestroy(context *VulkanContext) {
 
 func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool, error) {
 	var outImageIndex uint32
+	var result vk.Result
 	if err := lockPool.SafeCall(SwapchainManagement, func() error {
-		result := vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, &outImageIndex)
-		if result == vk.ErrorOutOfDate {
-			// Trigger swapchain recreation, then boot out of the render loop.
-			sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
-			if err != nil {
-				return err
-			}
-			vs = sc
-		} else if result != vk.Success && result != vk.Suboptimal {
-			err := fmt.Errorf("failed to acquire swapchain image")
-			return err
-		}
+		result = vk.AcquireNextImage(context.Device.LogicalDevice, vs.Handle, timeoutNS, imageAvailableSemaphore, fence, &outImageIndex)
 		return nil
 	}); err != nil {
 		return 0, false, err
 	}
+
+	if result == vk.ErrorOutOfDate {
+		// Trigger swapchain recreation, then boot out of the render loop.
+		sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
+		if err != nil {
+			return 0, false, err
+		}
+		vs = sc
+	} else if result != vk.Success && result != vk.Suboptimal {
+		err := fmt.Errorf("failed to acquire swapchain image")
+		return 0, false, err
+	}
+
 	return outImageIndex, true, nil
 }
 
@@ -202,16 +205,15 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 
 	var swapchainHandle vk.Swapchain
 	if err := lockPool.SafeCall(SwapchainManagement, func() error {
-
 		if res := vk.CreateSwapchain(context.Device.LogicalDevice, &swapchainCreateInfo, context.Allocator, &swapchainHandle); res != vk.Success {
 			err := fmt.Errorf("failed to create swapchain with err `%s`", VulkanResultString(res, true))
 			return err
 		}
-		swapchain.Handle = swapchainHandle
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	swapchain.Handle = swapchainHandle
 
 	// Start with a zero frame index.
 	context.CurrentFrame = 0

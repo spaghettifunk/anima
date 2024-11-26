@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	vk "github.com/goki/vulkan"
+	"github.com/spaghettifunk/anima/engine/core"
 )
 
 type VulkanCommandBufferState int
@@ -49,12 +50,12 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 			err := fmt.Errorf("failed to allocate command buffer with error %s", VulkanResultString(res, true))
 			return err
 		}
-		vCommandBuffer.Handle = pCommandBuffers[0]
-		vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	vCommandBuffer.Handle = pCommandBuffers[0]
+	vCommandBuffer.State = COMMAND_BUFFER_STATE_READY
 
 	return vCommandBuffer, nil
 }
@@ -62,13 +63,12 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) error {
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
 		vk.FreeCommandBuffers(context.Device.LogicalDevice, pool, 1, []vk.CommandBuffer{v.Handle})
-
-		v.Handle = nil
-		v.State = COMMAND_BUFFER_STATE_NOT_ALLOCATED
 		return nil
 	}); err != nil {
 		return err
 	}
+	v.Handle = nil
+	v.State = COMMAND_BUFFER_STATE_NOT_ALLOCATED
 	return nil
 }
 
@@ -93,11 +93,12 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 			err := fmt.Errorf("failed to begin command buffer with error %s", VulkanResultString(res, true))
 			return err
 		}
-		v.State = COMMAND_BUFFER_STATE_RECORDING
 		return nil
 	}); err != nil {
 		return err
 	}
+	core.LogDebug("BeginCommandBuffer called")
+	v.State = COMMAND_BUFFER_STATE_RECORDING
 	return nil
 }
 
@@ -107,11 +108,12 @@ func (v *VulkanCommandBuffer) End() error {
 			err := fmt.Errorf("failed to end command buffer with error %s", VulkanResultString(res, true))
 			return err
 		}
-		v.State = COMMAND_BUFFER_STATE_RECORDING_ENDED
 		return nil
 	}); err != nil {
 		return err
 	}
+	core.LogDebug("EndCommandBuffer called")
+	v.State = COMMAND_BUFFER_STATE_RECORDING_ENDED
 	return nil
 }
 

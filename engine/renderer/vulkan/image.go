@@ -70,11 +70,11 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 	var memoryRequirements vk.MemoryRequirements
 	if err := lockPool.SafeCall(ResourceManagement, func() error {
 		vk.GetImageMemoryRequirements(context.Device.LogicalDevice, outImage.Handle, &memoryRequirements)
-		memoryRequirements.Deref()
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	memoryRequirements.Deref()
 
 	memoryType := context.FindMemoryIndex(memoryRequirements.MemoryTypeBits, uint32(memoryFlags))
 	if memoryType == -1 {
@@ -320,29 +320,29 @@ func (vi *VulkanImage) Destroy(context *VulkanContext) error {
 	if vi.View != nil {
 		if err := lockPool.SafeCall(ResourceManagement, func() error {
 			vk.DestroyImageView(context.Device.LogicalDevice, vi.View, context.Allocator)
-			vi.View = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		vi.View = nil
 	}
 	if vi.Memory != nil {
 		if err := lockPool.SafeCall(DeviceManagement, func() error {
 			vk.FreeMemory(context.Device.LogicalDevice, vi.Memory, context.Allocator)
-			vi.Memory = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		vi.Memory = nil
 	}
 	if vi.Handle != nil {
 		if err := lockPool.SafeCall(ResourceManagement, func() error {
 			vk.DestroyImage(context.Device.LogicalDevice, vi.Handle, context.Allocator)
-			vi.Handle = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		vi.Handle = nil
 	}
 	return nil
 }

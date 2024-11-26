@@ -209,7 +209,6 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 
 	// Create the pipeline layout.
 	var pPipelineLayout vk.PipelineLayout
-
 	if err := lockPool.SafeCall(PipelineManagement, func() error {
 		result := vk.CreatePipelineLayout(
 			context.Device.LogicalDevice,
@@ -220,11 +219,11 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 			err := fmt.Errorf("vkCreatePipelineLayout failed with %s", VulkanResultString(result, true))
 			return err
 		}
-		outPipeline.PipelineLayout = pPipelineLayout
 		return nil
 	}); err != nil {
 		return nil, err
 	}
+	outPipeline.PipelineLayout = pPipelineLayout
 
 	// Pipeline create
 	pipelineCreateInfo := vk.GraphicsPipelineCreateInfo{
@@ -284,21 +283,21 @@ func (pipeline *VulkanPipeline) Destroy(context *VulkanContext) error {
 	if pipeline.Handle != nil {
 		if err := lockPool.SafeCall(PipelineManagement, func() error {
 			vk.DestroyPipeline(context.Device.LogicalDevice, pipeline.Handle, context.Allocator)
-			pipeline.Handle = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		pipeline.Handle = nil
 	}
 	// Destroy layout
 	if pipeline.PipelineLayout != nil {
 		if err := lockPool.SafeCall(PipelineManagement, func() error {
 			vk.DestroyPipelineLayout(context.Device.LogicalDevice, pipeline.PipelineLayout, context.Allocator)
-			pipeline.PipelineLayout = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		pipeline.PipelineLayout = nil
 	}
 	return nil
 }

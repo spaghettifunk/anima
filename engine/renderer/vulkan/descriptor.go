@@ -33,7 +33,7 @@ type VulkanDescriptorState struct {
  */
 type VulkanShaderDescriptorSetState struct {
 	/** @brief The descriptor sets for this instance, one per frame. */
-	DescriptorSets [3]vk.DescriptorSet
+	DescriptorSets []vk.DescriptorSet
 	/** @brief A descriptor state per descriptor, which in turn handles frames. Count is managed in shader config. */
 	DescriptorStates []*VulkanDescriptorState
 }

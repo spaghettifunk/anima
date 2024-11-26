@@ -174,32 +174,32 @@ func DeviceCreate(context *VulkanContext) error {
 	core.LogInfo("Logical device created.")
 
 	// Get queues.
+	var gQueue vk.Queue
 	if err := lockPool.SafeCall(QueueManagement, func() error {
-		var gQueue vk.Queue
 		vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.GraphicsQueueIndex), 0, &gQueue)
-		context.Device.GraphicsQueue = gQueue
 		return nil
 	}); err != nil {
 		return err
 	}
+	context.Device.GraphicsQueue = gQueue
 
+	var pQueue vk.Queue
 	if err := lockPool.SafeCall(QueueManagement, func() error {
-		var pQueue vk.Queue
 		vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.PresentQueueIndex), 0, &pQueue)
-		context.Device.PresentQueue = pQueue
 		return nil
 	}); err != nil {
 		return err
 	}
+	context.Device.PresentQueue = pQueue
 
+	var tQueue vk.Queue
 	if err := lockPool.SafeCall(QueueManagement, func() error {
-		var tQueue vk.Queue
 		vk.GetDeviceQueue(context.Device.LogicalDevice, uint32(context.Device.TransferQueueIndex), 0, &tQueue)
-		context.Device.TransferQueue = tQueue
 		return nil
 	}); err != nil {
 		return err
 	}
+	context.Device.TransferQueue = tQueue
 
 	core.LogInfo("Queues obtained.")
 
@@ -209,19 +209,19 @@ func DeviceCreate(context *VulkanContext) error {
 		QueueFamilyIndex: uint32(context.Device.GraphicsQueueIndex),
 		Flags:            vk.CommandPoolCreateFlags(vk.CommandPoolCreateResetCommandBufferBit),
 	}
+	poolCreateInfo.Deref()
 
 	var gcPool vk.CommandPool
-
 	if err := lockPool.SafeCall(ResourceManagement, func() error {
 		if res := vk.CreateCommandPool(context.Device.LogicalDevice, &poolCreateInfo, context.Allocator, &gcPool); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create command pool with error %s", VulkanResultString(res, true))
 			return err
 		}
-		context.Device.GraphicsCommandPool = gcPool
 		return nil
 	}); err != nil {
 		return err
 	}
+	context.Device.GraphicsCommandPool = gcPool
 
 	core.LogInfo("Graphics command pool created.")
 
@@ -248,11 +248,11 @@ func DeviceDestroy(context *VulkanContext) error {
 	if context.Device.LogicalDevice != nil {
 		if err := lockPool.SafeCall(DeviceManagement, func() error {
 			vk.DestroyDevice(context.Device.LogicalDevice, context.Allocator)
-			context.Device.LogicalDevice = nil
 			return nil
 		}); err != nil {
 			return err
 		}
+		context.Device.LogicalDevice = nil
 	}
 
 	// Physical devices are not destroyed.
