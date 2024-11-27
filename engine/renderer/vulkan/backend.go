@@ -400,7 +400,9 @@ func (vr *VulkanRenderer) Shutdow() error {
 	vr.context.GraphicsCommandBuffers = nil
 
 	// Swapchain
-	vr.context.Swapchain.SwapchainDestroy(vr.context)
+	if err := SwapchainDestroy(vr.context, vr.context.Swapchain); err != nil {
+		return err
+	}
 
 	core.LogDebug("Destroying Vulkan device...")
 	DeviceDestroy(vr.context)
@@ -491,7 +493,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	inFlightsFences := []vk.Fence{f}
 	if err := lockPool.SafeCall(SynchronizationManagement, func() error {
-		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64-1)
+		result := vk.WaitForFences(vr.context.Device.LogicalDevice, 1, inFlightsFences, vk.True, vk.MaxUint64)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("func BeginFram In-flight fence wait failure! error: %s", VulkanResultString(result, true))
 			return err
@@ -503,7 +505,7 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 
 	// Acquire the next image from the swap chain. Pass along the semaphore that should signaled when this completes.
 	// This same semaphore will later be waited on by the queue submission to ensure this image is available.
-	imageIndex, ok, err := vr.context.Swapchain.SwapchainAcquireNextImageIndex(vr.context, vk.MaxUint64-1, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
+	imageIndex, ok, err := SwapchainAcquireNextImageIndex(vr.context, vr.context.Swapchain, vk.MaxUint64, vr.context.ImageAvailableSemaphores[vr.context.CurrentFrame], vk.NullFence)
 	if !ok && err != nil {
 		core.LogError("failed to swapchain aquire next image index")
 		return err
@@ -593,8 +595,9 @@ func (vr *VulkanRenderer) EndFrame(deltaTime float64) error {
 	// End queue submission
 
 	// Give the image back to the swapchain.
-	return vr.context.Swapchain.SwapchainPresent(
+	return SwapchainPresent(
 		vr.context,
+		vr.context.Swapchain,
 		vr.context.Device.GraphicsQueue,
 		vr.context.Device.PresentQueue,
 		vr.context.QueueCompleteSemaphores[vr.context.CurrentFrame],
@@ -708,7 +711,7 @@ func (vr *VulkanRenderer) recreateSwapchain() error {
 	DeviceQuerySwapchainSupport(vr.context.Device.PhysicalDevice, vr.context.Surface, vr.context.Device.SwapchainSupport)
 	DeviceDetectDepthFormat(vr.context.Device)
 
-	sc, err := vr.context.Swapchain.SwapchainRecreate(vr.context, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
+	sc, err := SwapchainRecreate(vr.context, vr.context.Swapchain, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
 	if err != nil {
 		return err
 	}
@@ -1080,14 +1083,19 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	}
 
 	pass := &metadata.RenderPass{
-		ID:                metadata.InvalidIDUint16,
-		InternalData:      &VulkanRenderPass{},
+		ID: metadata.InvalidIDUint16,
+		InternalData: &VulkanRenderPass{
+			Depth:   config.Depth,
+			Stencil: config.Stencil,
+		},
 		RenderTargetCount: config.RenderTargetCount,
 		Targets:           make([]*metadata.RenderTarget, config.RenderTargetCount),
 		ClearColour:       config.ClearColour,
 		ClearFlags:        uint8(config.ClearFlags),
 		RenderArea:        config.RenderArea,
 	}
+
+	internalData := pass.InternalData.(*VulkanRenderPass)
 
 	// Copy over config for each target.
 	for t := 0; t < int(pass.RenderTargetCount); t++ {
@@ -1111,13 +1119,13 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 
 	// Main subpass
 	subpass := vk.SubpassDescription{
-		PipelineBindPoint: vk.PipelineBindPointGraphics,
-		// ColorAttachmentCount: 0,
-		// // Input from a shader
-		// InputAttachmentCount: 0,
-		// // Attachments used for multisampling colour attachments
-		// // Attachments not used in this subpass, but must be preserved for the next.
-		// PreserveAttachmentCount: 0,
+		PipelineBindPoint:    vk.PipelineBindPointGraphics,
+		ColorAttachmentCount: 0,
+		// Input from a shader
+		InputAttachmentCount: 0,
+		// Attachments used for multisampling colour attachments
+		// Attachments not used in this subpass, but must be preserved for the next.
+		PreserveAttachmentCount: 0,
 	}
 
 	// Attachments.
@@ -1160,8 +1168,8 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 						attachmentDesc.LoadOp = vk.AttachmentLoadOpLoad
 					}
 				} else {
-					core.LogFatal("Invalid and unsupported combination of load operation (0x%x) and clear flags (0x%x) for colour attachment.", attachmentDesc.LoadOp, pass.ClearFlags)
-					return nil, nil
+					err := fmt.Errorf("invalid and unsupported combination of load operation (0x%x) and clear flags (0x%x) for colour attachment", attachmentDesc.LoadOp, pass.ClearFlags)
+					return nil, err
 				}
 			}
 
@@ -1171,23 +1179,23 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 			} else if attachmentConfig.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE {
 				attachmentDesc.StoreOp = vk.AttachmentStoreOpStore
 			} else {
-				core.LogFatal("invalid store operation (0x%d) set for depth attachment. Check configuration", attachmentConfig.StoreOperation)
-				return nil, nil
+				err := fmt.Errorf("invalid store operation (0x%d) set for depth attachment. Check configuration", attachmentConfig.StoreOperation)
+				return nil, err
 			}
 
 			// NOTE: these will never be used on a colour attachment.
 			attachmentDesc.StencilLoadOp = vk.AttachmentLoadOpDontCare
 			attachmentDesc.StencilStoreOp = vk.AttachmentStoreOpDontCare
 			// If loading, that means coming from another pass, meaning the format should be VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL. Otherwise it is undefined.
-			attachmentDesc.InitialLayout = vk.ImageLayoutColorAttachmentOptimal
-			if attachmentConfig.LoadOperation != metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
-				attachmentDesc.InitialLayout = vk.ImageLayoutUndefined
+			attachmentDesc.InitialLayout = vk.ImageLayoutUndefined
+			if attachmentConfig.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+				attachmentDesc.InitialLayout = vk.ImageLayoutColorAttachmentOptimal
 			}
 
 			// If this is the last pass writing to this attachment, present after should be set to true.
-			attachmentDesc.FinalLayout = vk.ImageLayoutPresentSrc
-			if !attachmentConfig.PresentAfter {
-				attachmentDesc.FinalLayout = vk.ImageLayoutColorAttachmentOptimal // Transitioned to after the render pass
+			attachmentDesc.FinalLayout = vk.ImageLayoutColorAttachmentOptimal
+			if attachmentConfig.PresentAfter {
+				attachmentDesc.FinalLayout = vk.ImageLayoutPresentSrc // Transitioned to after the render pass
 			}
 			attachmentDesc.Flags = 0
 			attachmentDesc.Deref()
@@ -1209,9 +1217,9 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 			// Determine which load operation to use.
 			if attachmentConfig.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE {
 				// If we don't care, the only other thing that needs checking is if the attachment is being cleared.
-				attachmentDesc.LoadOp = vk.AttachmentLoadOpClear
-				if !doClearDepth {
-					attachmentDesc.LoadOp = vk.AttachmentLoadOpDontCare
+				attachmentDesc.LoadOp = vk.AttachmentLoadOpDontCare
+				if doClearDepth {
+					attachmentDesc.LoadOp = vk.AttachmentLoadOpClear
 				}
 			} else {
 				// If we are loading, check if we are also clearing. This combination doesn't make sense, and should be warned about.
@@ -1223,8 +1231,8 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 						attachmentDesc.LoadOp = vk.AttachmentLoadOpLoad
 					}
 				} else {
-					core.LogFatal("invalid and unsupported combination of load operation (0x%d) and clear flags (0x%d) for depth attachment.", attachmentDesc.LoadOp, pass.ClearFlags)
-					return nil, nil
+					err := fmt.Errorf("invalid and unsupported combination of load operation (0x%d) and clear flags (0x%d) for depth attachment", attachmentDesc.LoadOp, pass.ClearFlags)
+					return nil, err
 				}
 			}
 
@@ -1234,17 +1242,17 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 			} else if attachmentConfig.StoreOperation == metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE {
 				attachmentDesc.StoreOp = vk.AttachmentStoreOpStore
 			} else {
-				core.LogFatal("invalid store operation (0x%d) set for depth attachment. Check configuration", attachmentConfig.StoreOperation)
-				return nil, nil
+				err := fmt.Errorf("invalid store operation (0x%d) set for depth attachment. Check configuration", attachmentConfig.StoreOperation)
+				return nil, err
 			}
 
 			// TODO: Configurability for stencil attachments.
 			attachmentDesc.StencilLoadOp = vk.AttachmentLoadOpDontCare
 			attachmentDesc.StencilStoreOp = vk.AttachmentStoreOpDontCare
 			// If coming from a previous pass, should already be VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL. Otherwise undefined.
-			attachmentDesc.InitialLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
-			if attachmentConfig.LoadOperation != metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
-				attachmentDesc.InitialLayout = vk.ImageLayoutUndefined
+			attachmentDesc.InitialLayout = vk.ImageLayoutUndefined
+			if attachmentConfig.LoadOperation == metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD {
+				attachmentDesc.InitialLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
 			}
 			// Final layout for depth stencil attachments is always this.
 			attachmentDesc.FinalLayout = vk.ImageLayoutDepthStencilAttachmentOptimal
@@ -1262,10 +1270,9 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	attachmentsAdded := uint32(0)
 
 	// Colour attachment reference.
-	colourAttachmentReferences := make([]vk.AttachmentReference, 0)
 	colourAttachmentCount := len(colourAttachmentDescs)
 	if colourAttachmentCount > 0 {
-		colourAttachmentReferences = make([]vk.AttachmentReference, colourAttachmentCount)
+		colourAttachmentReferences := make([]vk.AttachmentReference, colourAttachmentCount)
 		for i := 0; i < colourAttachmentCount; i++ {
 			colourAttachmentReferences[i].Attachment = attachmentsAdded // Attachment description array index
 			colourAttachmentReferences[i].Layout = vk.ImageLayoutColorAttachmentOptimal
@@ -1279,17 +1286,18 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	depthAttachmentCount := len(depthAttachmentDescs)
 	if depthAttachmentCount > 0 {
 		if depthAttachmentCount > 1 {
-			core.LogFatal("multiple depth attachments not supported")
-			return nil, nil
+			err := fmt.Errorf("multiple depth attachments not supported")
+			return nil, err
 		}
 		// Depth attachment reference
 		depthAttachmentReference := vk.AttachmentReference{
-			Attachment: 1,
+			Attachment: attachmentsAdded,
 			Layout:     vk.ImageLayoutDepthStencilAttachmentOptimal,
 		}
 		depthAttachmentReference.Deref()
 		// Depth stencil data.
 		subpass.PDepthStencilAttachment = &depthAttachmentReference
+		attachmentsAdded++
 	}
 	subpass.Deref()
 
@@ -1314,14 +1322,12 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 		PSubpasses:      []vk.SubpassDescription{subpass},
 		DependencyCount: 1,
 		PDependencies:   []vk.SubpassDependency{dependency},
-		PNext:           nil,
-		Flags:           0,
 	}
 	renderpassCreateInfo.Deref()
 
-	var handle vk.RenderPass
+	// var handle vk.RenderPass
 	if err := lockPool.SafeCall(RenderpassManagement, func() error {
-		result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &renderpassCreateInfo, vr.context.Allocator, &handle)
+		result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &renderpassCreateInfo, vr.context.Allocator, &internalData.Handle)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("failed to create render pass with error %s", VulkanResultString(result, true))
 			return err
@@ -1330,7 +1336,6 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	}); err != nil {
 		return nil, err
 	}
-	pass.InternalData.(*VulkanRenderPass).Handle = handle
 
 	return pass, nil
 }
@@ -2568,14 +2573,15 @@ func (vr *VulkanRenderer) TextureMapReleaseResources(texture_map *metadata.Textu
 			return err
 		}
 
-		if err := lockPool.SafeCall(ResourceManagement, func() error {
-			vk.DestroySampler(vr.context.Device.LogicalDevice, texture_map.InternalData.(vk.Sampler), vr.context.Allocator)
-			return nil
-		}); err != nil {
-			return err
+		if texture_map.InternalData != nil {
+			if err := lockPool.SafeCall(ResourceManagement, func() error {
+				vk.DestroySampler(vr.context.Device.LogicalDevice, texture_map.InternalData.(vk.Sampler), vr.context.Allocator)
+				return nil
+			}); err != nil {
+				return err
+			}
+			texture_map.InternalData = nil
 		}
-
-		texture_map.InternalData = 0
 	}
 	return nil
 }

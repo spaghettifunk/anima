@@ -35,19 +35,19 @@ func SwapchainCreate(context *VulkanContext, width uint32, height uint32) (*Vulk
 	return createSwapchain(context, width, height)
 }
 
-func (vs *VulkanSwapchain) SwapchainRecreate(context *VulkanContext, width uint32, height uint32) (*VulkanSwapchain, error) {
+func SwapchainRecreate(context *VulkanContext, vs *VulkanSwapchain, width uint32, height uint32) (*VulkanSwapchain, error) {
 	// Destroy the old and create a new one.
-	if err := vs.destroySwapchain(context); err != nil {
+	if err := destroySwapchain(context, vs); err != nil {
 		return nil, err
 	}
 	return createSwapchain(context, width, height)
 }
 
-func (vs *VulkanSwapchain) SwapchainDestroy(context *VulkanContext) {
-	vs.destroySwapchain(context)
+func SwapchainDestroy(context *VulkanContext, vs *VulkanSwapchain) error {
+	return destroySwapchain(context, vs)
 }
 
-func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool, error) {
+func SwapchainAcquireNextImageIndex(context *VulkanContext, vs *VulkanSwapchain, timeoutNS uint64, imageAvailableSemaphore vk.Semaphore, fence vk.Fence) (uint32, bool, error) {
 	var outImageIndex uint32
 	var result vk.Result
 	if err := lockPool.SafeCall(SwapchainManagement, func() error {
@@ -59,7 +59,7 @@ func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext
 
 	if result == vk.ErrorOutOfDate {
 		// Trigger swapchain recreation, then boot out of the render loop.
-		sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
+		sc, err := SwapchainRecreate(context, vs, context.FramebufferWidth, context.FramebufferHeight)
 		if err != nil {
 			return 0, false, err
 		}
@@ -72,7 +72,7 @@ func (vs *VulkanSwapchain) SwapchainAcquireNextImageIndex(context *VulkanContext
 	return outImageIndex, true, nil
 }
 
-func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueue vk.Queue, presentQueue vk.Queue, renderCompleteSemaphore vk.Semaphore, presentImageIndex uint32) error {
+func SwapchainPresent(context *VulkanContext, vs *VulkanSwapchain, graphicsQueue vk.Queue, presentQueue vk.Queue, renderCompleteSemaphore vk.Semaphore, presentImageIndex uint32) error {
 	// Return the image to the swapchain for presentation.
 	presentInfo := vk.PresentInfo{
 		SType:              vk.StructureTypePresentInfo,
@@ -81,7 +81,6 @@ func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueu
 		SwapchainCount:     1,
 		PSwapchains:        []vk.Swapchain{vs.Handle},
 		PImageIndices:      []uint32{presentImageIndex},
-		PResults:           nil,
 	}
 	presentInfo.Deref()
 
@@ -89,7 +88,7 @@ func (vs *VulkanSwapchain) SwapchainPresent(context *VulkanContext, graphicsQueu
 		result := vk.QueuePresent(presentQueue, &presentInfo)
 		if result == vk.ErrorOutOfDate || result == vk.Suboptimal {
 			// Swapchain is out of date, suboptimal or a framebuffer resize has occurred. Trigger swapchain recreation.
-			sc, err := vs.SwapchainRecreate(context, context.FramebufferWidth, context.FramebufferHeight)
+			sc, err := SwapchainRecreate(context, vs, context.FramebufferWidth, context.FramebufferHeight)
 			if err != nil {
 				return err
 			}
@@ -376,7 +375,7 @@ func createSwapchain(context *VulkanContext, width, height uint32) (*VulkanSwapc
 	return swapchain, nil
 }
 
-func (vs *VulkanSwapchain) destroySwapchain(context *VulkanContext) error {
+func destroySwapchain(context *VulkanContext, vs *VulkanSwapchain) error {
 	if err := lockPool.SafeCall(DeviceManagement, func() error {
 		if res := vk.DeviceWaitIdle(context.Device.LogicalDevice); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("device wait idle failed with error %s", VulkanResultString(res, true))

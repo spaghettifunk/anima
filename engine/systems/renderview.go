@@ -670,6 +670,7 @@ func (rvs *RenderViewSystem) uiOnBuildPacket(view *metadata.RenderView, data int
 			out_packet.GeometryCount++
 		}
 	}
+
 	return out_packet, nil
 }
 

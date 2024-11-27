@@ -15,16 +15,19 @@ import (
 )
 
 func main() {
+	done := make(chan bool, 1)
+
 	tb := testbed.NewTestGame()
 
 	engine, err := engine.New(tb.Game)
 	if err != nil {
-		panic(err)
+		core.LogError(err.Error())
+		close(done)
 	}
 
 	if err := engine.Initialize(); err != nil {
-		core.LogFatal(err.Error())
-		panic(err)
+		core.LogError(err.Error())
+		close(done)
 	}
 
 	// signal channel to capture system calls
@@ -35,11 +38,20 @@ func main() {
 	go func() {
 		// capture sigterm and other system call here
 		<-sigCh
-		_ = engine.Shutdown()
+		if err := engine.Shutdown(); err != nil {
+			core.LogError(err.Error())
+			return
+		}
+		core.LogInfo("engine shutdown. Bye Bye")
+		close(done)
 	}()
 
 	// run engine
 	if err := engine.Run(); err != nil {
-		panic(err)
+		core.LogError(err.Error())
+		close(done)
 	}
+
+	// time to say goodbye
+	<-done
 }

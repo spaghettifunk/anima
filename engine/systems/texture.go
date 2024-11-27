@@ -100,10 +100,9 @@ func (ts *TextureSystem) Aquire(name string, autoRelease bool) (*metadata.Textur
 		return ts.DefaultTexture.DefaultTexture, nil
 	}
 	// NOTE: Increments reference count, or creates new entry.
-	id, ok := ts.ProcessTextureReference(name, metadata.TextureType2d, 1, autoRelease, false)
-	if !ok {
+	id, err := ts.ProcessTextureReference(name, metadata.TextureType2d, 1, autoRelease, false)
+	if err != nil {
 		err := fmt.Errorf("func texture system Acquire failed to obtain a new texture id")
-		core.LogError(err.Error())
 		return nil, err
 	}
 	return ts.RegisteredTextures[id], nil
@@ -132,10 +131,9 @@ func (ts *TextureSystem) AquireCube(name string, autoRelease bool) (*metadata.Te
 		return ts.DefaultTexture.DefaultTexture, nil
 	}
 	// NOTE: Increments reference count, or creates new entry.
-	id, ok := ts.ProcessTextureReference(name, metadata.TextureTypeCube, 1, autoRelease, false)
-	if !ok {
+	id, err := ts.ProcessTextureReference(name, metadata.TextureTypeCube, 1, autoRelease, false)
+	if err != nil {
 		err := fmt.Errorf("func texture system AcquireCube failed to obtain a new texture id")
-		core.LogError(err.Error())
 		return nil, err
 	}
 	return ts.RegisteredTextures[id], nil
@@ -144,10 +142,9 @@ func (ts *TextureSystem) AquireCube(name string, autoRelease bool) (*metadata.Te
 func (ts *TextureSystem) AquireWriteable(name string, width, height uint32, channelCount uint8, hasTransparency bool) (*metadata.Texture, error) {
 	// NOTE: Wrapped textures are never auto-released because it means that thier
 	// resources are created and managed somewhere within the renderer internals.
-	id, ok := ts.ProcessTextureReference(name, metadata.TextureType2d, 1, false, true)
-	if !ok {
+	id, err := ts.ProcessTextureReference(name, metadata.TextureType2d, 1, false, true)
+	if err != nil {
 		err := fmt.Errorf("func texture system Acquire failed to obtain a new texture id")
-		core.LogError(err.Error())
 		return nil, err
 	}
 
@@ -173,18 +170,20 @@ func (ts *TextureSystem) AquireWriteable(name string, width, height uint32, chan
 	return texture, nil
 }
 
-func (ts *TextureSystem) Release(name string) {
+func (ts *TextureSystem) Release(name string) error {
 	// Ignore release requests for the default texture.
 	// TODO: Check against other default texture names as well?
 	if name == metadata.DEFAULT_TEXTURE_NAME {
-		return
+		return nil
 	}
 	// NOTE: Decrement the reference count.
-	id, ok := ts.ProcessTextureReference(name, metadata.TextureType2d, -1, false, false)
-	if !ok {
+	id, err := ts.ProcessTextureReference(name, metadata.TextureType2d, -1, false, false)
+	if err != nil {
 		core.LogError("texture_system_release failed to release texture '%s' properly.", name)
+		return err
 	}
 	core.LogDebug("texture ID `%d` released", id)
+	return nil
 }
 
 func (ts *TextureSystem) SetInternal(texture *metadata.Texture, internalData interface{}) bool {
@@ -315,13 +314,16 @@ func (ts *TextureSystem) DestroyTexture(texture *metadata.Texture) error {
 	return nil
 }
 
-func (ts *TextureSystem) ProcessTextureReference(name string, textureType metadata.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, bool) {
+func (ts *TextureSystem) ProcessTextureReference(name string, textureType metadata.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, error) {
 	outTextureID := metadata.InvalidID
 
 	ts.RegisteredTextureTable[name] = &metadata.TextureReference{
 		Handle: metadata.InvalidID,
 	}
-	ref := ts.RegisteredTextureTable[name]
+	ref, ok := ts.RegisteredTextureTable[name]
+	if !ok {
+		return 0, fmt.Errorf("texture with name `%s` does not exist", name)
+	}
 
 	// If the reference count starts off at zero, one of two things can be
 	// true. If incrementing references, this means the entry is new. If
@@ -332,12 +334,12 @@ func (ts *TextureSystem) ProcessTextureReference(name string, textureType metada
 			ref.AutoRelease = autoRelease
 		} else {
 			if ref.AutoRelease {
-				core.LogWarn("Tried to release non-existent texture: '%s'", name)
-				return 0, false
+				err := fmt.Errorf("tried to release non-existent texture: '%s'", name)
+				return 0, err
 			} else {
-				core.LogWarn("Tried to release a texture where autorelease=false, but references was already 0.")
+				core.LogWarn("tried to release a texture where autorelease=false, but references was already 0")
 				// Still count this as a success, but warn about it.
-				return 0, true
+				return 0, nil
 			}
 		}
 	}
@@ -357,9 +359,9 @@ func (ts *TextureSystem) ProcessTextureReference(name string, textureType metada
 			// Reset the reference.
 			ref.Handle = metadata.InvalidID
 			ref.AutoRelease = false
-			// KTRACE("Released texture '%s'., Texture unloaded because reference count=0 and AutoRelease=true.", name_copy);
+			core.LogDebug("released texture '%s'. Texture unloaded because reference count=0 and AutoRelease=true.", name)
 		} else {
-			// KTRACE("Released texture '%s', now has a reference count of '%i' (AutoRelease=%s).", name_copy, ref.reference_count, ref.AutoRelease ? "true" : "false");
+			core.LogDebug("released texture '%s', now has a reference count of '%d' (AutoRelease=%t)", name, ref.ReferenceCount, ref.AutoRelease)
 		}
 
 	} else {
@@ -379,14 +381,14 @@ func (ts *TextureSystem) ProcessTextureReference(name string, textureType metada
 
 			// An empty slot was not found, bleat about it and boot out.
 			if outTextureID == metadata.InvalidID {
-				core.LogError("process_texture_reference - Texture system cannot hold anymore textures. Adjust configuration to allow more.")
-				return 0, false
+				err := fmt.Errorf("process_texture_reference - Texture system cannot hold anymore textures. Adjust configuration to allow more")
+				return 0, err
 			} else {
 				t := ts.RegisteredTextures[ref.Handle]
 				t.TextureType = textureType
 				// Create new texture.
 				if skipLoad {
-					// KTRACE("Load skipped for texture '%s'. This is expected behaviour.");
+					core.LogDebug("load skipped for texture '%s'. This is expected behaviour", name)
 				} else {
 					if textureType == metadata.TextureTypeCube {
 						texture_names := make([]string, 6)
@@ -401,30 +403,30 @@ func (ts *TextureSystem) ProcessTextureReference(name string, textureType metada
 
 						if !ts.LoadCubeTextures(name, texture_names, t) {
 							outTextureID = metadata.InvalidID
-							core.LogError("Failed to load cube texture '%s'.", name)
-							return 0, false
+							err := fmt.Errorf("failed to load cube texture '%s'", name)
+							return 0, err
 						}
 					} else {
 						if !ts.LoadTexture(name, t) {
 							outTextureID = metadata.InvalidID
-							core.LogError("Failed to load texture '%s'.", name)
-							return 0, false
+							err := fmt.Errorf("failed to load texture '%s'", name)
+							return 0, err
 						}
 					}
 					t.ID = ref.Handle
 				}
-				// KTRACE("Texture '%s' does not yet exist. Created, and ref_count is now %i.", name, ref.reference_count);
+				core.LogDebug("texture '%s' does not yet exist. Created, and ref_count is now %d", name, ref.ReferenceCount)
 			}
 		} else {
 			outTextureID = ref.Handle
-			// KTRACE("Texture '%s' already exists, ref_count increased to %i.", name, ref.reference_count);
+			core.LogDebug("texture '%s' already exists, ref_count increased to %d.", name, ref.ReferenceCount)
 		}
 	}
 
 	// Either way, update the entry.
 	ts.RegisteredTextureTable[name] = ref
 
-	return outTextureID, true
+	return outTextureID, nil
 }
 
 func (ts *TextureSystem) TextureLoadJobSuccess(paramsChan <-chan interface{}) {

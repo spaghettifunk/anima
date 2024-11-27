@@ -175,7 +175,6 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 			LayerCount:     lc,
 		},
 	}
-	barrier.Deref()
 
 	var sourceStage vk.PipelineStageFlags
 	var destStage vk.PipelineStageFlags

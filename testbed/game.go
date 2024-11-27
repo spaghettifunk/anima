@@ -143,10 +143,14 @@ func (g *TestGame) Update(deltaTime float64) error {
 	return nil
 }
 
-func (g *TestGame) Render(deltaTime float64) error {
+func (g *TestGame) Render(packer *metadata.RenderPacket, deltaTime float64) error {
 	return nil
 }
 
 func (g *TestGame) OnResize(width uint32, height uint32) error {
+	return nil
+}
+
+func (g *TestGame) Shutdown() error {
 	return nil
 }

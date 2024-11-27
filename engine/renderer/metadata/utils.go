@@ -5,12 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
-
-	"github.com/spaghettifunk/anima/engine/core"
 )
 
 func GetAlignedRange(offset, size, granularity uint64) *MemoryRange {
-	core.LogInfo("Values in GetAlignedRange are - offset: %d, size: %d and granularity: %d", offset, size, granularity)
 	m := &MemoryRange{
 		Offset: GetAligned(offset, granularity),
 		Size:   GetAligned(size, granularity),
@@ -20,7 +17,6 @@ func GetAlignedRange(offset, size, granularity uint64) *MemoryRange {
 
 func GetAligned(operand, granularity uint64) uint64 {
 	val := (operand + (granularity - 1)) &^ (granularity - 1)
-	core.LogInfo("the value of GetAligned with operand: %d and granularity %d is %d", operand, granularity, val)
 	return val
 }
 
@@ -89,7 +85,7 @@ func BytesToCodepoint(bytes string, offset uint32) (int32, uint8, error) {
 		// NOTE: Not supporting 5 and 6-byte characters; return as invalid UTF-8.
 		out_advance = 0
 		out_codepoint = 0
-		err := fmt.Errorf("kstring bytes_to_codepoint() - Not supporting 5 and 6-byte characters; Invalid UTF-8")
+		err := fmt.Errorf("string bytes_to_codepoint() - Not supporting 5 and 6-byte characters; Invalid UTF-8")
 		return out_codepoint, out_advance, err
 	}
 }

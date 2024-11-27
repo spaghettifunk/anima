@@ -297,7 +297,6 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 	if supportInfo.FormatCount != 0 {
 		if len(supportInfo.Formats) == 0 {
 			supportInfo.Formats = make([]vk.SurfaceFormat, supportInfo.FormatCount)
-			core.LogDebug("allocated memory for VkSurfaceFormatKHR")
 		}
 		if res := vk.GetPhysicalDeviceSurfaceFormats(physicalDevice, surface, &supportInfo.FormatCount, supportInfo.Formats); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to get physical device surface formats")
@@ -316,7 +315,6 @@ func DeviceQuerySwapchainSupport(physicalDevice vk.PhysicalDevice, surface vk.Su
 	if supportInfo.PresentModeCount != 0 {
 		if len(supportInfo.PresentModes) == 0 {
 			supportInfo.PresentModes = make([]vk.PresentMode, supportInfo.PresentModeCount)
-			core.LogDebug("allocated memory for VkPresentModeKHR")
 		}
 		if res := vk.GetPhysicalDeviceSurfacePresentModes(physicalDevice, surface, &supportInfo.PresentModeCount, supportInfo.PresentModes); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to get physical device surface present modes")

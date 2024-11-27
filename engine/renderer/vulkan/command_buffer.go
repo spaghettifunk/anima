@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	vk "github.com/goki/vulkan"
-	"github.com/spaghettifunk/anima/engine/core"
 )
 
 type VulkanCommandBufferState int
@@ -97,7 +96,6 @@ func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimulta
 	}); err != nil {
 		return err
 	}
-	core.LogDebug("BeginCommandBuffer called")
 	v.State = COMMAND_BUFFER_STATE_RECORDING
 	return nil
 }
@@ -112,7 +110,6 @@ func (v *VulkanCommandBuffer) End() error {
 	}); err != nil {
 		return err
 	}
-	core.LogDebug("EndCommandBuffer called")
 	v.State = COMMAND_BUFFER_STATE_RECORDING_ENDED
 	return nil
 }

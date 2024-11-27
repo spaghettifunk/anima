@@ -161,7 +161,7 @@ func (sm *SystemManager) OnResize(width, height uint16) error {
 }
 
 func (sm *SystemManager) Shutdown() error {
-	if err := sm.RenderViewSystem.Shutdown(); err != nil {
+	if err := sm.JobSystem.Shutdown(); err != nil {
 		return err
 	}
 	// if err := sm.FontSystem.Shutdown(); err != nil {
@@ -185,7 +185,10 @@ func (sm *SystemManager) Shutdown() error {
 	if err := sm.CameraSystem.Shutdown(); err != nil {
 		return err
 	}
-	if err := sm.JobSystem.Shutdown(); err != nil {
+	if err := sm.RenderViewSystem.Shutdown(); err != nil {
+		return err
+	}
+	if err := sm.RendererSystem.Shutdown(); err != nil {
 		return err
 	}
 	return nil

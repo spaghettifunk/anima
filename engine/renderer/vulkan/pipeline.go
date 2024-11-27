@@ -274,7 +274,7 @@ func NewGraphicsPipeline(context *VulkanContext, config *VulkanPipelineConfig) (
 
 	outPipeline.Handle = pPipelines[0]
 
-	core.LogDebug("Graphics pipeline created!")
+	core.LogInfo("graphics pipeline created")
 	return outPipeline, nil
 }
 

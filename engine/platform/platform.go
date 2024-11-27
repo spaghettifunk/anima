@@ -58,8 +58,8 @@ func (p *Platform) Startup(applicationName string, x uint32, y uint32, width uin
 }
 
 func (p *Platform) Shutdown() error {
-	p.Window.Destroy()
-	glfw.Terminate()
+	// p.Window.Destroy()
+	// glfw.Terminate()
 	return nil
 }
 
