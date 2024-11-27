@@ -242,6 +242,7 @@ func DeviceDestroy(context *VulkanContext) error {
 	}); err != nil {
 		return err
 	}
+	context.Device.GraphicsCommandPool = nil
 
 	// Destroy logical device
 	core.LogInfo("Destroying logical device...")

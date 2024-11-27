@@ -64,7 +64,7 @@ func NewRenderViewPick(view *metadata.RenderView, shaderUIPick *metadata.Shader,
 	return rp
 }
 
-func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) bool {
+func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) error {
 	// NOTE: In this heavily-customized view, the exact number of passes is known, so
 	// these index assumptions are fine.
 	vp.UIShaderInfo.Renderpass = vp.View.Passes[0]
@@ -100,7 +100,7 @@ func (vp *RenderViewPick) OnCreate(uniforms map[string]uint16) bool {
 
 	core.EventRegister(core.EVENT_CODE_MOUSE_MOVED, vp.onMouseMoved)
 
-	return true
+	return nil
 }
 
 func (vp *RenderViewPick) OnDestroy() error {
@@ -199,17 +199,18 @@ func (vp *RenderViewPick) OnBuildPacket(data interface{}) (*metadata.RenderViewP
 	return out_packet, nil
 }
 
-func (vp *RenderViewPick) OnDestroyPacket(packet *metadata.RenderViewPacket) {
+func (vp *RenderViewPick) OnDestroyPacket(packet *metadata.RenderViewPacket) error {
 	packet.Geometries = nil
 	packet = nil
+	return nil
 }
 
-func (vp *RenderViewPick) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
-	return true
+func (vp *RenderViewPick) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) error {
+	return nil
 }
 
-func (vp *RenderViewPick) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
-	return true
+func (vp *RenderViewPick) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) error {
+	return nil
 }
 
 func (vp *RenderViewPick) onMouseMoved(event_data core.EventContext) {

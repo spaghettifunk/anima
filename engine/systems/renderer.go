@@ -70,12 +70,12 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// Skybox view
 	skybox_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-		Width:            uint16(r.FramebufferWidth),
-		Height:           uint16(r.FramebufferHeight),
+		Width:            0,
+		Height:           0,
 		Name:             "skybox",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        1,
-		Passes: []*metadata.RenderPassConfig{
+		PassConfigs: []*metadata.RenderPassConfig{
 			{
 				Name:        "Renderpass.Builtin.Skybox",
 				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
@@ -107,12 +107,12 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// World view.
 	world_view_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-		Width:            uint16(r.FramebufferWidth),
-		Height:           uint16(r.FramebufferHeight),
+		Width:            0,
+		Height:           0,
 		Name:             "world",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        1,
-		Passes: []*metadata.RenderPassConfig{
+		PassConfigs: []*metadata.RenderPassConfig{
 			{
 				Name:        "Renderpass.Builtin.World",
 				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
@@ -157,7 +157,7 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 		Name:             "ui",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        1,
-		Passes: []*metadata.RenderPassConfig{
+		PassConfigs: []*metadata.RenderPassConfig{
 			{
 				Name:        "Renderpass.Builtin.UI",
 				RenderArea:  math.NewVec4(0, 0, 1280, 720),
@@ -190,12 +190,12 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	// Pick pass.
 	pick_view_config := &metadata.RenderViewConfig{
 		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
-		Width:            uint16(r.FramebufferWidth),
-		Height:           uint16(r.FramebufferHeight),
+		Width:            0,
+		Height:           0,
 		Name:             "pick",
 		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
 		PassCount:        2,
-		Passes: []*metadata.RenderPassConfig{
+		PassConfigs: []*metadata.RenderPassConfig{
 			{
 				// World pass
 				Name:        "Renderpass.Builtin.WorldPick",
@@ -361,16 +361,18 @@ func (r *RendererSystem) DrawGeometry(data *metadata.GeometryRenderData) {
 	r.backend.DrawGeometry(data)
 }
 
-func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig, pass *metadata.RenderPass) (*metadata.RenderPass, error) {
-	return r.backend.RenderPassCreate(config, pass)
+func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig) (*metadata.RenderPass, error) {
+	return r.backend.RenderPassCreate(config)
 }
 
-func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) {
+func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) error {
 	// Destroy its rendertargets.
 	for i := 0; i < int(pass.RenderTargetCount); i++ {
-		r.backend.RenderTargetDestroy(pass.Targets[i], true)
+		if err := r.backend.RenderTargetDestroy(pass.Targets[i]); err != nil {
+			return err
+		}
 	}
-	r.backend.RenderPassDestroy(pass)
+	return r.backend.RenderPassDestroy(pass)
 }
 
 func (r *RendererSystem) RenderPassBegin(pass *metadata.RenderPass, target *metadata.RenderTarget) error {
@@ -437,8 +439,8 @@ func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments 
 	return r.backend.RenderTargetCreate(attachment_count, attachments, pass, width, height)
 }
 
-func (r *RendererSystem) RenderTargetDestroy(target *metadata.RenderTarget, free_internal_memory bool) {
-	r.backend.RenderTargetDestroy(target, free_internal_memory)
+func (r *RendererSystem) RenderTargetDestroy(target *metadata.RenderTarget) error {
+	return r.backend.RenderTargetDestroy(target)
 }
 
 func (r *RendererSystem) IsMultithreaded() bool {
@@ -446,19 +448,12 @@ func (r *RendererSystem) IsMultithreaded() bool {
 }
 
 func (r *RendererSystem) RenderBufferCreate(renderbufferType metadata.RenderBufferType, total_size uint64) (*metadata.RenderBuffer, error) {
-	buffer := &metadata.RenderBuffer{
-		RenderBufferType: renderbufferType,
-		TotalSize:        total_size,
-		Buffer:           make([]interface{}, total_size),
-	}
-
 	// Create the internal buffer from the backend.
-	b, err := r.backend.RenderBufferCreateInternal(*buffer)
+	b, err := r.backend.RenderBufferCreate(renderbufferType, total_size)
 	if err != nil {
 		err := fmt.Errorf("unable to create backing buffer for renderbuffer. Application cannot continue")
 		return nil, err
 	}
-
 	return b, nil
 }
 
@@ -468,7 +463,7 @@ func (r *RendererSystem) RenderBufferDestroy(buffer *metadata.RenderBuffer) {
 			buffer.Buffer = nil
 		}
 		// Free up the backend resources.
-		r.backend.RenderBufferDestroyInternal(buffer)
+		r.backend.RenderBufferDestroy(buffer)
 		buffer.InternalData = nil
 	}
 }

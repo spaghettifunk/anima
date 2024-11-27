@@ -12,7 +12,7 @@ type VulkanImage struct {
 	Memory             vk.DeviceMemory
 	MemoryRequirements vk.MemoryRequirements // The GPU memory requirements for this image
 	MemoryFlags        vk.MemoryPropertyFlags
-	View               vk.ImageView
+	ImageView          vk.ImageView
 	Width              uint32
 	Height             uint32
 }
@@ -54,9 +54,8 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 		Flags:         flags,
 	}
 
-	var handle vk.Image
 	if err := lockPool.SafeCall(ResourceManagement, func() error {
-		if res := vk.CreateImage(context.Device.LogicalDevice, &imageCreateInfo, context.Allocator, &handle); !VulkanResultIsSuccess(res) {
+		if res := vk.CreateImage(context.Device.LogicalDevice, &imageCreateInfo, context.Allocator, &outImage.Handle); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to create image with error %s", VulkanResultString(res, true))
 			return err
 		}
@@ -64,7 +63,6 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 	}); err != nil {
 		return nil, err
 	}
-	outImage.Handle = handle
 
 	// Query memory requirements.
 	var memoryRequirements vk.MemoryRequirements
@@ -88,9 +86,10 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 		AllocationSize:  memoryRequirements.Size,
 		MemoryTypeIndex: uint32(memoryType),
 	}
-	var pMemory vk.DeviceMemory
+	memoryAllocateInfo.Deref()
+
 	if err := lockPool.SafeCall(DeviceManagement, func() error {
-		if res := vk.AllocateMemory(context.Device.LogicalDevice, &memoryAllocateInfo, context.Allocator, &pMemory); !VulkanResultIsSuccess(res) {
+		if res := vk.AllocateMemory(context.Device.LogicalDevice, &memoryAllocateInfo, context.Allocator, &outImage.Memory); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to allocate memory for image")
 			return err
 		}
@@ -98,7 +97,6 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 	}); err != nil {
 		return nil, err
 	}
-	outImage.Memory = pMemory
 
 	// Bind the memory
 	// TODO: configurable memory offset.
@@ -114,16 +112,14 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 
 	// Create view
 	if createView {
-		view, err := ImageViewCreate(context, textureType, format, viewAspectFlags, outImage)
-		if err != nil {
+		if err := ImageViewCreate(context, textureType, format, viewAspectFlags, outImage); err != nil {
 			return nil, err
 		}
-		outImage.View = *view
 	}
 	return outImage, nil
 }
 
-func ImageViewCreate(context *VulkanContext, textureType metadata.TextureType, format vk.Format, aspectFlags vk.ImageAspectFlags, image *VulkanImage) (*vk.ImageView, error) {
+func ImageViewCreate(context *VulkanContext, textureType metadata.TextureType, format vk.Format, aspectFlags vk.ImageAspectFlags, image *VulkanImage) error {
 	lc := uint32(1)
 	viewType := vk.ImageViewType2d
 	if textureType == metadata.TextureTypeCube {
@@ -145,18 +141,18 @@ func ImageViewCreate(context *VulkanContext, textureType metadata.TextureType, f
 			LayerCount:     lc,
 		},
 	}
+	viewCreateInfo.Deref()
 
-	var view vk.ImageView
 	if err := lockPool.SafeCall(ResourceManagement, func() error {
-		if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &view); !VulkanResultIsSuccess(res) {
+		if res := vk.CreateImageView(context.Device.LogicalDevice, &viewCreateInfo, context.Allocator, &image.ImageView); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("create image view failed with error %s", VulkanResultString(res, true))
 			return err
 		}
 		return nil
 	}); err != nil {
-		return nil, err
+		return err
 	}
-	return &view, nil
+	return nil
 }
 
 func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureType metadata.TextureType, commandBuffer *VulkanCommandBuffer, format vk.Format, oldLayout, newLayout vk.ImageLayout) error {
@@ -317,14 +313,14 @@ func (image *VulkanImage) ImageCopyToBuffer(context *VulkanContext, textureType 
 }
 
 func (vi *VulkanImage) Destroy(context *VulkanContext) error {
-	if vi.View != nil {
+	if vi.ImageView != nil {
 		if err := lockPool.SafeCall(ResourceManagement, func() error {
-			vk.DestroyImageView(context.Device.LogicalDevice, vi.View, context.Allocator)
+			vk.DestroyImageView(context.Device.LogicalDevice, vi.ImageView, context.Allocator)
 			return nil
 		}); err != nil {
 			return err
 		}
-		vi.View = nil
+		vi.ImageView = nil
 	}
 	if vi.Memory != nil {
 		if err := lockPool.SafeCall(DeviceManagement, func() error {
@@ -347,7 +343,7 @@ func (vi *VulkanImage) Destroy(context *VulkanContext) error {
 	return nil
 }
 
-func (vi *VulkanImage) ImageCopyPixelToBuffer(context *VulkanContext, textureType metadata.TextureType, buffer vk.Buffer, x, y uint32, command_buffer *VulkanCommandBuffer) error {
+func (vi *VulkanImage) ImageCopyPixelToBuffer(context *VulkanContext, textureType metadata.TextureType, buffer vk.Buffer, x, y uint32, commandBuffer *VulkanCommandBuffer) error {
 	lc := uint32(1)
 	if textureType == metadata.TextureTypeCube {
 		lc = 6
@@ -375,7 +371,7 @@ func (vi *VulkanImage) ImageCopyPixelToBuffer(context *VulkanContext, textureTyp
 	region.Deref()
 
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
-		vk.CmdCopyImageToBuffer(command_buffer.Handle, vi.Handle, vk.ImageLayoutTransferSrcOptimal, buffer, 1, []vk.BufferImageCopy{region})
+		vk.CmdCopyImageToBuffer(commandBuffer.Handle, vi.Handle, vk.ImageLayoutTransferSrcOptimal, buffer, 1, []vk.BufferImageCopy{region})
 		return nil
 	}); err != nil {
 		return err

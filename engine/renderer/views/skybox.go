@@ -35,7 +35,7 @@ func NewRenderViewSkybox(view *metadata.RenderView, shader *metadata.Shader, cam
 	return rs
 }
 
-func (vs *RenderViewSkybox) OnCreate(uniforms map[string]uint16) bool {
+func (vs *RenderViewSkybox) OnCreate(uniforms map[string]uint16) error {
 	vs.ProjectionLocation = uniforms["projection"]
 	vs.ViewLocation = uniforms["view"]
 	vs.CubeMapLocation = uniforms["cube_texture"]
@@ -47,7 +47,7 @@ func (vs *RenderViewSkybox) OnCreate(uniforms map[string]uint16) bool {
 
 	// Default
 	vs.ProjectionMatrix = math.NewMat4Perspective(vs.FOV, 1280/720.0, vs.NearClip, vs.FarClip)
-	return true
+	return nil
 }
 
 func (vs *RenderViewSkybox) OnDestroy() error {
@@ -79,13 +79,14 @@ func (vs *RenderViewSkybox) OnBuildPacket(data interface{}) (*metadata.RenderVie
 	return out_packet, nil
 }
 
-func (vs *RenderViewSkybox) OnDestroyPacket(packet *metadata.RenderViewPacket) {
+func (vs *RenderViewSkybox) OnDestroyPacket(packet *metadata.RenderViewPacket) error {
+	return nil
 }
 
-func (vs *RenderViewSkybox) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
-	return true
+func (vs *RenderViewSkybox) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) error {
+	return nil
 }
 
-func (vs *RenderViewSkybox) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
-	return true
+func (vs *RenderViewSkybox) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) error {
+	return nil
 }

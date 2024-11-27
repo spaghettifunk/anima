@@ -30,8 +30,8 @@ type RenderViewSystem struct {
 
 func NewRenderViewSystem(config RenderViewSystemConfig, r *RendererSystem, shaderSystem *ShaderSystem, cs *CameraSystem, ms *MaterialSystem, fs *FontSystem) (*RenderViewSystem, error) {
 	if config.MaxViewCount == 0 {
-		core.LogError("render_view_system_initialize - config.MaxViewCount must be > 0.")
-		return nil, nil
+		err := fmt.Errorf("func NewRenderViewSystem - config.MaxViewCount must be > 0")
+		return nil, err
 	}
 	rvs := &RenderViewSystem{
 		MaxViewCount:    uint32(config.MaxViewCount),
@@ -87,7 +87,10 @@ func (rvs *RenderViewSystem) Shutdown() error {
 
 			// Destroy its renderpasses.
 			for p := 0; p < int(view.RenderpassCount); p++ {
-				rvs.renderer.RenderPassDestroy(view.Passes[p])
+				if err := rvs.renderer.RenderPassDestroy(view.Passes[p]); err != nil {
+					core.LogError("failed to render pass destroy")
+					return err
+				}
 			}
 			view.ID = metadata.InvalidIDUint16
 		}
@@ -141,9 +144,9 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 	view.Passes = make([]*metadata.RenderPass, view.RenderpassCount)
 
 	for i := uint8(0); i < view.RenderpassCount; i++ {
-		p, err := rvs.renderer.RenderPassCreate(config.Passes[i], view.Passes[i])
+		p, err := rvs.renderer.RenderPassCreate(config.PassConfigs[i])
 		if err != nil {
-			core.LogDebug("failed to create renderpass")
+			core.LogError("failed to create renderpass")
 			return err
 		}
 		view.Passes[i] = p
@@ -187,13 +190,14 @@ func (rvs *RenderViewSystem) Create(config *metadata.RenderViewConfig) error {
 	core.EventRegister(core.EVENT_CODE_DEFAULT_RENDERTARGET_REFRESH_REQUIRED, rvs.renderViewOnEvent)
 
 	// Call the on create
-	if !view.View.OnCreate(uniforms) {
-		err := fmt.Errorf("failed to create view")
-		rvs.RegisteredViews[id] = nil
+	if err := view.View.OnCreate(uniforms); err != nil {
+		core.LogError("failed to create view")
 		return err
 	}
 
-	rvs.RegenerateRenderTargets(view)
+	if err := rvs.RegenerateRenderTargets(view); err != nil {
+		return err
+	}
 
 	// Update the hashtable entry.
 	rvs.Lookup[config.Name] = id
@@ -298,7 +302,7 @@ func (rvs *RenderViewSystem) OnRender(view *metadata.RenderView, packet *metadat
 	return err
 }
 
-func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) {
+func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) error {
 	// Create render targets for each. TODO: Should be configurable.
 
 	for r := uint32(0); r < uint32(view.RenderpassCount); r++ {
@@ -309,7 +313,10 @@ func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) 
 
 			// Destroy the old first if it exists.
 			// TODO: check if a resize is actually needed for this target.
-			rvs.renderer.RenderTargetDestroy(target, false)
+			if err := rvs.renderer.RenderTargetDestroy(target); err != nil {
+				core.LogError("failed to render target destroy")
+				return err
+			}
 
 			for a := 0; a < int(target.AttachmentCount); a++ {
 				attachment := target.Attachments[a]
@@ -320,19 +327,20 @@ func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) 
 					case metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH:
 						attachment.Texture = rvs.renderer.backend.DepthAttachmentGet(i)
 					default:
-						core.LogFatal("unsupported attachment type: 0x%d", attachment.RenderTargetAttachmentType)
-						continue
+						err := fmt.Errorf("unsupported attachment type: 0x%d", attachment.RenderTargetAttachmentType)
+						return err
 					}
 				} else if attachment.Source == metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW {
 					if view.RenderViewType == metadata.RENDERER_VIEW_KNOWN_TYPE_PICK {
 						if err := rvs.pickRegenerateAttachmentTarget(view.InternalData.(*views.RenderViewPick), r, attachment); err != nil {
-							core.LogFatal("failed to regenerate attachment target for pick with error %s", err.Error())
-							return
+							core.LogError("failed to regenerate attachment target for pick with error %s", err.Error())
+							return err
 						}
 					}
 
-					if !view.View.RegenerateAttachmentTarget(r, attachment) {
+					if err := view.View.RegenerateAttachmentTarget(r, attachment); err != nil {
 						core.LogError("view failed to regenerate attachment target for attachment type: 0x%d", attachment.RenderTargetAttachmentType)
+						return err
 					}
 				}
 			}
@@ -348,11 +356,12 @@ func (rvs *RenderViewSystem) RegenerateRenderTargets(view *metadata.RenderView) 
 			)
 			if err != nil {
 				core.LogError("failed to render target create with error %s", err.Error())
-				return
+				return err
 			}
 			pass.Targets[i] = tc
 		}
 	}
+	return nil
 }
 
 func (rvs *RenderViewSystem) renderViewOnEvent(context core.EventContext) {

@@ -4,7 +4,6 @@ import (
 	"runtime"
 
 	"github.com/spaghettifunk/anima/engine/assets"
-	"github.com/spaghettifunk/anima/engine/core"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 )
@@ -156,14 +155,6 @@ func (sm *SystemManager) DrawFrame(renderPacket *metadata.RenderPacket) error {
 
 func (sm *SystemManager) OnResize(width, height uint16) error {
 	if err := sm.RendererSystem.OnResize(width, height); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (sm *SystemManager) RenderViewCreate(config *metadata.RenderViewConfig) error {
-	if err := sm.RenderViewSystem.Create(config); err != nil {
-		core.LogDebug("failed to create the renderview with name `%s`", config.Name)
 		return err
 	}
 	return nil

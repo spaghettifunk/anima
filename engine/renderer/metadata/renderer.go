@@ -231,7 +231,7 @@ type RenderViewConfig struct {
 	/** @brief The number of renderpasses used in this view. */
 	PassCount uint8
 	/** @brief The configuration of renderpasses used in this view. */
-	Passes []*RenderPassConfig
+	PassConfigs []*RenderPassConfig
 }
 
 type RenderViewView interface {
@@ -241,7 +241,7 @@ type RenderViewView interface {
 	 * @param self A pointer to the view being created.
 	 * @return True on success; otherwise false.
 	 */
-	OnCreate(uniforms map[string]uint16) bool
+	OnCreate(uniforms map[string]uint16) error
 	/**
 	 * @brief A pointer to a function to be called when this view is destroyed.
 	 *
@@ -271,7 +271,7 @@ type RenderViewView interface {
 	 * @param self A pointer to the view to use.
 	 * @param packet A pointer to the packet to be destroyed.
 	 */
-	OnDestroyPacket(packet *RenderViewPacket)
+	OnDestroyPacket(packet *RenderViewPacket) error
 	/**
 	 * @brief Uses the given view and packet to render the contents therein.
 	 *
@@ -281,7 +281,7 @@ type RenderViewView interface {
 	 * @param render_target_index The current render target index for renderers that use multiple render targets at once (i.e. Vulkan).
 	 * @return True on success; otherwise false.
 	 */
-	OnRender(packet *RenderViewPacket, frame_number, render_target_index uint64) bool
+	OnRender(packet *RenderViewPacket, frame_number, render_target_index uint64) error
 	/**
 	 * @brief Regenerates the resources for the given attachment at the provided pass index.
 	 *
@@ -290,7 +290,7 @@ type RenderViewView interface {
 	 * @param attachment A pointer to the attachment whose resources are to be regenerated.
 	 * @return True on success; otherwise false.
 	 */
-	RegenerateAttachmentTarget(passIndex uint32, attachment *RenderTargetAttachment) bool
+	RegenerateAttachmentTarget(passIndex uint32, attachment *RenderTargetAttachment) error
 }
 
 /**

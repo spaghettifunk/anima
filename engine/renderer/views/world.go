@@ -64,7 +64,7 @@ func (vw *RenderViewWorld) renderViewOnEvent(context core.EventContext) {
 	}
 }
 
-func (vw *RenderViewWorld) OnCreate(uniforms map[string]uint16) bool {
+func (vw *RenderViewWorld) OnCreate(uniforms map[string]uint16) error {
 	// Get either the custom shader override or the defined default.
 	// TODO: Set from configuration.
 	vw.NearClip = 0.1
@@ -80,7 +80,7 @@ func (vw *RenderViewWorld) OnCreate(uniforms map[string]uint16) bool {
 	// Listen for mode changes.
 	core.EventRegister(core.EVENT_CODE_SET_RENDER_MODE, vw.renderViewOnEvent)
 
-	return true
+	return nil
 }
 
 func (vw *RenderViewWorld) OnDestroy() error {
@@ -158,15 +158,16 @@ func (vw *RenderViewWorld) OnBuildPacket(data interface{}) (*metadata.RenderView
 	return out_packet, nil
 }
 
-func (vw *RenderViewWorld) OnDestroyPacket(packet *metadata.RenderViewPacket) {
+func (vw *RenderViewWorld) OnDestroyPacket(packet *metadata.RenderViewPacket) error {
 	packet.Geometries = nil
 	packet = nil
+	return nil
 }
 
-func (vw *RenderViewWorld) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
-	return true
+func (vw *RenderViewWorld) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) error {
+	return nil
 }
 
-func (vw *RenderViewWorld) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
-	return true
+func (vw *RenderViewWorld) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) error {
+	return nil
 }

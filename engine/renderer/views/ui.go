@@ -29,7 +29,7 @@ func NewRenderViewUI(view *metadata.RenderView, shader *metadata.Shader) *Render
 	return rui
 }
 
-func (vu *RenderViewUI) OnCreate(uniforms map[string]uint16) bool {
+func (vu *RenderViewUI) OnCreate(uniforms map[string]uint16) error {
 	vu.DiffuseMapLocation = uniforms["diffuse_texture"]
 	vu.DiffuseColourLocation = uniforms["diffuse_colour"]
 	vu.ModelLocation = uniforms["model"]
@@ -41,7 +41,7 @@ func (vu *RenderViewUI) OnCreate(uniforms map[string]uint16) bool {
 	vu.ProjectionMatrix = math.NewMat4Orthographic(0.0, 1280.0, 720.0, 0.0, vu.NearClip, vu.FarClip)
 	vu.ViewMatrix = math.NewMat4Identity()
 
-	return true
+	return nil
 }
 
 func (vu *RenderViewUI) OnDestroy() error {
@@ -83,14 +83,14 @@ func (vu *RenderViewUI) OnBuildPacket(data interface{}) (*metadata.RenderViewPac
 	return out_packet, nil
 }
 
-func (vu *RenderViewUI) OnDestroyPacket(packet *metadata.RenderViewPacket) {
-
+func (vu *RenderViewUI) OnDestroyPacket(packet *metadata.RenderViewPacket) error {
+	return nil
 }
 
-func (vu *RenderViewUI) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) bool {
-	return false
+func (vu *RenderViewUI) OnRender(packet *metadata.RenderViewPacket, frame_number, render_target_index uint64) error {
+	return nil
 }
 
-func (vu *RenderViewUI) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) bool {
-	return true
+func (vu *RenderViewUI) RegenerateAttachmentTarget(passIndex uint32, attachment *metadata.RenderTargetAttachment) error {
+	return nil
 }
