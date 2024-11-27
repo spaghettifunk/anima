@@ -1359,7 +1359,7 @@ func (vr *VulkanRenderer) RenderPassBegin(pass *metadata.RenderPass, target *met
 	beginInfo := vk.RenderPassBeginInfo{
 		SType:       vk.StructureTypeRenderPassBeginInfo,
 		RenderPass:  internalData.Handle,
-		Framebuffer: target.InternalFramebuffer.(vk.Framebuffer),
+		Framebuffer: target.InternalFramebuffer,
 		RenderArea: vk.Rect2D{
 			Offset: vk.Offset2D{
 				X: int32(pass.RenderArea.X),
@@ -2586,6 +2586,9 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachmentCount uint8, attachments 
 	for i := uint32(0); i < uint32(attachmentCount); i++ {
 		image := attachments[i].Texture.InternalData.(*VulkanImage)
 		attachmentViews[i] = image.ImageView
+		if attachmentViews[i] == vk.NullImageView {
+			return nil, fmt.Errorf("attachment view %d is null", i)
+		}
 	}
 
 	if attachmentCount != uint8(len(attachments)) {
@@ -2612,7 +2615,7 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachmentCount uint8, attachments 
 	}
 	framebufferCreateInfo.Deref()
 
-	fb := outTarget.InternalFramebuffer.(vk.Framebuffer)
+	var fb vk.Framebuffer
 	if err := lockPool.SafeCall(PipelineManagement, func() error {
 		result := vk.CreateFramebuffer(vr.context.Device.LogicalDevice, &framebufferCreateInfo, vr.context.Allocator, &fb)
 		if !VulkanResultIsSuccess(result) {
@@ -2624,21 +2627,28 @@ func (vr *VulkanRenderer) RenderTargetCreate(attachmentCount uint8, attachments 
 		return nil, err
 	}
 
+	if fb == vk.NullFramebuffer {
+		return nil, fmt.Errorf("framebuffer handle is null")
+	}
+
+	outTarget.InternalFramebuffer = fb
+
 	return outTarget, nil
 }
 
-func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget) error {
+func (vr *VulkanRenderer) RenderTargetDestroy(target *metadata.RenderTarget, freeInternalMemory bool) error {
 	if target != nil && target.InternalFramebuffer != nil {
-		fb := target.InternalFramebuffer.(vk.Framebuffer)
 		if err := lockPool.SafeCall(PipelineManagement, func() error {
-			vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, fb, vr.context.Allocator)
+			vk.DestroyFramebuffer(vr.context.Device.LogicalDevice, target.InternalFramebuffer, vr.context.Allocator)
 			return nil
 		}); err != nil {
 			return err
 		}
-		target.InternalFramebuffer = nil
-		target.Attachments = nil
-		target.AttachmentCount = 0
+		target.InternalFramebuffer = vk.NullFramebuffer
+		if freeInternalMemory {
+			target.Attachments = nil
+			target.AttachmentCount = 0
+		}
 	}
 	return nil
 }

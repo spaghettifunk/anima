@@ -366,9 +366,9 @@ func (e *Engine) Run() error {
 			e.meshes[2].Transform.Rotate(rotation)
 
 			packet := &metadata.RenderPacket{
-				DeltaTime: delta,
-				ViewCount: 4,
-				Views:     make([]*metadata.RenderViewPacket, 4),
+				DeltaTime:   delta,
+				ViewCount:   4,
+				ViewPackets: make([]*metadata.RenderViewPacket, 4),
 			}
 
 			// skybox
@@ -380,7 +380,7 @@ func (e *Engine) Run() error {
 				core.LogError("Failed to build packet for view 'skybox'.")
 				return err
 			}
-			packet.Views[0] = rvp
+			packet.ViewPackets[0] = rvp
 
 			// World
 			meshCount := 0
@@ -400,7 +400,7 @@ func (e *Engine) Run() error {
 				core.LogError("Failed to build packet for view 'world'.")
 				return err
 			}
-			packet.Views[1] = rvp
+			packet.ViewPackets[1] = rvp
 
 			// Update the bitmap text with camera position. NOTE: just using the default camera for now.
 			worldCamera := e.systemManager.CameraSystem.GetDefault()
@@ -497,7 +497,7 @@ func (e *Engine) Run() error {
 				core.LogError("Failed to build packet for view 'ui'.")
 				return err
 			}
-			packet.Views[2] = rvp
+			packet.ViewPackets[2] = rvp
 
 			// Pick uses both world and ui packet data.
 			pick_packet := &metadata.PickPacketData{
@@ -512,7 +512,7 @@ func (e *Engine) Run() error {
 				core.LogError("Failed to build packet for view 'pick'.")
 				return err
 			}
-			packet.Views[3] = rvp
+			packet.ViewPackets[3] = rvp
 
 			// Draw frame
 			if err := e.systemManager.DrawFrame(packet); err != nil {
@@ -523,8 +523,8 @@ func (e *Engine) Run() error {
 			// TODO: temp
 			// Cleanup the packet.
 			for i := 0; i < int(packet.ViewCount); i++ {
-				if err := packet.Views[i].View.View.OnDestroy(); err != nil {
-					core.LogError("failed to destroy renderview")
+				if err := e.systemManager.RenderViewSystem.OnDestroyPacket(packet.ViewPackets[i]); err != nil {
+					core.LogError("failed to destroy renderview packet")
 					return err
 				}
 			}

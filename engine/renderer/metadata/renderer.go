@@ -2,6 +2,8 @@ package metadata
 
 import (
 	"github.com/spaghettifunk/anima/engine/math"
+
+	vk "github.com/goki/vulkan"
 )
 
 type RendererBackendConfig struct {
@@ -24,7 +26,7 @@ type RenderTarget struct {
 	/** @brief An array of Attachments (pointers to textures). */
 	Attachments []*RenderTargetAttachment
 	/** @brief The renderer API internal framebuffer object. */
-	InternalFramebuffer interface{}
+	InternalFramebuffer vk.Framebuffer //interface{}
 }
 
 type RenderTargetAttachmentType uint32
@@ -170,8 +172,8 @@ type RenderPacket struct {
 	DeltaTime float64
 	/** The number of views to be rendered. */
 	ViewCount uint16
-	/** An array of Views to be rendered. */
-	Views []*RenderViewPacket
+	/** An array of ViewPackets to be rendered. */
+	ViewPackets []*RenderViewPacket
 }
 
 /** @brief Known render view types, which have logic associated with them. */
@@ -234,7 +236,7 @@ type RenderViewConfig struct {
 	PassConfigs []*RenderPassConfig
 }
 
-type RenderViewView interface {
+type IRenderView interface {
 	/**
 	 * @brief A pointer to a function to be called when this view is created.
 	 *
@@ -282,15 +284,6 @@ type RenderViewView interface {
 	 * @return True on success; otherwise false.
 	 */
 	OnRender(packet *RenderViewPacket, frame_number, render_target_index uint64) error
-	/**
-	 * @brief Regenerates the resources for the given attachment at the provided pass index.
-	 *
-	 * @param self A pointer to the view to use.
-	 * @param pass_index The index of the renderpass to generate for.
-	 * @param attachment A pointer to the attachment whose resources are to be regenerated.
-	 * @return True on success; otherwise false.
-	 */
-	RegenerateAttachmentTarget(passIndex uint32, attachment *RenderTargetAttachment) error
 }
 
 /**
@@ -316,9 +309,7 @@ type RenderView struct {
 	CustomShaderName string
 	/** @brief The internal, view-specific data for this view. */
 	InternalData interface{}
-
-	View       RenderViewView
-	ViewConfig *RenderViewConfig
+	// ViewConfig *RenderViewConfig
 }
 
 /**

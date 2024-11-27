@@ -314,8 +314,8 @@ func (r *RendererSystem) DrawFrame(packet *metadata.RenderPacket, renderViewSyst
 	attachmentIndex := r.backend.WindowAttachmentIndexGet()
 
 	// Render each view.
-	for i := 0; i < len(packet.Views); i++ {
-		if err := renderViewSystem.OnRender(packet.Views[i].View, packet.Views[i], r.backend.FrameNumber, attachmentIndex); err != nil {
+	for i := 0; i < len(packet.ViewPackets); i++ {
+		if err := renderViewSystem.OnRender(packet.ViewPackets[i], r.backend.FrameNumber, attachmentIndex); err != nil {
 			core.LogError("error rendering view index %d", i)
 			return err
 		}
@@ -333,8 +333,8 @@ func (r *RendererSystem) TextureCreate(pixels []uint8, texture *metadata.Texture
 	r.backend.TextureCreate(pixels, texture)
 }
 
-func (r *RendererSystem) TextureDestroy(texture *metadata.Texture) {
-	r.backend.TextureDestroy(texture)
+func (r *RendererSystem) TextureDestroy(texture *metadata.Texture) error {
+	return r.backend.TextureDestroy(texture)
 }
 
 func (r *RendererSystem) TextureCreateWriteable(texture *metadata.Texture) error {
@@ -365,10 +365,10 @@ func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig) (*m
 	return r.backend.RenderPassCreate(config)
 }
 
-func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass) error {
+func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass, freeInternalMemory bool) error {
 	// Destroy its rendertargets.
 	for i := 0; i < int(pass.RenderTargetCount); i++ {
-		if err := r.backend.RenderTargetDestroy(pass.Targets[i]); err != nil {
+		if err := r.backend.RenderTargetDestroy(pass.Targets[i], freeInternalMemory); err != nil {
 			return err
 		}
 	}
@@ -439,8 +439,20 @@ func (r *RendererSystem) RenderTargetCreate(attachment_count uint8, attachments 
 	return r.backend.RenderTargetCreate(attachment_count, attachments, pass, width, height)
 }
 
-func (r *RendererSystem) RenderTargetDestroy(target *metadata.RenderTarget) error {
-	return r.backend.RenderTargetDestroy(target)
+func (r *RendererSystem) RenderTargetDestroy(target *metadata.RenderTarget, freeInternalMemory bool) error {
+	if err := r.backend.RenderTargetDestroy(target, freeInternalMemory); err != nil {
+		return err
+	}
+
+	if freeInternalMemory {
+		target = &metadata.RenderTarget{
+			AttachmentCount:     0,
+			Attachments:         []*metadata.RenderTargetAttachment{},
+			InternalFramebuffer: nil,
+		}
+	}
+
+	return nil
 }
 
 func (r *RendererSystem) IsMultithreaded() bool {

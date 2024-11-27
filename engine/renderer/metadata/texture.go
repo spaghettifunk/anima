@@ -273,18 +273,3 @@ func (ts *DefaultTexture) CreateSkeletonTextures() bool {
 
 	return true
 }
-
-func (ts *DefaultTexture) DestroyDefaultTextures() {
-	ts.DestroySkeletonTexture(ts.DefaultTexture)
-	ts.DestroySkeletonTexture(ts.DefaultDiffuseTexture)
-	ts.DestroySkeletonTexture(ts.DefaultSpecularTexture)
-	ts.DestroySkeletonTexture(ts.DefaultNormalTexture)
-}
-
-func (ts *DefaultTexture) DestroySkeletonTexture(texture *Texture) {
-	// Clean up backend resources.
-	// ts.renderer.TextureDestroy(texture)
-
-	texture.ID = InvalidID
-	texture.Generation = InvalidID
-}

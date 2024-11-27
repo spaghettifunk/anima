@@ -71,18 +71,23 @@ func (ts *TextureSystem) Shutdown() error {
 	for i := uint32(0); i < ts.Config.MaxTextureCount; i++ {
 		t := ts.RegisteredTextures[i]
 		if t.Generation != metadata.InvalidID {
-			ts.renderer.TextureDestroy(t)
+			if err := ts.renderer.TextureDestroy(t); err != nil {
+				return err
+			}
 		}
 	}
-	ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultTexture)
-	ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultDiffuseTexture)
-	ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultSpecularTexture)
-	ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultNormalTexture)
-
-	ts.DefaultTexture.DestroySkeletonTexture(ts.DefaultTexture.DefaultTexture)
-	ts.DefaultTexture.DestroySkeletonTexture(ts.DefaultTexture.DefaultDiffuseTexture)
-	ts.DefaultTexture.DestroySkeletonTexture(ts.DefaultTexture.DefaultSpecularTexture)
-	ts.DefaultTexture.DestroySkeletonTexture(ts.DefaultTexture.DefaultNormalTexture)
+	if err := ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultTexture); err != nil {
+		return err
+	}
+	if err := ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultDiffuseTexture); err != nil {
+		return err
+	}
+	if err := ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultSpecularTexture); err != nil {
+		return err
+	}
+	if err := ts.renderer.TextureDestroy(ts.DefaultTexture.DefaultNormalTexture); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -299,12 +304,15 @@ func (ts *TextureSystem) LoadCubeTextures(name string, textureNames []string, te
 	return true
 }
 
-func (ts *TextureSystem) DestroyTexture(texture *metadata.Texture) {
+func (ts *TextureSystem) DestroyTexture(texture *metadata.Texture) error {
 	// Clean up backend resources.
-	ts.renderer.TextureDestroy(texture)
+	if err := ts.renderer.TextureDestroy(texture); err != nil {
+		return err
+	}
 
 	texture.ID = metadata.InvalidID
 	texture.Generation = metadata.InvalidID
+	return nil
 }
 
 func (ts *TextureSystem) ProcessTextureReference(name string, textureType metadata.TextureType, referenceDiff int8, autoRelease, skipLoad bool) (uint32, bool) {
@@ -440,7 +448,9 @@ func (ts *TextureSystem) TextureLoadJobSuccess(paramsChan <-chan interface{}) {
 		textureParams.OutTexture = textureParams.TempTexture
 
 		// Destroy the old texture.
-		ts.renderer.TextureDestroy(old)
+		if err := ts.renderer.TextureDestroy(old); err != nil {
+			core.LogError(err.Error())
+		}
 
 		if textureParams.CurrentGeneration == metadata.InvalidID {
 			textureParams.OutTexture.Generation = 0
