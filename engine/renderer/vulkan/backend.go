@@ -2336,6 +2336,10 @@ func (vr *VulkanRenderer) ShaderApplyInstance(shader *metadata.Shader, needsUpda
 }
 
 func (vr *VulkanRenderer) ShaderAcquireInstanceResources(shader *metadata.Shader, maps []*metadata.TextureMap) (uint32, error) {
+	if shader == nil {
+		return 0, nil
+	}
+
 	internal := shader.InternalData.(*VulkanShader)
 
 	// TODO: dynamic
@@ -3266,6 +3270,9 @@ func (vr *VulkanRenderer) DepthAttachmentGet(index uint8) *metadata.Texture {
 }
 
 func (vr *VulkanRenderer) GetWindowAttachmentCount() uint8 {
+	if vr.context == nil || vr.context.Swapchain == nil {
+		return 3
+	}
 	return uint8(vr.context.Swapchain.ImageCount)
 }
 

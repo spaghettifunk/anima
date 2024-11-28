@@ -6,7 +6,6 @@ import (
 
 	"github.com/spaghettifunk/anima/engine/assets"
 	"github.com/spaghettifunk/anima/engine/core"
-	"github.com/spaghettifunk/anima/engine/math"
 	"github.com/spaghettifunk/anima/engine/platform"
 	"github.com/spaghettifunk/anima/engine/renderer/metadata"
 	"github.com/spaghettifunk/anima/engine/renderer/vulkan"
@@ -62,195 +61,6 @@ func (r *RendererSystem) Initialize(shaderSystem *ShaderSystem, renderViewSystem
 	}
 
 	if err := r.backend.Initialize(rbc, &r.WindowRenderTargetCount); err != nil {
-		return err
-	}
-
-	// Load render views
-
-	// Skybox view
-	skybox_config := &metadata.RenderViewConfig{
-		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_SKYBOX,
-		Width:            0,
-		Height:           0,
-		Name:             "skybox",
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-		PassCount:        1,
-		PassConfigs: []*metadata.RenderPassConfig{
-			{
-				Name:        "Renderpass.Builtin.Skybox",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-					},
-				},
-				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
-			},
-		},
-	}
-
-	if err := renderViewSystem.Create(skybox_config); err != nil {
-		core.LogError("Failed to create skybox view. Aborting application.")
-		return err
-	}
-
-	// World view.
-	world_view_config := &metadata.RenderViewConfig{
-		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_WORLD,
-		Width:            0,
-		Height:           0,
-		Name:             "world",
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-		PassCount:        1,
-		PassConfigs: []*metadata.RenderPassConfig{
-			{
-				Name:        "Renderpass.Builtin.World",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720), // Default render area resolution
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_STENCIL_BUFFER_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						// Colour attachment
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-						{ // Depth attachment
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-					},
-				},
-				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
-			},
-		},
-	}
-
-	if err := renderViewSystem.Create(world_view_config); err != nil {
-		core.LogError("Failed to create world view. Aborting application.")
-		return err
-	}
-
-	// UI view
-	ui_view_config := &metadata.RenderViewConfig{
-		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_UI,
-		Width:            0,
-		Height:           0,
-		Name:             "ui",
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-		PassCount:        1,
-		PassConfigs: []*metadata.RenderPassConfig{
-			{
-				Name:        "Renderpass.Builtin.UI",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(0.0, 0.0, 0.2, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							// Colour attachment.
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_DEFAULT,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               true,
-						},
-					},
-				},
-				RenderTargetCount: r.backend.GetWindowAttachmentCount(),
-			},
-		},
-	}
-
-	if err := renderViewSystem.Create(ui_view_config); err != nil {
-		core.LogError("failed to create UI view. Aborting application")
-		return err
-	}
-
-	// Pick pass.
-	pick_view_config := &metadata.RenderViewConfig{
-		RenderViewType:   metadata.RENDERER_VIEW_KNOWN_TYPE_PICK,
-		Width:            0,
-		Height:           0,
-		Name:             "pick",
-		ViewMatrixSource: metadata.RENDER_VIEW_VIEW_MATRIX_SOURCE_SCENE_CAMERA,
-		PassCount:        2,
-		PassConfigs: []*metadata.RenderPassConfig{
-			{
-				// World pass
-				Name:        "Renderpass.Builtin.WorldPick",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0), // HACK: clearing to white for better visibility// TODO: Clear to black, as 0 is invalid id,
-				ClearFlags:  metadata.RENDERPASS_CLEAR_COLOUR_BUFFER_FLAG | metadata.RENDERPASS_CLEAR_DEPTH_BUFFER_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_DEPTH,
-							Source:                     metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW, // Obtain the attachment from the view,
-							LoadOperation:              metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_DONT_CARE,
-							StoreOperation:             metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:               false,
-						},
-					},
-				},
-				RenderTargetCount: 1,
-			},
-			{
-				Name:        "Renderpass.Builtin.UIPick",
-				RenderArea:  math.NewVec4(0, 0, 1280, 720),
-				ClearColour: math.NewVec4(1.0, 1.0, 1.0, 1.0),
-				ClearFlags:  metadata.RENDERPASS_CLEAR_NONE_FLAG,
-				Depth:       1.0,
-				Stencil:     0,
-				Target: &metadata.RenderTargetConfig{
-					Attachments: []*metadata.RenderTargetAttachmentConfig{
-						{
-							RenderTargetAttachmentType: metadata.RENDER_TARGET_ATTACHMENT_TYPE_COLOUR,
-							// Obtain the attachment from the view.
-							Source:        metadata.RENDER_TARGET_ATTACHMENT_SOURCE_VIEW,
-							LoadOperation: metadata.RENDER_TARGET_ATTACHMENT_LOAD_OPERATION_LOAD,
-							// Need to store it so it can be sampled afterward.
-							StoreOperation: metadata.RENDER_TARGET_ATTACHMENT_STORE_OPERATION_STORE,
-							PresentAfter:   false,
-						},
-					},
-				},
-				RenderTargetCount: 1,
-			},
-		},
-	}
-
-	if err := renderViewSystem.Create(pick_view_config); err != nil {
-		core.LogError("Failed to create pick view. Aborting application.")
 		return err
 	}
 
@@ -363,6 +173,10 @@ func (r *RendererSystem) DrawGeometry(data *metadata.GeometryRenderData) {
 
 func (r *RendererSystem) RenderPassCreate(config *metadata.RenderPassConfig) (*metadata.RenderPass, error) {
 	return r.backend.RenderPassCreate(config)
+}
+
+func (r *RendererSystem) GetWindowAttachmentCount() uint8 {
+	return r.backend.GetWindowAttachmentCount()
 }
 
 func (r *RendererSystem) RenderPassDestroy(pass *metadata.RenderPass, freeInternalMemory bool) error {

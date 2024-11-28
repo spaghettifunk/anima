@@ -107,8 +107,8 @@ func NewMaterialSystem(config *MaterialSystemConfig, shaderSytem *ShaderSystem, 
 }
 
 func (ms *MaterialSystem) Initialize() error {
-	if !ms.createDefaultMaterial() {
-		err := fmt.Errorf("failed to create default material. Application cannot continue")
+	if err := ms.createDefaultMaterial(); err != nil {
+		core.LogError("failed to create default material. Application cannot continue")
 		return err
 	}
 	return nil
@@ -596,7 +596,7 @@ func (ms *MaterialSystem) destroyMaterial(material *metadata.Material) error {
 	return nil
 }
 
-func (ms *MaterialSystem) createDefaultMaterial() bool {
+func (ms *MaterialSystem) createDefaultMaterial() error {
 	ms.DefaultMaterial.ID = metadata.InvalidID
 	ms.DefaultMaterial.Generation = metadata.InvalidID
 	ms.DefaultMaterial.Name = metadata.DefaultMaterialName
@@ -614,20 +614,22 @@ func (ms *MaterialSystem) createDefaultMaterial() bool {
 
 	shader, err := ms.shaderSystem.GetShader("Shader.Builtin.Material")
 	if err != nil {
-		core.LogError(err.Error())
-		return false
+		return err
 	}
 
 	ms.DefaultMaterial.InternalID, err = ms.renderer.ShaderAcquireInstanceResources(shader, texture_maps)
 	if err != nil {
-		core.LogError(err.Error())
-		return false
+		return err
 	}
 
 	// Make sure to assign the shader id.
+	if shader == nil {
+		ms.DefaultMaterial.ShaderID = 0
+		return nil
+	}
 	ms.DefaultMaterial.ShaderID = shader.ID
 
-	return true
+	return nil
 }
 
 func (ms *MaterialSystem) materialFail(expr string) bool {

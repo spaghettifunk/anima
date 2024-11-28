@@ -9,12 +9,15 @@ type Game struct {
 	ApplicationConfig *ApplicationConfig
 	SystemManager     *systems.SystemManager
 	State             interface{}
+	FnBoot            Boot
 	FnInitialize      Initialize
 	FnUpdate          Update
 	FnRender          Render
 	FnOnResize        OnResize
+	FnShutdown        Shutdown
 }
 
+type Boot func() error
 type Initialize func() error
 type Update func(deltaTime float64) error
 type Render func(packer *metadata.RenderPacket, deltaTime float64) error

@@ -39,6 +39,9 @@ const (
 	 */
 	EVENT_CODE_OBJECT_HOVER_ID_CHANGED EventCode = 0x15
 
+	EVENT_CODE_DEBUG0 EventCode = 0x16
+	EVENT_CODE_DEBUG1 EventCode = 0x17
+
 	/**
 	 * @brief An event fired by the renderer backend to indicate when any render targets
 	 * associated with the default window resources need to be refreshed (i.e. a window resize)
@@ -82,14 +85,14 @@ var onceEventInit sync.Once
 var eventSystem *EventSystem
 
 // Initialize the event system with a buffered channel
-func EventSystemInitialize() bool {
+func EventSystemInitialize() error {
 	onceEventInit.Do(func() {
 		eventSystem = &EventSystem{
 			subscribers: make(map[EventCode][]EventCallback),
 			eventChan:   make(chan EventContext, MAX_EVENTS_BUFFER_SIZE), // Buffered channel
 		}
 	})
-	return true
+	return nil
 }
 
 // Subscribe to an event type

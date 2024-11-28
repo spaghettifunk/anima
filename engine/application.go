@@ -1,6 +1,9 @@
 package engine
 
-import "github.com/spaghettifunk/anima/engine/core"
+import (
+	"github.com/spaghettifunk/anima/engine/core"
+	"github.com/spaghettifunk/anima/engine/renderer/metadata"
+)
 
 type ApplicationConfig struct {
 	// Window starting position x axis, if applicable.
@@ -12,6 +15,7 @@ type ApplicationConfig struct {
 	// Window starting height, if applicable.
 	StartHeight uint32
 	// The application name used in windowing, if applicable.
-	Name     string
-	LogLevel core.LogLevel
+	Name              string
+	LogLevel          core.LogLevel
+	RenderViewConfigs []*metadata.RenderViewConfig
 }

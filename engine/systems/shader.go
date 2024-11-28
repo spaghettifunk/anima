@@ -218,7 +218,7 @@ func (shaderSystem *ShaderSystem) GetShader(shaderName string) (*metadata.Shader
 	if shader_id != metadata.InvalidID {
 		return shaderSystem.GetShaderByID(shader_id)
 	}
-	return nil, fmt.Errorf("shader with name `%s` not found", shaderName)
+	return nil, nil
 }
 
 /**
@@ -440,7 +440,7 @@ func (shaderSystem *ShaderSystem) addSampler(shader *metadata.Shader, config *me
 	} else {
 		// Otherwise, it's instance-level, so keep count of how many need to be added during the resource acquisition.
 		if shader.InstanceTextureCount+1 > shaderSystem.Config.MaxInstanceTextures {
-			err := fmt.Errorf("Shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, shaderSystem.Config.MaxInstanceTextures)
+			err := fmt.Errorf("shader instance texture count `%d` exceeds max of `%d`", shader.InstanceTextureCount, shaderSystem.Config.MaxInstanceTextures)
 			return err
 		}
 		location = uint32(shader.InstanceTextureCount)
@@ -469,7 +469,7 @@ func (shaderSystem *ShaderSystem) addUniform(shader *metadata.Shader, config *me
 func (shaderSystem *ShaderSystem) getShaderID(shader_name string) uint32 {
 	id, ok := shaderSystem.Lookup[shader_name]
 	if !ok {
-		core.LogError("There is no shader registered named '%s'.", shader_name)
+		core.LogWarn("There is no shader registered named '%s'.", shader_name)
 		return metadata.InvalidID
 	}
 	return id
