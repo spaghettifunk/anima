@@ -42,8 +42,7 @@ func NewVulkanCommandBuffer(context *VulkanContext, pool vk.CommandPool, isPrima
 	}
 	allocate_info.Deref()
 
-	pCommandBuffers := []vk.CommandBuffer{vCommandBuffer.Handle}
-
+	pCommandBuffers := make([]vk.CommandBuffer, 1)
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
 		if res := vk.AllocateCommandBuffers(context.Device.LogicalDevice, &allocate_info, pCommandBuffers); !VulkanResultIsSuccess(res) {
 			err := fmt.Errorf("failed to allocate command buffer with error %s", VulkanResultString(res, true))
@@ -74,6 +73,7 @@ func (v *VulkanCommandBuffer) Free(context *VulkanContext, pool vk.CommandPool) 
 func (v *VulkanCommandBuffer) Begin(isSingleUse, isRenderpassContinue, isSimultaneousUse bool) error {
 	vBeginInfo := vk.CommandBufferBeginInfo{
 		SType: vk.StructureTypeCommandBufferBeginInfo,
+		Flags: 0,
 	}
 
 	if isSingleUse {

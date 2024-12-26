@@ -515,7 +515,10 @@ func (vr *VulkanRenderer) BeginFrame(deltaTime float64) error {
 	// Begin recording commands.
 	commandBuffer := vr.context.GraphicsCommandBuffers[vr.context.ImageIndex]
 	commandBuffer.Reset()
-	commandBuffer.Begin(false, false, false)
+
+	if err := commandBuffer.Begin(false, false, false); err != nil {
+		return err
+	}
 
 	vr.context.ViewportRect = math.NewVec4(0.0, float32(vr.context.FramebufferHeight), float32(vr.context.FramebufferWidth), -float32(vr.context.FramebufferHeight))
 	vr.SetViewport()
@@ -708,8 +711,12 @@ func (vr *VulkanRenderer) recreateSwapchain() error {
 	}
 
 	// Requery support
-	DeviceQuerySwapchainSupport(vr.context.Device.PhysicalDevice, vr.context.Surface, vr.context.Device.SwapchainSupport)
-	DeviceDetectDepthFormat(vr.context.Device)
+	if err := DeviceQuerySwapchainSupport(vr.context.Device.PhysicalDevice, vr.context.Surface, vr.context.Device.SwapchainSupport); err != nil {
+		return err
+	}
+	if err := DeviceDetectDepthFormat(vr.context.Device); err != nil {
+		return err
+	}
 
 	sc, err := SwapchainRecreate(vr.context, vr.context.Swapchain, vr.context.FramebufferWidth, vr.context.FramebufferHeight)
 	if err != nil {
@@ -730,7 +737,9 @@ func (vr *VulkanRenderer) recreateSwapchain() error {
 	}
 	core.EventFire(eventContext)
 
-	vr.createCommandBuffers()
+	if err := vr.createCommandBuffers(); err != nil {
+		return err
+	}
 
 	// Clear the recreating flag.
 	vr.context.RecreatingSwapchain = false
@@ -1095,8 +1104,6 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 		RenderArea:        config.RenderArea,
 	}
 
-	internalData := pass.InternalData.(*VulkanRenderPass)
-
 	// Copy over config for each target.
 	for t := 0; t < int(pass.RenderTargetCount); t++ {
 		pass.Targets[t] = &metadata.RenderTarget{
@@ -1326,8 +1333,9 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	renderpassCreateInfo.Deref()
 
 	// var handle vk.RenderPass
+	var pHandle vk.RenderPass
 	if err := lockPool.SafeCall(RenderpassManagement, func() error {
-		result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &renderpassCreateInfo, vr.context.Allocator, &internalData.Handle)
+		result := vk.CreateRenderPass(vr.context.Device.LogicalDevice, &renderpassCreateInfo, vr.context.Allocator, &pHandle)
 		if !VulkanResultIsSuccess(result) {
 			err := fmt.Errorf("failed to create render pass with error %s", VulkanResultString(result, true))
 			return err
@@ -1336,6 +1344,8 @@ func (vr *VulkanRenderer) RenderPassCreate(config *metadata.RenderPassConfig) (*
 	}); err != nil {
 		return nil, err
 	}
+
+	pass.InternalData.(*VulkanRenderPass).Handle = pHandle
 
 	return pass, nil
 }
@@ -3271,7 +3281,7 @@ func (vr *VulkanRenderer) DepthAttachmentGet(index uint8) *metadata.Texture {
 
 func (vr *VulkanRenderer) GetWindowAttachmentCount() uint8 {
 	if vr.context == nil || vr.context.Swapchain == nil {
-		return 3
+		return 1
 	}
 	return uint8(vr.context.Swapchain.ImageCount)
 }

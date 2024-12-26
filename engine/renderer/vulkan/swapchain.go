@@ -19,7 +19,7 @@ type VulkanSwapchain struct {
 
 	RenderTextures []*metadata.Texture
 	DepthTextures  []*metadata.Texture
-	RenderTargets  []*metadata.RenderTarget
+	// RenderTargets  []*metadata.RenderTarget
 }
 
 type VulkanSwapchainSupportInfo struct {

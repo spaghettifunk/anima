@@ -586,7 +586,7 @@ func (g *TestGame) configureRenderViews(config *engine.ApplicationConfig) error 
 						},
 					},
 				},
-				RenderTargetCount: g.SystemManager.RendererSystem.GetWindowAttachmentCount(),
+				RenderTargetCount:  g.SystemManager.RendererSystem.GetWindowAttachmentCount(),
 			},
 		},
 	}
@@ -621,7 +621,7 @@ func (g *TestGame) configureRenderViews(config *engine.ApplicationConfig) error 
 						},
 					},
 				},
-				RenderTargetCount: g.SystemManager.RendererSystem.GetWindowAttachmentCount(),
+				RenderTargetCount:  g.SystemManager.RendererSystem.GetWindowAttachmentCount(),
 			},
 		},
 	}

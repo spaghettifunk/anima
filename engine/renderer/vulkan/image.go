@@ -53,6 +53,8 @@ func ImageCreate(context *VulkanContext, textureType metadata.TextureType, width
 		SharingMode:   vk.SharingModeExclusive, // TODO: Configurable sharing mode.
 		Flags:         flags,
 	}
+	imageCreateInfo.Deref()
+	imageCreateInfo.Extent.Deref()
 
 	if err := lockPool.SafeCall(ResourceManagement, func() error {
 		if res := vk.CreateImage(context.Device.LogicalDevice, &imageCreateInfo, context.Allocator, &outImage.Handle); !VulkanResultIsSuccess(res) {
@@ -215,14 +217,12 @@ func (image *VulkanImage) ImageTransitionLayout(context *VulkanContext, textureT
 	}
 	barrier.Deref()
 
-	pImageMemoryBarriers := []vk.ImageMemoryBarrier{barrier}
-
 	if err := lockPool.SafeCall(CommandBufferManagement, func() error {
 		vk.CmdPipelineBarrier(commandBuffer.Handle, sourceStage, destStage,
 			0,
 			0, nil,
 			0, nil,
-			1, pImageMemoryBarriers,
+			1, []vk.ImageMemoryBarrier{barrier},
 		)
 		return nil
 	}); err != nil {

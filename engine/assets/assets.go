@@ -230,9 +230,11 @@ func (am *AssetManager) watchRecursive(path string, unWatch bool) error {
 					return err
 				}
 			} else {
+				am.mutex.RLock()
 				if err = am.fsnotify.Add(walkPath); err != nil {
 					return err
 				}
+				am.mutex.RUnlock()
 			}
 		} else {
 			p := strings.TrimPrefix(walkPath, wd)
