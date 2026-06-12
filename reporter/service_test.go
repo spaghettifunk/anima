@@ -10,7 +10,7 @@ import (
 
 func TestParseFiltersDefaultsAndLimitClamp(t *testing.T) {
 	service := NewService(&fakeRepository{}, Defaults{
-		Tenant:       "prod",
+		Tenant:       "default-tenant",
 		LookbackDays: 30,
 		Limit:        100,
 		MaxLimit:     250,
@@ -28,7 +28,7 @@ func TestParseFiltersDefaultsAndLimitClamp(t *testing.T) {
 		t.Fatalf("ParseFilters() error = %v", err)
 	}
 
-	if filters.Tenant != "prod" {
+	if filters.Tenant != "default-tenant" {
 		t.Fatalf("Tenant = %q, want default", filters.Tenant)
 	}
 	if filters.LookbackDays != 30 {
@@ -49,7 +49,7 @@ func TestParseFiltersDefaultsAndLimitClamp(t *testing.T) {
 }
 
 func TestParseFiltersRejectsInvalidSort(t *testing.T) {
-	service := NewService(&fakeRepository{}, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 100, MaxLimit: 250})
+	service := NewService(&fakeRepository{}, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 100, MaxLimit: 250})
 
 	_, err := service.ParseFilters(url.Values{"sort": {";drop table metrics"}})
 	var apiErr apiError
@@ -120,7 +120,7 @@ func TestRecommendationPriorityAndProtectedMetrics(t *testing.T) {
 }
 
 func TestParseFiltersSupportsQueryHistoryFilters(t *testing.T) {
-	service := NewService(&fakeRepository{}, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 100, MaxLimit: 250})
+	service := NewService(&fakeRepository{}, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 100, MaxLimit: 250})
 
 	filters, err := service.ParseFilters(url.Values{
 		"used_in_query_history": {"true"},
@@ -163,15 +163,15 @@ func TestListMetricReportsAppliesRecommendationFiltersAndPagination(t *testing.T
 	repo := &fakeRepository{
 		latestDay: latest,
 		reports: []MetricReportRow{
-			{Day: "2026-06-04", Tenant: "prod", Cluster: "a", MetricName: "custom_a_total", ObservedLabelKeys: []string{"pod"}},
-			{Day: "2026-06-04", Tenant: "prod", Cluster: "a", MetricName: "up", ObservedLabelKeys: []string{"job"}},
-			{Day: "2026-06-04", Tenant: "prod", Cluster: "a", MetricName: "custom_b_total", UsedInDashboards: true},
+			{Day: "2026-06-04", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_a_total", ObservedLabelKeys: []string{"pod"}},
+			{Day: "2026-06-04", Tenant: "default-tenant", Cluster: "a", MetricName: "up", ObservedLabelKeys: []string{"job"}},
+			{Day: "2026-06-04", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_b_total", UsedInDashboards: true},
 		},
 	}
-	service := NewService(repo, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 1, MaxLimit: 100})
+	service := NewService(repo, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 1, MaxLimit: 100})
 
 	response, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant:             "prod",
+		Tenant:             "default-tenant",
 		DropCandidatesOnly: true,
 		Limit:              1,
 		Offset:             0,
@@ -200,10 +200,10 @@ func TestListMetricReportsTruncatesQueriedAtAndExcludesDropCandidates(t *testing
 	repo := &fakeRepository{
 		latestDay: latest,
 		reports: []MetricReportRow{
-			{Day: "2026-06-09", Tenant: "prod", Cluster: "a", MetricName: "custom_a_total"},
+			{Day: "2026-06-09", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_a_total"},
 			{
 				Day:                "2026-06-09",
-				Tenant:             "prod",
+				Tenant:             "default-tenant",
 				Cluster:            "a",
 				MetricName:         "custom_b_total",
 				UsedInQueryHistory: true,
@@ -212,10 +212,10 @@ func TestListMetricReportsTruncatesQueriedAtAndExcludesDropCandidates(t *testing
 			},
 		},
 	}
-	service := NewService(repo, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 100, MaxLimit: 100, MaxQueriedAtEntries: 2})
+	service := NewService(repo, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 100, MaxLimit: 100, MaxQueriedAtEntries: 2})
 
 	response, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant: "prod",
+		Tenant: "default-tenant",
 		Limit:  100,
 		Sort:   "metric_name",
 		Order:  "asc",
@@ -232,7 +232,7 @@ func TestListMetricReportsTruncatesQueriedAtAndExcludesDropCandidates(t *testing
 	}
 
 	dropOnly, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant:             "prod",
+		Tenant:             "default-tenant",
 		Limit:              100,
 		Sort:               "metric_name",
 		Order:              "asc",
@@ -252,10 +252,10 @@ func TestListMetricReportsKeepsQueryUsageMetrics(t *testing.T) {
 	repo := &fakeRepository{
 		latestDay: latest,
 		reports: []MetricReportRow{
-			{Day: "2026-06-10", Tenant: "prod", Cluster: "a", MetricName: "custom_unused_total"},
+			{Day: "2026-06-10", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_unused_total"},
 			{
 				Day:        "2026-06-10",
-				Tenant:     "prod",
+				Tenant:     "default-tenant",
 				Cluster:    "a",
 				MetricName: "custom_queried_total",
 				QueryUsage: MetricQueryUsageSummary{
@@ -272,10 +272,10 @@ func TestListMetricReportsKeepsQueryUsageMetrics(t *testing.T) {
 			},
 		},
 	}
-	service := NewService(repo, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 100, MaxLimit: 100})
+	service := NewService(repo, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 100, MaxLimit: 100})
 
 	response, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant: "prod",
+		Tenant: "default-tenant",
 		Limit:  100,
 		Sort:   "metric_name",
 		Order:  "asc",
@@ -292,7 +292,7 @@ func TestListMetricReportsKeepsQueryUsageMetrics(t *testing.T) {
 	}
 
 	dropOnly, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant:             "prod",
+		Tenant:             "default-tenant",
 		Limit:              100,
 		Sort:               "metric_name",
 		Order:              "asc",
@@ -306,7 +306,7 @@ func TestListMetricReportsKeepsQueryUsageMetrics(t *testing.T) {
 	}
 
 	unusedOnly, err := service.ListMetricReports(context.Background(), MetricReportFilters{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Limit:      100,
 		Sort:       "metric_name",
 		Order:      "asc",
@@ -325,13 +325,13 @@ func TestSummaryCountsQueryUsageAsUsed(t *testing.T) {
 	repo := &fakeRepository{
 		latestDay: latest,
 		reports: []MetricReportRow{
-			{Day: "2026-06-10", Tenant: "prod", Cluster: "a", MetricName: "custom_unused_total"},
-			{Day: "2026-06-10", Tenant: "prod", Cluster: "a", MetricName: "custom_queried_total", QueryUsage: MetricQueryUsageSummary{WasQueriedInLast30d: true}},
+			{Day: "2026-06-10", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_unused_total"},
+			{Day: "2026-06-10", Tenant: "default-tenant", Cluster: "a", MetricName: "custom_queried_total", QueryUsage: MetricQueryUsageSummary{WasQueriedInLast30d: true}},
 		},
 	}
-	service := NewService(repo, Defaults{Tenant: "prod", LookbackDays: 30, Limit: 100, MaxLimit: 100})
+	service := NewService(repo, Defaults{Tenant: "default-tenant", LookbackDays: 30, Limit: 100, MaxLimit: 100})
 
-	response, err := service.GetSummary(context.Background(), MetricReportFilters{Tenant: "prod", Limit: 100})
+	response, err := service.GetSummary(context.Background(), MetricReportFilters{Tenant: "default-tenant", Limit: 100})
 	if err != nil {
 		t.Fatalf("GetSummary() error = %v", err)
 	}

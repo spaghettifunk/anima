@@ -14,12 +14,12 @@ import (
 func TestHandlerListMetricsReturnsJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &stubReportService{
-		filters: MetricReportFilters{Tenant: "prod", Day: "2026-06-04", LookbackDays: 30, Limit: 100, Sort: "metric_name", Order: "asc"},
+		filters: MetricReportFilters{Tenant: "default-tenant", Day: "2026-06-04", LookbackDays: 30, Limit: 100, Sort: "metric_name", Order: "asc"},
 		reportResponse: MetricReportResponse{
 			Data: []MetricReportRow{
 				{
 					Day:            "2026-06-04",
-					Tenant:         "prod",
+					Tenant:         "default-tenant",
 					Cluster:        "a",
 					MetricName:     "custom_metric_total",
 					Risk:           RiskLow,
@@ -27,7 +27,7 @@ func TestHandlerListMetricsReturnsJSON(t *testing.T) {
 				},
 			},
 			Pagination: Pagination{Limit: 100, Total: 1},
-			Filters:    MetricReportFilters{Tenant: "prod", Day: "2026-06-04", LookbackDays: 30, Limit: 100},
+			Filters:    MetricReportFilters{Tenant: "default-tenant", Day: "2026-06-04", LookbackDays: 30, Limit: 100},
 		},
 	}
 	router := NewRouter(service)
@@ -112,7 +112,7 @@ func (s *stubReportService) GetMetricReport(ctx context.Context, filters MetricR
 	if s.metric != nil {
 		return s.metric, s.filters, nil
 	}
-	row := MetricReportRow{Day: "2026-06-04", Tenant: "prod", MetricName: metricName}
+	row := MetricReportRow{Day: "2026-06-04", Tenant: "default-tenant", MetricName: metricName}
 	return &row, s.filters, nil
 }
 

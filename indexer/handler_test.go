@@ -134,7 +134,7 @@ func TestHandlerSkipsInvalidMessages(t *testing.T) {
 		Topic:     "test-topic",
 		Partition: 0,
 		Offset:    1,
-		Value:     []byte(`{"tenant":"prod","cluster":"a","metric_name":""}`),
+		Value:     []byte(`{"tenant":"default-tenant","cluster":"a","metric_name":""}`),
 		Timestamp: time.Now(),
 	})
 
@@ -194,7 +194,7 @@ func TestHandlerRoutesQueryAuditTopic(t *testing.T) {
 		Topic:     "query-audit-events-v1",
 		Partition: 0,
 		Offset:    1,
-		Value:     []byte(`{"timestamp":"2026-06-10T08:00:00Z","method":"GET","path":"/api/v1/query","query":"up","org_id":"prod","query_hash":"hash-a"}`),
+		Value:     []byte(`{"timestamp":"2026-06-10T08:00:00Z","method":"GET","path":"/api/v1/query","query":"up","org_id":"default-tenant","query_hash":"hash-a"}`),
 		Timestamp: time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC),
 	})
 
@@ -251,7 +251,7 @@ func TestHandlerQueryAuditStorageFailureDoesNotMark(t *testing.T) {
 		Topic:     "query-audit-events-v1",
 		Partition: 0,
 		Offset:    1,
-		Value:     []byte(`{"timestamp":"2026-06-10T08:00:00Z","method":"GET","path":"/api/v1/query","query":"up","org_id":"prod"}`),
+		Value:     []byte(`{"timestamp":"2026-06-10T08:00:00Z","method":"GET","path":"/api/v1/query","query":"up","org_id":"default-tenant"}`),
 		Timestamp: time.Now(),
 	})
 
@@ -279,7 +279,7 @@ func validMessage(offset int64) *sarama.ConsumerMessage {
 		Topic:     "test-topic",
 		Partition: 0,
 		Offset:    offset,
-		Value:     []byte(`{"tenant":"prod","cluster":"a","metric_name":"requests","observed_at":"2026-06-03T06:00:00Z"}`),
+		Value:     []byte(`{"tenant":"default-tenant","cluster":"a","metric_name":"requests","observed_at":"2026-06-03T06:00:00Z"}`),
 		Timestamp: time.Now(),
 	}
 }
@@ -289,7 +289,7 @@ func validArrayMessage(offset int64) *sarama.ConsumerMessage {
 		Topic:     "test-topic",
 		Partition: 0,
 		Offset:    offset,
-		Value:     []byte(`[{"tenant":"prod","cluster":"a","metric_name":"requests","observed_at":"2026-06-03T06:00:00Z"},{"tenant":"prod","cluster":"a","metric_name":"latency","observed_at":"2026-06-03T06:00:00Z"}]`),
+		Value:     []byte(`[{"tenant":"default-tenant","cluster":"a","metric_name":"requests","observed_at":"2026-06-03T06:00:00Z"},{"tenant":"default-tenant","cluster":"a","metric_name":"latency","observed_at":"2026-06-03T06:00:00Z"}]`),
 		Timestamp: time.Now(),
 	}
 }

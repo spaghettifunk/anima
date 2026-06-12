@@ -127,7 +127,7 @@ func (col *Collector) Metrics(c *gin.Context) {
 	}
 
 	// we normalize the metric series
-	observations := NormalizeMetricObservations(md, "alloy", time.Now())
+	observations := NormalizeMetricObservations(md, "otlp", time.Now())
 	payload, err := json.Marshal(observations)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to Marshal observation")

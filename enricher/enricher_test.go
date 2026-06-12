@@ -11,7 +11,7 @@ import (
 
 func TestThanosExpressionsBuildSourceRefsAndTypes(t *testing.T) {
 	day := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
-	got := thanosExpressions("prod", day, []thanos.RuleGroup{{
+	got := thanosExpressions("default-tenant", day, []thanos.RuleGroup{{
 		Name: "api.rules",
 		Rules: []thanos.Rule{
 			{Type: "recording", Name: "job:http_requests:rate5m", Query: "sum(rate(http_requests_total[5m]))"},
@@ -32,7 +32,7 @@ func TestThanosExpressionsBuildSourceRefsAndTypes(t *testing.T) {
 
 func TestGrafanaExpressionsWalkPanelsAndBuildSourceRefs(t *testing.T) {
 	day := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
-	got := grafanaExpressions("prod", day, []grafana.DashboardDocument{{
+	got := grafanaExpressions("default-tenant", day, []grafana.DashboardDocument{{
 		UID:   "dash-1",
 		Title: "Service dashboard",
 		Dashboard: grafana.Dashboard{
@@ -69,7 +69,7 @@ func TestGrafanaExpressionsWalkPanelsAndBuildSourceRefs(t *testing.T) {
 
 func TestGrafanaExpressionsSkipNonPrometheusAndLogQLTargets(t *testing.T) {
 	day := time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
-	got := grafanaExpressions("prod", day, []grafana.DashboardDocument{{
+	got := grafanaExpressions("default-tenant", day, []grafana.DashboardDocument{{
 		UID:   "dash-1",
 		Title: "Service dashboard",
 		Dashboard: grafana.Dashboard{
@@ -79,8 +79,8 @@ func TestGrafanaExpressionsSkipNonPrometheusAndLogQLTargets(t *testing.T) {
 				Datasource: grafana.QueryDatasource{Type: "loki", UID: "logs"},
 				Targets: []grafana.Target{
 					{Datasource: grafana.QueryDatasource{Type: "prometheus", UID: "metrics"}, Expr: `sum(rate(http_requests_total{verb!~"WATCH|LIST"}[$__rate_interval]))`, RefID: "A"},
-					{Expr: `{namespace="prod"} |= "error"`, RefID: "B"},
-					{Datasource: grafana.QueryDatasource{Type: "loki", UID: "logs"}, Expr: `{namespace="prod"} | json`, RefID: "C"},
+					{Expr: `{namespace="default-tenant"} |= "error"`, RefID: "B"},
+					{Datasource: grafana.QueryDatasource{Type: "loki", UID: "logs"}, Expr: `{namespace="default-tenant"} | json`, RefID: "C"},
 				},
 			}},
 		},
@@ -99,7 +99,7 @@ func TestQueryHistoryExpressionsFilterAndBuildMetadata(t *testing.T) {
 	createdAt := time.Date(2026, 6, 8, 15, 27, 44, 0, time.UTC)
 	createdBy := int64(4)
 
-	got := queryHistoryExpressions("prod", day, "thanos", []grafana.QueryHistoryItem{{
+	got := queryHistoryExpressions("default-tenant", day, "thanos", []grafana.QueryHistoryItem{{
 		UID:           "history-1",
 		DatasourceUID: "thanos",
 		CreatedBy:     &createdBy,
@@ -138,7 +138,7 @@ func TestQueryHistoryRowsAndSelectorOnlyCount(t *testing.T) {
 	day := time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC)
 	expressions := []usage.PromQLExpression{
 		{
-			Tenant:          "prod",
+			Tenant:          "default-tenant",
 			Day:             day,
 			SourceType:      usage.UsageSourceQueryHistory,
 			SourceRef:       "history-1/A",
@@ -150,7 +150,7 @@ func TestQueryHistoryRowsAndSelectorOnlyCount(t *testing.T) {
 			QueriedAt:       &now,
 		},
 		{
-			Tenant:          "prod",
+			Tenant:          "default-tenant",
 			Day:             day,
 			SourceType:      usage.UsageSourceQueryHistory,
 			SourceRef:       "history-2/A",

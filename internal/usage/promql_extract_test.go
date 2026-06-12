@@ -48,12 +48,12 @@ func TestExtractMetricNames(t *testing.T) {
 func TestExtractUsageCollectsMetricAndLabelEvidence(t *testing.T) {
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceThanosAlert,
 		SourceRef:  "rules/HighTraffic",
 		SourceName: "HighTraffic",
-		Expression: `sum by (job) (rate(http_requests_total{namespace="prod",pod!="x"}[5m])) / ignoring(instance) group_left(service) up{job="api"}`,
+		Expression: `sum by (job) (rate(http_requests_total{namespace="default-tenant",pod!="x"}[5m])) / ignoring(instance) group_left(service) up{job="api"}`,
 	}}
 
 	valid, evidence, errors := ExtractUsage(expressions, now)
@@ -98,7 +98,7 @@ func TestExtractUsageCollectsMetricAndLabelEvidence(t *testing.T) {
 func TestExtractUsageSkipsInvalidPromQL(t *testing.T) {
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/1/A",
@@ -120,7 +120,7 @@ func TestExtractUsageSkipsInvalidPromQL(t *testing.T) {
 func TestExtractUsageSupportsExplicitMetricNameMatcher(t *testing.T) {
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/1/A",
@@ -145,61 +145,61 @@ func TestExtractUsageSupportsExplicitMetricNameMatcher(t *testing.T) {
 func TestExtractUsageSupportsGrafanaTemplatedPromQL(t *testing.T) {
 	now := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/1/A",
 		Expression: `histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{environment=~"$environment", clusterName=~"$cluster"}[$__rate_interval])) by (le))`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/2/A",
 		Expression: `rate(agones_k8s_client_http_request_total{$DevRole}[5m])`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/3/A",
 		Expression: `region=~"$region", severity=~"$severity", alertname=~"$alertname"`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/4/A",
 		Expression: `histogram_quantile($quantiles, sum by (pod, le) (rate(envoy_http_downstream_rq_time_bucket{namespace=~"$Namespace"}[$__rate_interval])))`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/5/A",
 		Expression: `sum(round(increase(argocd_app_sync_total{namespace=~"$namespace"}[$interval]))) by ($grouping)`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/6/A",
 		Expression: `slo:current_burn_rate:ratio > ${min_burning_rate}`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/7/A",
 		Expression: `month() == bool vector(${__to:date:M})`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/8/A",
 		Expression: `slo:sli_error:ratio_rate${sli_window}{sloth_service="${service}"}`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/9/A",
 		Expression: `sum_over_time(increase(loki_discarded_samples_total{cluster="$cluster"}[1m])[$__range:1m])`,
 	}, {
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceGrafanaDashboard,
 		SourceRef:  "dash/10/A",
@@ -254,7 +254,7 @@ func TestExtractUsageSetsQueryHistoryEvidenceFields(t *testing.T) {
 	now := time.Date(2026, 6, 9, 10, 0, 0, 0, time.UTC)
 	queriedAt := time.Date(2026, 6, 8, 15, 27, 44, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceQueryHistory,
 		SourceRef:  "history-1/A",
@@ -284,7 +284,7 @@ func TestExtractUsageSetsQueryHistoryEvidenceFields(t *testing.T) {
 func TestExtractUsageSelectorOnlyQueryCreatesNoEvidence(t *testing.T) {
 	now := time.Date(2026, 6, 9, 10, 0, 0, 0, time.UTC)
 	expressions := []PromQLExpression{{
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Day:        now,
 		SourceType: UsageSourceQueryHistory,
 		SourceRef:  "history-1/A",

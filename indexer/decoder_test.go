@@ -10,9 +10,9 @@ import (
 
 func TestDecodeObservationsSingleObject(t *testing.T) {
 	payload := []byte(`{
-		"tenant": " prod ",
+		"tenant": "default-tenant ",
 		"cluster": "eu-west-1-prod",
-		"source": "alloy",
+		"source": "otlp",
 		"metric_name": " http_requests_total ",
 		"metric_type": "counter",
 		"label_keys": ["pod", " job ", "", "job"],
@@ -29,8 +29,8 @@ func TestDecodeObservationsSingleObject(t *testing.T) {
 	}
 
 	got := observations[0]
-	if got.Tenant != "prod" {
-		t.Fatalf("Tenant = %q, want prod", got.Tenant)
+	if got.Tenant != "default-tenant" {
+		t.Fatalf("Tenant = %q, want default-tenant", got.Tenant)
 	}
 	if got.MetricName != "http_requests_total" {
 		t.Fatalf("MetricName = %q, want http_requests_total", got.MetricName)
@@ -42,8 +42,8 @@ func TestDecodeObservationsSingleObject(t *testing.T) {
 
 func TestDecodeObservationsArray(t *testing.T) {
 	payload := []byte(`[
-		{"tenant": "prod", "cluster": "a", "metric_name": "requests", "observed_at": "2026-06-03T06:00:00Z"},
-		{"tenant": "prod", "cluster": "b", "metric_name": "latency", "observed_at": "2026-06-03T07:00:00Z"}
+		{"tenant": "default-tenant", "cluster": "a", "metric_name": "requests", "observed_at": "2026-06-03T06:00:00Z"},
+		{"tenant": "default-tenant", "cluster": "b", "metric_name": "latency", "observed_at": "2026-06-03T07:00:00Z"}
 	]`)
 
 	observations, err := DecodeObservations(payload, time.Time{})
@@ -56,7 +56,7 @@ func TestDecodeObservationsArray(t *testing.T) {
 }
 
 func TestDecodeObservationsRejectsInvalidMessages(t *testing.T) {
-	payload := []byte(`{"tenant": "prod", "cluster": "a", "metric_name": " "}`)
+	payload := []byte(`{"tenant": "default-tenant", "cluster": "a", "metric_name": " "}`)
 
 	if _, err := DecodeObservations(payload, time.Now()); err == nil {
 		t.Fatal("DecodeObservations() error = nil, want error")
@@ -65,7 +65,7 @@ func TestDecodeObservationsRejectsInvalidMessages(t *testing.T) {
 
 func TestDecodeObservationsDefaultsSourceAndObservedAt(t *testing.T) {
 	kafkaTimestamp := time.Date(2026, 6, 3, 6, 0, 0, 0, time.UTC)
-	payload := []byte(`{"tenant": "prod", "cluster": "a", "metric_name": "requests"}`)
+	payload := []byte(`{"tenant": "default-tenant", "cluster": "a", "metric_name": "requests"}`)
 
 	observations, err := DecodeObservations(payload, kafkaTimestamp)
 	if err != nil {

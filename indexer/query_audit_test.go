@@ -19,7 +19,7 @@ func TestDecodeAndNormalizeQueryAuditEvent(t *testing.T) {
 		"query":"rate(http_requests_total[5m])",
 		"start":"1781080000",
 		"end":"1781080060.5",
-		"org_id":"prod",
+		"org_id":"default-tenant",
 		"dashboard_uid":"dash-a",
 		"panel_id":"7",
 		"status_code":200,
@@ -37,7 +37,7 @@ func TestDecodeAndNormalizeQueryAuditEvent(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("warnings = %#v, want none", warnings)
 	}
-	if record.Tenant != "prod" || record.UsageKind != UsageKindDashboardRangeQuery {
+	if record.Tenant != "default-tenant" || record.UsageKind != UsageKindDashboardRangeQuery {
 		t.Fatalf("record tenant/kind = %q/%q", record.Tenant, record.UsageKind)
 	}
 	if record.QueryHash != hashQuery("rate(http_requests_total[5m])") {
@@ -56,7 +56,7 @@ func TestNormalizeQueryEventDoesNotPersistURLRawQuery(t *testing.T) {
 		Timestamp: time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC),
 		Path:      "/api/v1/query",
 		RawQuery:  "query=up",
-		OrgID:     "prod",
+		OrgID:     "default-tenant",
 	}
 
 	record, _, err := NormalizeQueryEvent(event, time.Time{}, time.Time{})
@@ -212,7 +212,7 @@ func TestBuildMetricQueryUsageRecordsAddsRecordingRuleRows(t *testing.T) {
 	record := storage.QueryEventRecord{
 		ID:         "00000000-0000-0000-0000-000000000001",
 		ObservedAt: time.Date(2026, 6, 10, 8, 0, 0, 0, time.UTC),
-		Tenant:     "prod",
+		Tenant:     "default-tenant",
 		Source:     "thanos",
 		UsageKind:  UsageKindDirectQuery,
 		QueryHash:  "hash-a",

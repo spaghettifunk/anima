@@ -19,7 +19,7 @@ func TestFixtureUnmarshals(t *testing.T) {
 		t.Fatalf("unmarshal profiling fixture: %v", err)
 	}
 
-	observations := NormalizeMetricObservations(md, "alloy", time.Unix(0, 0))
+	observations := NormalizeMetricObservations(md, "otlp", time.Unix(0, 0))
 	if len(observations) == 0 {
 		t.Fatal("profiling fixture produced no metric observations")
 	}

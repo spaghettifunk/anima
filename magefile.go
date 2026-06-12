@@ -270,7 +270,7 @@ const metricsFixture = `{
     {
       "resource": {
         "attributes": [
-          {"key": "tenant_id", "value": {"stringValue": "prod"}},
+          {"key": "tenant_id", "value": {"stringValue": "default-tenant"}},
           {"key": "cluster", "value": {"stringValue": "eu-west-1"}},
           {"key": "namespace", "value": {"stringValue": "checkout"}},
           {"key": "service.name", "value": {"stringValue": "checkout-api"}},
@@ -393,7 +393,7 @@ const metricsFixture = `{
     {
       "resource": {
         "attributes": [
-          {"key": "tenant_id", "value": {"stringValue": "prod"}},
+          {"key": "tenant_id", "value": {"stringValue": "default-tenant"}},
           {"key": "cluster", "value": {"stringValue": "eu-west-1"}},
           {"key": "namespace", "value": {"stringValue": "payments"}},
           {"key": "service.name", "value": {"stringValue": "payments-api"}},
