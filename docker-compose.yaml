@@ -57,10 +57,47 @@ services:
     networks:
       - anima
 
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    container_name: memgraph-mage
+    ports:
+      - "7687:7687"
+      - "7444:7444"
+    command: ["--log-level=TRACE"]
+    environment:
+      - MEMGRAPH_USER=anima
+      - MEMGRAPH_PASSWORD=anima
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 0;' | mgconsole || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 0s
+    volumes:
+      - ./data/mg_lib:/var/lib/memgraph
+      - ./data/mg_log:/var/log/memgraph
+    networks:
+      - anima
+
+  lab:
+    image: memgraph/lab:latest
+    container_name: memgraph-lab
+    ports:
+      - "3000:3000"
+    depends_on:
+      - memgraph
+    environment:
+      - QUICK_CONNECT_MG_HOST=memgraph
+      - QUICK_CONNECT_MG_PORT=7687
+    networks:
+      - anima
+
 volumes:
   postgres:
     driver: local
   kafka:
+    driver: local
+  memgraph:
     driver: local
 
 networks:
