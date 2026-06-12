@@ -33,7 +33,7 @@ flowchart LR
     auditStore --> usageTable[(metric_query_usage)]
 ```
 
-The indexer reads `collector.metrics_topic` and `query_audit_proxy.audit_topic`. With the default config in [`config.toml`](../config.toml), these are `metric-observations-v1` and `query-audit-events-v1`.
+The indexer reads `collector.observation_metrics_topic` and `query_audit_proxy.audit_topic`. With the default config in [`config.toml`](../config.toml), these are `metric-observations-v1` and `query-audit-events-v1`.
 
 ## Batching And Writes
 

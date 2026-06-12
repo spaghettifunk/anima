@@ -36,6 +36,7 @@ Run one service per terminal:
 ```sh
 mage collector
 mage indexer
+mage entityResolver
 mage enricher
 mage reporter
 mage queryAuditProxy
@@ -47,6 +48,7 @@ Useful local endpoints:
 curl http://localhost:8500/healthz
 curl http://localhost:8600/healthz
 curl "http://localhost:8600/api/v1/reports/summary?tenant=default-tenant"
+curl "http://localhost:8600/api/v1/entities?type=service"
 ```
 
 Stop dependencies when done:

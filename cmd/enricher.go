@@ -20,8 +20,6 @@ The enricher reads PromQL expressions from configured Thanos rules and Grafana
 dashboards, extracts the metrics referenced by those expressions, and stores
 daily usage evidence in Postgres for reporting.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireValidConfig()
-
 		enr, err := enricher.New(*animaConfig)
 		if err != nil {
 			panic(err)

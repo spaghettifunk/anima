@@ -36,9 +36,10 @@ config:
   collector:
     address: 0.0.0.0
     port: 8500
-    metricsTopic: metric-observations-v1
-    tracesTopic: traces-observations-v1
-    logsTopic: logs-observations-v1
+    observationMetricsTopic: metric-observations-v1
+    rawMetricsTopic: metrics-raw-v1
+    rawTracesTopic: traces-raw-v1
+    rawLogsTopic: logs-raw-v1
 
   producer:
     brokers: kafka1:29092
@@ -89,6 +90,19 @@ config:
     eventBufferSize: 10000
     auditTopic: query-audit-events-v1
 
+  entityResolver:
+    consumerGroup: entity-resolver
+    batchSize: 100
+    flushIntervalSeconds: 10
+    healthWindows: 1m,5m
+
+  memgraph:
+    address: bolt://memgraph:7687
+    username: anima
+    password: anima
+    database: ""
+    tls: false
+
   logger:
     level: info
 
@@ -133,6 +147,18 @@ components:
       minReplicas: 1
       maxReplicas: 5
       targetCPUUtilizationPercentage: 80
+    resources: {}
+
+  entityresolver:
+    enabled: true
+    kind: Deployment
+    replicaCount: 1
+    args:
+      - entityresolver
+    service:
+      enabled: false
+    autoscaling:
+      enabled: false
     resources: {}
 
   reporter:

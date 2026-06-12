@@ -24,8 +24,6 @@ The collector accepts OpenTelemetry logs, metrics, and traces under
 /telemetry/v1, validates JSON or protobuf payloads, normalizes metric
 observations, and publishes the resulting telemetry messages to Kafka.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireValidConfig()
-
 		col, err := collector.New(*animaConfig)
 		if err != nil {
 			panic(err)

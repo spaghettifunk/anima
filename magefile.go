@@ -54,6 +54,11 @@ func Indexer() error {
 	return runService("indexer")
 }
 
+// EntityResolver starts the OTLP entity resolver service.
+func EntityResolver() error {
+	return runService("entityresolver")
+}
+
 // Enricher starts the usage evidence enricher service.
 func Enricher() error {
 	return runService("enricher")

@@ -60,5 +60,18 @@ log_raw_query = false
 event_buffer_size = 10000
 audit_topic = "query-audit-events-v1"
 
+[entity_resolver]
+consumer_group = "entity-resolver"
+batch_size = 100
+flush_interval_seconds = 10
+health_windows = "1m,5m"
+
+[memgraph]
+address = "bolt://localhost:7687"
+username = "anima"
+password = "anima"
+database = ""
+tls = false
+
 [logger]
 level = "debug"

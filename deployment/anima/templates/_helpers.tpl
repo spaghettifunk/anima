@@ -82,9 +82,10 @@ Render the application config.toml.
 [collector]
 address = {{ .Values.config.collector.address | quote }}
 port = {{ .Values.config.collector.port }}
-metrics_topic = {{ .Values.config.collector.metricsTopic | quote }}
-traces_topic = {{ .Values.config.collector.tracesTopic | quote }}
-logs_topic = {{ .Values.config.collector.logsTopic | quote }}
+observation_metrics_topic = {{ .Values.config.collector.observationMetricsTopic | quote }}
+raw_metrics_topic = {{ .Values.config.collector.rawMetricsTopic | quote }}
+raw_traces_topic = {{ .Values.config.collector.rawTracesTopic | quote }}
+raw_logs_topic = {{ .Values.config.collector.rawLogsTopic | quote }}
 
 [producer]
 brokers = {{ .Values.config.producer.brokers | quote }}
@@ -134,6 +135,19 @@ upstream = {{ .Values.config.queryAuditProxy.upstream | quote }}
 log_raw_query = {{ .Values.config.queryAuditProxy.logRawQuery }}
 event_buffer_size = {{ .Values.config.queryAuditProxy.eventBufferSize }}
 audit_topic = {{ .Values.config.queryAuditProxy.auditTopic | quote }}
+
+[entity_resolver]
+consumer_group = {{ .Values.config.entityResolver.consumerGroup | quote }}
+batch_size = {{ .Values.config.entityResolver.batchSize }}
+flush_interval_seconds = {{ .Values.config.entityResolver.flushIntervalSeconds }}
+health_windows = {{ .Values.config.entityResolver.healthWindows | quote }}
+
+[memgraph]
+address = {{ .Values.config.memgraph.address | quote }}
+username = {{ .Values.config.memgraph.username | quote }}
+password = {{ .Values.config.memgraph.password | quote }}
+database = {{ .Values.config.memgraph.database | quote }}
+tls = {{ .Values.config.memgraph.tls }}
 
 [logger]
 level = {{ .Values.config.logger.level | quote }}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/spaghettifunk/anima/entityresolver"
 	"github.com/spaghettifunk/anima/internal/config"
 	"github.com/spaghettifunk/anima/internal/storage/postgres"
 )
@@ -24,7 +25,8 @@ func New(cfg config.Config) (*Reporter, error) {
 	}
 
 	store := postgres.NewFromConfig(cfg)
-	repo := NewPostgresRepository(store)
+	graph := entityresolver.NewMemgraphStoreFromConfig(cfg)
+	repo := NewPostgresRepository(store, graph)
 	service := NewService(repo, Defaults{
 		Tenant:              cfg.Reporter.DefaultTenant,
 		LookbackDays:        cfg.Reporter.DefaultLookbackDays,

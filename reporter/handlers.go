@@ -17,6 +17,12 @@ type reportService interface {
 	GetMetricReport(ctx context.Context, filters MetricReportFilters, metricName string) (*MetricReportRow, MetricReportFilters, error)
 	ListMetricEvidence(ctx context.Context, filters MetricReportFilters, metricName string) (MetricEvidenceResponse, error)
 	GetSummary(ctx context.Context, filters MetricReportFilters) (MetricSummaryResponse, error)
+	ListEntities(ctx context.Context, entityType string) (any, error)
+	GetEntity(ctx context.Context, id string) (any, error)
+	GetEntityRelationships(ctx context.Context, id string, depth int) (any, error)
+	GetServiceTopology(ctx context.Context, id string, depth int) (any, error)
+	GetServiceHealth(ctx context.Context, id string, window string, since string) (any, error)
+	GetChangeEvents(ctx context.Context, targetID string, since string) (any, error)
 }
 
 type Handler struct {
@@ -99,6 +105,70 @@ func (h *Handler) Summary(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+func (h *Handler) ListEntities(c *gin.Context) {
+	response, err := h.service.ListEntities(c.Request.Context(), c.Query("type"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+func (h *Handler) GetEntity(c *gin.Context) {
+	response, err := h.service.GetEntity(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+func (h *Handler) GetEntityRelationships(c *gin.Context) {
+	depth, err := parseDepthQuery(c.Query("depth"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	response, err := h.service.GetEntityRelationships(c.Request.Context(), c.Param("id"), depth)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+func (h *Handler) GetServiceTopology(c *gin.Context) {
+	depth, err := parseDepthQuery(c.Query("depth"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	response, err := h.service.GetServiceTopology(c.Request.Context(), c.Param("id"), depth)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+func (h *Handler) GetServiceHealth(c *gin.Context) {
+	response, err := h.service.GetServiceHealth(c.Request.Context(), c.Param("id"), c.DefaultQuery("window", "5m"), c.Query("since"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+func (h *Handler) GetChangeEvents(c *gin.Context) {
+	response, err := h.service.GetChangeEvents(c.Request.Context(), c.Query("target_id"), c.Query("since"))
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
 type apiError struct {
 	code    string
 	message string
@@ -125,4 +195,18 @@ func writeError(c *gin.Context, err error) {
 
 	log.Error().Err(err).Msg("reporter request failed")
 	c.JSON(http.StatusInternalServerError, ErrorResponse{Error: ErrorBody{Code: "internal_error", Message: "internal server error"}})
+}
+
+func parseDepthQuery(value string) (int, error) {
+	if value == "" {
+		return 1, nil
+	}
+	depth, err := parsePositiveInt(value)
+	if err != nil {
+		return 0, badRequest("invalid depth, expected a positive integer")
+	}
+	if depth > 3 {
+		depth = 3
+	}
+	return depth, nil
 }

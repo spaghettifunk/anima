@@ -83,6 +83,27 @@ func TestHandlerReadyzChecksRepository(t *testing.T) {
 	}
 }
 
+func TestHandlerEntityEndpoints(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := NewRouter(&stubReportService{})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/entities?type=service", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/v1/entities/service:prod:shop:checkout/relationships?depth=nope", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 type stubReportService struct {
 	healthErr        error
 	parseErr         error
@@ -122,4 +143,28 @@ func (s *stubReportService) ListMetricEvidence(ctx context.Context, filters Metr
 
 func (s *stubReportService) GetSummary(ctx context.Context, filters MetricReportFilters) (MetricSummaryResponse, error) {
 	return s.summaryResponse, nil
+}
+
+func (s *stubReportService) ListEntities(ctx context.Context, entityType string) (any, error) {
+	return []any{}, nil
+}
+
+func (s *stubReportService) GetEntity(ctx context.Context, id string) (any, error) {
+	return map[string]any{"id": id}, nil
+}
+
+func (s *stubReportService) GetEntityRelationships(ctx context.Context, id string, depth int) (any, error) {
+	return []any{}, nil
+}
+
+func (s *stubReportService) GetServiceTopology(ctx context.Context, id string, depth int) (any, error) {
+	return map[string]any{"nodes": []any{}, "edges": []any{}}, nil
+}
+
+func (s *stubReportService) GetServiceHealth(ctx context.Context, id string, window string, since string) (any, error) {
+	return []any{}, nil
+}
+
+func (s *stubReportService) GetChangeEvents(ctx context.Context, targetID string, since string) (any, error) {
+	return []any{}, nil
 }

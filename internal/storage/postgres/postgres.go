@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/spaghettifunk/anima/entityresolver"
 	"github.com/spaghettifunk/anima/internal/config"
 	"github.com/spaghettifunk/anima/internal/storage"
 	"github.com/spaghettifunk/anima/internal/usage"
@@ -205,6 +207,158 @@ func (p *PostgresStorage) InsertQueryEventWithUsage(ctx context.Context, event s
 	}
 
 	return nil
+}
+
+func (p *PostgresStorage) InsertServiceHealthWindows(ctx context.Context, windows []entityresolver.ServiceHealthWindow) error {
+	if len(windows) == 0 {
+		return nil
+	}
+	if err := p.requireInitialized(); err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin postgres transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+	for _, window := range windows {
+		if _, err := tx.Exec(ctx, `
+insert into service_health_windows (
+    service_id, window, window_start, window_end, request_count, error_count, error_rate,
+    duration_p50_ms, duration_p95_ms, duration_p99_ms, log_error_count, span_error_count, source, updated_at
+) values (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now()
+)
+on conflict (service_id, window, window_start) do update set
+    window_end = excluded.window_end,
+    request_count = service_health_windows.request_count + excluded.request_count,
+    error_count = service_health_windows.error_count + excluded.error_count,
+    error_rate = case
+        when service_health_windows.request_count + excluded.request_count > 0
+        then (service_health_windows.error_count + excluded.error_count)::double precision /
+             (service_health_windows.request_count + excluded.request_count)::double precision
+        else 0
+    end,
+    duration_p50_ms = excluded.duration_p50_ms,
+    duration_p95_ms = excluded.duration_p95_ms,
+    duration_p99_ms = excluded.duration_p99_ms,
+    log_error_count = service_health_windows.log_error_count + excluded.log_error_count,
+    span_error_count = service_health_windows.span_error_count + excluded.span_error_count,
+    source = excluded.source,
+    updated_at = now();
+`, window.ServiceID, window.Window, window.WindowStart, window.WindowEnd, window.RequestCount, window.ErrorCount, window.ErrorRate, window.DurationP50Ms, window.DurationP95Ms, window.DurationP99Ms, window.LogErrorCount, window.SpanErrorCount, window.Source); err != nil {
+			return fmt.Errorf("upsert service health window: %w", err)
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (p *PostgresStorage) InsertChangeEvents(ctx context.Context, events []entityresolver.ChangeEvent) error {
+	if len(events) == 0 {
+		return nil
+	}
+	if err := p.requireInitialized(); err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin postgres transaction: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+	for _, event := range events {
+		attrs, err := json.Marshal(event.Attributes)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `
+insert into change_events (
+    id, type, target_id, target_type, timestamp, source, version, revision, attributes, inserted_at
+) values (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, now()
+)
+on conflict (id) do update set
+    timestamp = greatest(change_events.timestamp, excluded.timestamp),
+    source = excluded.source,
+    version = excluded.version,
+    revision = excluded.revision,
+    attributes = change_events.attributes || excluded.attributes;
+`, event.ID, event.Type, event.TargetID, event.TargetType, event.Timestamp, event.Source, event.Version, event.Revision, attrs); err != nil {
+			return fmt.Errorf("upsert change event: %w", err)
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+func (p *PostgresStorage) GetServiceHealth(ctx context.Context, serviceID string, window string, since time.Time) ([]entityresolver.ServiceHealthWindow, error) {
+	if err := p.requireInitialized(); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := p.pool.Query(ctx, `
+select service_id, window, window_start, window_end, request_count, error_count, error_rate,
+       duration_p50_ms, duration_p95_ms, duration_p99_ms, log_error_count, span_error_count, source
+from service_health_windows
+where service_id = $1
+  and window = $2
+  and window_start >= $3
+order by window_start desc
+`, serviceID, window, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []entityresolver.ServiceHealthWindow{}
+	for rows.Next() {
+		var row entityresolver.ServiceHealthWindow
+		if err := rows.Scan(&row.ServiceID, &row.Window, &row.WindowStart, &row.WindowEnd, &row.RequestCount, &row.ErrorCount, &row.ErrorRate, &row.DurationP50Ms, &row.DurationP95Ms, &row.DurationP99Ms, &row.LogErrorCount, &row.SpanErrorCount, &row.Source); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func (p *PostgresStorage) GetChangeEvents(ctx context.Context, targetID string, since time.Time) ([]entityresolver.ChangeEvent, error) {
+	if err := p.requireInitialized(); err != nil {
+		return nil, err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	rows, err := p.pool.Query(ctx, `
+select id, type, target_id, target_type, timestamp, source, version, revision, attributes
+from change_events
+where ($1 = '' or target_id = $1)
+  and timestamp >= $2
+order by timestamp desc
+`, targetID, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []entityresolver.ChangeEvent{}
+	for rows.Next() {
+		var row entityresolver.ChangeEvent
+		var attrs []byte
+		if err := rows.Scan(&row.ID, &row.Type, &row.TargetID, &row.TargetType, &row.Timestamp, &row.Source, &row.Version, &row.Revision, &attrs); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal(attrs, &row.Attributes)
+		out = append(out, row)
+	}
+	return out, rows.Err()
 }
 
 func (p *PostgresStorage) InsertExpressions(ctx context.Context, expressions []usage.PromQLExpression) error {

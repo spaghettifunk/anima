@@ -11,6 +11,7 @@ import (
 	"github.com/spaghettifunk/anima/internal/consumer"
 	"github.com/spaghettifunk/anima/internal/storage"
 	"github.com/spaghettifunk/anima/internal/storage/postgres"
+	"github.com/spaghettifunk/anima/internal/utils"
 )
 
 type Indexer struct {
@@ -64,8 +65,8 @@ func (i *Indexer) Initialize() error {
 
 	ready := make(chan bool)
 	handler := NewHandler(i.store, HandlerConfig{
-		BatchSize:       positiveOrDefault(i.config.Consumer.BatchSize, defaultBatchSize),
-		FlushInterval:   time.Duration(positiveOrDefault(i.config.Consumer.FlushIntervalSeconds, int(defaultFlushInterval/time.Second))) * time.Second,
+		BatchSize:       utils.PositiveOrDefault(i.config.Consumer.BatchSize, defaultBatchSize),
+		FlushInterval:   time.Duration(utils.PositiveOrDefault(i.config.Consumer.FlushIntervalSeconds, int(defaultFlushInterval/time.Second))) * time.Second,
 		Ready:           ready,
 		MetricsTopic:    strings.TrimSpace(i.config.Collector.ObservationsMetricsTopic),
 		QueryAuditTopic: strings.TrimSpace(i.config.QueryAuditProxy.AuditTopic),
@@ -94,13 +95,6 @@ func (i *Indexer) Shutdown() error {
 		err = shutdownErr
 	}
 	return err
-}
-
-func positiveOrDefault(value, fallback int) int {
-	if value > 0 {
-		return value
-	}
-	return fallback
 }
 
 func indexerTopics(cfg config.Config) ([]string, error) {

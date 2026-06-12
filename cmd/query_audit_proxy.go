@@ -20,8 +20,6 @@ The proxy forwards Prometheus-compatible HTTP API requests to the configured
 Thanos query frontend while publishing query audit events asynchronously to
 Kafka.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireValidConfig()
-
 		proxy, err := queryaudit.New(*animaConfig)
 		if err != nil {
 			panic(err)

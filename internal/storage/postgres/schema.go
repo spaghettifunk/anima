@@ -177,6 +177,43 @@ where dashboard_uid is not null;
 
 create index if not exists idx_metric_query_usage_usage_kind
 on metric_query_usage(usage_kind);
+
+create table if not exists service_health_windows (
+    service_id text not null,
+    window text not null,
+    window_start timestamptz not null,
+    window_end timestamptz not null,
+    request_count bigint not null default 0,
+    error_count bigint not null default 0,
+    error_rate double precision not null default 0,
+    duration_p50_ms double precision not null default 0,
+    duration_p95_ms double precision not null default 0,
+    duration_p99_ms double precision not null default 0,
+    log_error_count bigint not null default 0,
+    span_error_count bigint not null default 0,
+    source text not null default '',
+    updated_at timestamptz not null default now(),
+    primary key (service_id, window, window_start)
+);
+
+create index if not exists idx_service_health_windows_service_window_time
+on service_health_windows(service_id, window, window_start desc);
+
+create table if not exists change_events (
+    id text primary key,
+    type text not null,
+    target_id text not null,
+    target_type text not null,
+    timestamp timestamptz not null,
+    source text not null default '',
+    version text not null default '',
+    revision text not null default '',
+    attributes jsonb not null default '{}'::jsonb,
+    inserted_at timestamptz not null default now()
+);
+
+create index if not exists idx_change_events_target_time
+on change_events(target_id, timestamp desc);
 `
 
 const upsertSQL = `

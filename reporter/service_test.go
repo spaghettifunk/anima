@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/spaghettifunk/anima/entityresolver"
 )
 
 func TestParseFiltersDefaultsAndLimitClamp(t *testing.T) {
@@ -380,6 +382,30 @@ func (f *fakeRepository) GetMetricReport(ctx context.Context, tenant string, met
 func (f *fakeRepository) ListMetricEvidence(ctx context.Context, tenant string, metricName string, day time.Time, lookbackDays int, sourceType string) ([]MetricEvidenceRow, error) {
 	rows := append([]MetricEvidenceRow(nil), f.evidence...)
 	return rows, nil
+}
+
+func (f *fakeRepository) ListEntities(ctx context.Context, entityType string) ([]entityresolver.Entity, error) {
+	return nil, nil
+}
+
+func (f *fakeRepository) GetEntity(ctx context.Context, id string) (*entityresolver.Entity, error) {
+	return &entityresolver.Entity{ID: id}, nil
+}
+
+func (f *fakeRepository) GetEntityRelationships(ctx context.Context, id string, depth int) ([]entityresolver.Relationship, error) {
+	return nil, nil
+}
+
+func (f *fakeRepository) GetServiceTopology(ctx context.Context, serviceID string, depth int) (*entityresolver.TopologyGraph, error) {
+	return &entityresolver.TopologyGraph{}, nil
+}
+
+func (f *fakeRepository) GetServiceHealth(ctx context.Context, serviceID string, window string, since time.Time) ([]entityresolver.ServiceHealthWindow, error) {
+	return nil, nil
+}
+
+func (f *fakeRepository) GetChangeEvents(ctx context.Context, targetID string, since time.Time) ([]entityresolver.ChangeEvent, error) {
+	return nil, nil
 }
 
 func (f *fakeRepository) Close() {}

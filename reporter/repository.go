@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/spaghettifunk/anima/entityresolver"
 	"github.com/spaghettifunk/anima/internal/storage/postgres"
 )
 
@@ -20,23 +21,46 @@ type Repository interface {
 	ListMetricReports(ctx context.Context, filters MetricReportFilters) ([]MetricReportRow, int, error)
 	GetMetricReport(ctx context.Context, tenant string, metricName string, day time.Time, lookbackDays int, queriedInLastDays int) (*MetricReportRow, error)
 	ListMetricEvidence(ctx context.Context, tenant string, metricName string, day time.Time, lookbackDays int, sourceType string) ([]MetricEvidenceRow, error)
+	ListEntities(ctx context.Context, entityType string) ([]entityresolver.Entity, error)
+	GetEntity(ctx context.Context, id string) (*entityresolver.Entity, error)
+	GetEntityRelationships(ctx context.Context, id string, depth int) ([]entityresolver.Relationship, error)
+	GetServiceTopology(ctx context.Context, serviceID string, depth int) (*entityresolver.TopologyGraph, error)
+	GetServiceHealth(ctx context.Context, serviceID string, window string, since time.Time) ([]entityresolver.ServiceHealthWindow, error)
+	GetChangeEvents(ctx context.Context, targetID string, since time.Time) ([]entityresolver.ChangeEvent, error)
 	Close()
 }
 
 type PostgresRepository struct {
 	store *postgres.PostgresStorage
+	graph entityresolver.EntityGraphStore
 }
 
-func NewPostgresRepository(store *postgres.PostgresStorage) *PostgresRepository {
-	return &PostgresRepository{store: store}
+func NewPostgresRepository(store *postgres.PostgresStorage, graph ...entityresolver.EntityGraphStore) *PostgresRepository {
+	repo := &PostgresRepository{store: store}
+	if len(graph) > 0 {
+		repo.graph = graph[0]
+	}
+	return repo
 }
 
 func (r *PostgresRepository) Initialize(ctx context.Context) error {
-	return r.store.Initialize()
+	if err := r.store.Initialize(); err != nil {
+		return err
+	}
+	if r.graph != nil {
+		return r.graph.Initialize(ctx)
+	}
+	return nil
 }
 
 func (r *PostgresRepository) Health(ctx context.Context) error {
-	return r.store.Ping(ctx)
+	if err := r.store.Ping(ctx); err != nil {
+		return err
+	}
+	if r.graph != nil {
+		return r.graph.Health(ctx)
+	}
+	return nil
 }
 
 func (r *PostgresRepository) LatestDay(ctx context.Context, tenant string) (time.Time, error) {
@@ -179,7 +203,53 @@ order by day desc, source_type asc, source_ref asc, source_name asc
 	return out, nil
 }
 
+func (r *PostgresRepository) ListEntities(ctx context.Context, entityType string) ([]entityresolver.Entity, error) {
+	if r.graph == nil {
+		return nil, fmt.Errorf("entity graph store is not configured")
+	}
+	return r.graph.ListEntities(ctx, entityType)
+}
+
+func (r *PostgresRepository) GetEntity(ctx context.Context, id string) (*entityresolver.Entity, error) {
+	if r.graph == nil {
+		return nil, fmt.Errorf("entity graph store is not configured")
+	}
+	entity, err := r.graph.GetEntity(ctx, id)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "not found") {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return entity, nil
+}
+
+func (r *PostgresRepository) GetEntityRelationships(ctx context.Context, id string, depth int) ([]entityresolver.Relationship, error) {
+	if r.graph == nil {
+		return nil, fmt.Errorf("entity graph store is not configured")
+	}
+	return r.graph.GetEntityRelationships(ctx, id, depth)
+}
+
+func (r *PostgresRepository) GetServiceTopology(ctx context.Context, serviceID string, depth int) (*entityresolver.TopologyGraph, error) {
+	if r.graph == nil {
+		return nil, fmt.Errorf("entity graph store is not configured")
+	}
+	return r.graph.GetServiceTopology(ctx, serviceID, depth)
+}
+
+func (r *PostgresRepository) GetServiceHealth(ctx context.Context, serviceID string, window string, since time.Time) ([]entityresolver.ServiceHealthWindow, error) {
+	return r.store.GetServiceHealth(ctx, serviceID, window, since)
+}
+
+func (r *PostgresRepository) GetChangeEvents(ctx context.Context, targetID string, since time.Time) ([]entityresolver.ChangeEvent, error) {
+	return r.store.GetChangeEvents(ctx, targetID, since)
+}
+
 func (r *PostgresRepository) Close() {
+	if r.graph != nil {
+		_ = r.graph.Shutdown(context.Background())
+	}
 	if r.store != nil {
 		_ = r.store.Shutdown()
 	}

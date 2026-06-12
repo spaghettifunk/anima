@@ -164,6 +164,57 @@ func TestQueryAuditProxyConfigLoadsDefaultsAndTOML(t *testing.T) {
 	}
 }
 
+func TestEntityResolverAndMemgraphConfigDefaultsAndEnv(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	setRequiredConfig()
+
+	t.Setenv("MEMGRAPH_ADDR", "bolt://memgraph:7687")
+	t.Setenv("MEMGRAPH_USERNAME", "env-user")
+	t.Setenv("MEMGRAPH_PASSWORD", "env-pass")
+	t.Setenv("MEMGRAPH_DATABASE", "env-db")
+	t.Setenv("MEMGRAPH_TLS_ENABLED", "true")
+
+	cfg := New()
+	if cfg.EntityResolver.ConsumerGroup != "entity-resolver" ||
+		cfg.EntityResolver.BatchSize != 100 ||
+		cfg.EntityResolver.FlushIntervalSeconds != 10 ||
+		cfg.EntityResolver.HealthWindows != "1m,5m" {
+		t.Fatalf("entity resolver defaults = %#v", cfg.EntityResolver)
+	}
+	if cfg.Memgraph.Address != "bolt://memgraph:7687" ||
+		cfg.Memgraph.Username != "env-user" ||
+		cfg.Memgraph.Password != "env-pass" ||
+		cfg.Memgraph.Database != "env-db" ||
+		!cfg.Memgraph.TLS {
+		t.Fatalf("memgraph env config = %#v", cfg.Memgraph)
+	}
+}
+
+func TestValidateRequiresEntityResolverInputs(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	setRequiredConfig()
+
+	cfg := New()
+	cfg.EntityResolver.BatchSize = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want entity resolver validation error")
+	}
+}
+
+func TestValidateRequiresMemgraphInputs(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	setRequiredConfig()
+
+	cfg := New()
+	cfg.Memgraph.Address = ""
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want memgraph validation error")
+	}
+}
+
 func TestValidateRequiresQueryAuditProxyInputs(t *testing.T) {
 	tests := []struct {
 		name   string

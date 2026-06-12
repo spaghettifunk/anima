@@ -294,6 +294,56 @@ func (s *Service) GetSummary(ctx context.Context, filters MetricReportFilters) (
 	return MetricSummaryResponse{Data: summary, Filters: resolvedWithDay(resolved, day)}, nil
 }
 
+func (s *Service) ListEntities(ctx context.Context, entityType string) (any, error) {
+	return s.repo.ListEntities(ctx, entityType)
+}
+
+func (s *Service) GetEntity(ctx context.Context, id string) (any, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, badRequest("entity id is required")
+	}
+	return s.repo.GetEntity(ctx, id)
+}
+
+func (s *Service) GetEntityRelationships(ctx context.Context, id string, depth int) (any, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, badRequest("entity id is required")
+	}
+	return s.repo.GetEntityRelationships(ctx, id, depth)
+}
+
+func (s *Service) GetServiceTopology(ctx context.Context, id string, depth int) (any, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, badRequest("service id is required")
+	}
+	return s.repo.GetServiceTopology(ctx, id, depth)
+}
+
+func (s *Service) GetServiceHealth(ctx context.Context, id string, window string, sinceValue string) (any, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, badRequest("service id is required")
+	}
+	if strings.TrimSpace(window) == "" {
+		window = "5m"
+	}
+	if window != "1m" && window != "5m" {
+		return nil, badRequest("invalid window, expected 1m or 5m")
+	}
+	since, err := parseSince(sinceValue, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetServiceHealth(ctx, id, window, since)
+}
+
+func (s *Service) GetChangeEvents(ctx context.Context, targetID string, sinceValue string) (any, error) {
+	since, err := parseSince(sinceValue, 24*time.Hour)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.GetChangeEvents(ctx, strings.TrimSpace(targetID), since)
+}
+
 func (s *Service) resolveDay(ctx context.Context, filters MetricReportFilters) (MetricReportFilters, time.Time, error) {
 	if filters.LookbackDays <= 0 {
 		filters.LookbackDays = s.defaults.LookbackDays
@@ -328,6 +378,18 @@ func (s *Service) resolveDay(ctx context.Context, filters MetricReportFilters) (
 	}
 	filters.Day = formatDay(day)
 	return filters, day, nil
+}
+
+func parseSince(value string, fallbackLookback time.Duration) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Now().UTC().Add(-fallbackLookback), nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, badRequest("invalid since, expected RFC3339 timestamp")
+	}
+	return parsed.UTC(), nil
 }
 
 func (s *Service) decorateRows(rows []MetricReportRow) []MetricReportRow {

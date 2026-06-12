@@ -21,8 +21,6 @@ The indexer consumes normalized metric observations from the configured Kafka
 metrics topic, batches them, and upserts daily observation records into
 Postgres for later usage analysis and reporting.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireValidConfig()
-
 		idx, err := indexer.New(*animaConfig)
 		if err != nil {
 			panic(err)
@@ -47,12 +45,12 @@ Postgres for later usage analysis and reporting.`,
 
 		wg := &sync.WaitGroup{}
 		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			defer wg.Done()
 			if err := idx.Start(); err != nil {
 				log.Fatal().Err(err).Msg("failed to consume messages...")
 			}
-		}()
+		})
 		wg.Wait()
 	},
 }

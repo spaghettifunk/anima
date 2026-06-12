@@ -32,6 +32,10 @@ config.toml in the current directory or ./anima.`,
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	animaConfig = config.New()
+	if err := animaConfig.Validate(); err != nil {
+		fmt.Println("configuration did not pass validation:", err)
+		os.Exit(1)
+	}
 
 	// Default logging level
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
@@ -47,13 +51,6 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err.Error())
 		os.Exit(2)
-	}
-}
-
-func requireValidConfig() {
-	if err := animaConfig.Validate(); err != nil {
-		fmt.Println("configuration did not pass validation:", err)
-		os.Exit(1)
 	}
 }
 

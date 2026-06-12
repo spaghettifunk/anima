@@ -20,8 +20,6 @@ The reporter reads indexed observations and usage evidence from Postgres and
 serves report endpoints for metric summaries, metric details, and supporting
 evidence under /api/v1/reports.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		requireValidConfig()
-
 		rep, err := reporter.New(*animaConfig)
 		if err != nil {
 			panic(err)

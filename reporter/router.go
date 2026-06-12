@@ -15,11 +15,18 @@ func NewRouter(service reportService) *gin.Engine {
 	router.GET("/healthz", handler.Healthz)
 	router.GET("/readyz", handler.Readyz)
 
-	v1 := router.Group("/api/v1/reports")
-	v1.GET("/summary", handler.Summary)
-	v1.GET("/metrics", handler.ListMetrics)
-	v1.GET("/metrics/:metric_name", handler.GetMetric)
-	v1.GET("/metrics/:metric_name/evidence", handler.ListMetricEvidence)
+	api := router.Group("/api/v1")
+	reports := api.Group("/reports")
+	reports.GET("/summary", handler.Summary)
+	reports.GET("/metrics", handler.ListMetrics)
+	reports.GET("/metrics/:metric_name", handler.GetMetric)
+	reports.GET("/metrics/:metric_name/evidence", handler.ListMetricEvidence)
+	api.GET("/entities", handler.ListEntities)
+	api.GET("/entities/:id", handler.GetEntity)
+	api.GET("/entities/:id/relationships", handler.GetEntityRelationships)
+	api.GET("/services/:id/topology", handler.GetServiceTopology)
+	api.GET("/services/:id/health", handler.GetServiceHealth)
+	api.GET("/changes", handler.GetChangeEvents)
 
 	return router
 }

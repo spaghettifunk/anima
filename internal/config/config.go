@@ -19,6 +19,8 @@ type Config struct {
 	Store           *store           `toml:"store"`
 	Reporter        *reporter        `toml:"reporter"`
 	QueryAuditProxy *queryAuditProxy `toml:"query_audit_proxy"`
+	EntityResolver  *entityResolver  `toml:"entity_resolver"`
+	Memgraph        *memgraph        `toml:"memgraph"`
 }
 
 type collector struct {
@@ -87,6 +89,21 @@ type queryAuditProxy struct {
 	LogRawQuery     bool   `toml:"log_raw_query"`
 	EventBufferSize int    `toml:"event_buffer_size"`
 	AuditTopic      string `toml:"audit_topic"`
+}
+
+type entityResolver struct {
+	ConsumerGroup        string `toml:"consumer_group"`
+	BatchSize            int    `toml:"batch_size"`
+	FlushIntervalSeconds int    `toml:"flush_interval_seconds"`
+	HealthWindows        string `toml:"health_windows"`
+}
+
+type memgraph struct {
+	Address  string `toml:"address"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
+	Database string `toml:"database"`
+	TLS      bool   `toml:"tls"`
 }
 
 func New() *Config {
@@ -165,6 +182,19 @@ func New() *Config {
 			EventBufferSize: intOrDefault(viper.GetInt("query_audit_proxy.event_buffer_size"), 10000),
 			AuditTopic:      stringOrDefault(viper.GetString("query_audit_proxy.audit_topic"), "query-audit-events-v1"),
 		},
+		EntityResolver: &entityResolver{
+			ConsumerGroup:        stringOrDefault(viper.GetString("entity_resolver.consumer_group"), "entity-resolver"),
+			BatchSize:            intOrDefault(viper.GetInt("entity_resolver.batch_size"), 100),
+			FlushIntervalSeconds: intOrDefault(viper.GetInt("entity_resolver.flush_interval_seconds"), 10),
+			HealthWindows:        stringOrDefault(viper.GetString("entity_resolver.health_windows"), "1m,5m"),
+		},
+		Memgraph: &memgraph{
+			Address:  envString("MEMGRAPH_ADDR", stringOrDefault(viper.GetString("memgraph.address"), "bolt://localhost:7687")),
+			Username: envString("MEMGRAPH_USERNAME", stringOrDefault(viper.GetString("memgraph.username"), "anima")),
+			Password: envString("MEMGRAPH_PASSWORD", stringOrDefault(viper.GetString("memgraph.password"), "anima")),
+			Database: envString("MEMGRAPH_DATABASE", viper.GetString("memgraph.database")),
+			TLS:      envBool("MEMGRAPH_TLS_ENABLED", viper.GetBool("memgraph.tls")),
+		},
 	}
 }
 
@@ -196,6 +226,12 @@ func (c *Config) Validate() error {
 	if c.QueryAuditProxy == nil {
 		return fmt.Errorf("query audit proxy config is required")
 	}
+	if c.EntityResolver == nil {
+		return fmt.Errorf("entity resolver config is required")
+	}
+	if c.Memgraph == nil {
+		return fmt.Errorf("memgraph config is required")
+	}
 
 	if err := requireString("collector.address", c.Collector.Address); err != nil {
 		return err
@@ -204,6 +240,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := requireString("collector.metrics_topic", c.Collector.ObservationsMetricsTopic); err != nil {
+		return err
+	}
+	if err := requireString("collector.raw_metrics_topic", c.Collector.RawMetricsTopic); err != nil {
 		return err
 	}
 	if err := requireString("collector.traces_topic", c.Collector.RawTracesTopic); err != nil {
@@ -325,6 +364,27 @@ func (c *Config) Validate() error {
 	if err := requireString("query_audit_proxy.audit_topic", c.QueryAuditProxy.AuditTopic); err != nil {
 		return err
 	}
+	if err := requireString("entity_resolver.consumer_group", c.EntityResolver.ConsumerGroup); err != nil {
+		return err
+	}
+	if err := requirePositiveInt("entity_resolver.batch_size", c.EntityResolver.BatchSize); err != nil {
+		return err
+	}
+	if err := requirePositiveInt("entity_resolver.flush_interval_seconds", c.EntityResolver.FlushIntervalSeconds); err != nil {
+		return err
+	}
+	if err := requireString("entity_resolver.health_windows", c.EntityResolver.HealthWindows); err != nil {
+		return err
+	}
+	if err := requireString("memgraph.address", c.Memgraph.Address); err != nil {
+		return err
+	}
+	if err := requireString("memgraph.username", c.Memgraph.Username); err != nil {
+		return err
+	}
+	if err := requireString("memgraph.password", c.Memgraph.Password); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -376,6 +436,18 @@ func envInt(name string, fallback int) int {
 	parsed, err := strconv.Atoi(value)
 	if err != nil {
 		return 0
+	}
+	return parsed
+}
+
+func envBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
 	}
 	return parsed
 }

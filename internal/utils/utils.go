@@ -12,3 +12,10 @@ func Contains[T comparable](arr []T, x T) bool {
 	}
 	return false
 }
+
+func PositiveOrDefault(value, fallback int) int {
+	if value > 0 {
+		return value
+	}
+	return fallback
+}

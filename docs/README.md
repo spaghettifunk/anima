@@ -15,6 +15,7 @@ The final report is served by `telemetry reporter` under `/api/v1/reports`. It c
 - [enricher](enricher.md): extracts configured and actual PromQL usage evidence from Thanos and Grafana.
 - [reporter](reporter.md): serves metric reports from Postgres.
 - [query audit proxy](query-audit-proxy.md): proxies Thanos queries and publishes query audit events.
+- [entity resolver](entity-resolver.md): resolves raw OTLP telemetry into Memgraph topology and Postgres health/change history.
 
 All commands are registered under the root command in [`cmd/root.go`](../cmd/root.go). Runtime configuration is loaded from [`config.toml`](../config.toml) through [`internal/config/config.go`](../internal/config/config.go).
 
