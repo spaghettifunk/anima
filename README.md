@@ -16,10 +16,10 @@ If you run Anima from your host with `go run`, make sure `config.toml` points to
 
 ```toml
 [producer]
-brokers = "localhost:29092"
+brokers = "localhost:9092"
 
 [consumer]
-brokers = "localhost:29092"
+brokers = "localhost:9092"
 
 [store]
 address = "localhost"
@@ -46,7 +46,7 @@ Useful local endpoints:
 ```sh
 curl http://localhost:8500/healthz
 curl http://localhost:8600/healthz
-curl "http://localhost:8600/api/v1/reports/summary?tenant=prod"
+curl "http://localhost:8600/api/v1/reports/summary?tenant=default-tenant"
 ```
 
 Stop dependencies when done:
