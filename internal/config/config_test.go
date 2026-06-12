@@ -231,9 +231,10 @@ func TestValidateRequiresQueryAuditProxyInputs(t *testing.T) {
 func setRequiredConfig() {
 	viper.Set("collector.address", "0.0.0.0")
 	viper.Set("collector.port", 8500)
-	viper.Set("collector.metrics_topic", "metric-observations-v1")
-	viper.Set("collector.traces_topic", "traces-observations-v1")
-	viper.Set("collector.logs_topic", "logs-observations-v1")
+	viper.Set("collector.observations_metrics_topic", "metric-observations-v1")
+	viper.Set("collector.raw_metrics_topic", "metrics-raw-v1")
+	viper.Set("collector.raw_traces_topic", "traces-raw-v1")
+	viper.Set("collector.raw_logs_topic", "logs-raw-v1")
 	viper.Set("producer.brokers", "kafka1:29092")
 	viper.Set("producer.partitions_topic", 1)
 	viper.Set("consumer.brokers", "kafka1:29092")

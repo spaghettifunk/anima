@@ -67,7 +67,7 @@ func (i *Indexer) Initialize() error {
 		BatchSize:       positiveOrDefault(i.config.Consumer.BatchSize, defaultBatchSize),
 		FlushInterval:   time.Duration(positiveOrDefault(i.config.Consumer.FlushIntervalSeconds, int(defaultFlushInterval/time.Second))) * time.Second,
 		Ready:           ready,
-		MetricsTopic:    strings.TrimSpace(i.config.Collector.MetricsTopic),
+		MetricsTopic:    strings.TrimSpace(i.config.Collector.ObservationsMetricsTopic),
 		QueryAuditTopic: strings.TrimSpace(i.config.QueryAuditProxy.AuditTopic),
 	})
 
@@ -111,7 +111,7 @@ func indexerTopics(cfg config.Config) ([]string, error) {
 		return nil, fmt.Errorf("query audit proxy config is required")
 	}
 
-	metricsTopic := strings.TrimSpace(cfg.Collector.MetricsTopic)
+	metricsTopic := strings.TrimSpace(cfg.Collector.ObservationsMetricsTopic)
 	queryAuditTopic := strings.TrimSpace(cfg.QueryAuditProxy.AuditTopic)
 	if metricsTopic == "" {
 		return nil, fmt.Errorf("collector metrics topic is required")

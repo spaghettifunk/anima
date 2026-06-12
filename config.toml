@@ -1,9 +1,10 @@
 [collector]
 address = "0.0.0.0"
 port = 8500
-metrics_topic = "metric-observations-v1"
-traces_topic = "traces-observations-v1"
-logs_topic = "logs-observations-v1"
+raw_metrics_topic = "metrics-raw-v1" 
+raw_logs_topic = "logs-raw-v1" 
+raw_traces_topic = "traces-raw-v1" 
+observation_metrics_topic = "metrics-observations-v1"
 
 [producer]
 brokers = "localhost:9092"

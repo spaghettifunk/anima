@@ -77,7 +77,7 @@ func (col *Collector) Logs(c *gin.Context) {
 
 	// send the telemetry to the producer
 	if err := col.producer.Write(producer.PacketTelemetry{
-		Name:    col.config.Collector.LogsTopic,
+		Name:    col.config.Collector.RawLogsTopic,
 		Message: body,
 	}); err != nil {
 		fmt.Println("error in sending data to kafka")
@@ -133,12 +133,22 @@ func (col *Collector) Metrics(c *gin.Context) {
 		log.Error().Err(err).Msg("failed to Marshal observation")
 	}
 
-	// send the telemetry to the producer
+	// send the normalized telemetry to the producer
+	// this normalization is for the adaptive telemetry
 	if err := col.producer.Write(producer.PacketTelemetry{
-		Name:    col.config.Collector.MetricsTopic,
+		Name:    col.config.Collector.ObservationsMetricsTopic,
 		Message: payload,
 	}); err != nil {
 		log.Error().Err(err).Msg("failed to write to kafka")
+		c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+
+	// send the raw telemetry to the producer
+	if err := col.producer.Write(producer.PacketTelemetry{
+		Name:    col.config.Collector.RawMetricsTopic,
+		Message: body,
+	}); err != nil {
 		c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
@@ -183,7 +193,7 @@ func (col *Collector) Traces(c *gin.Context) {
 
 	// send the telemetry to the producer
 	if err := col.producer.Write(producer.PacketTelemetry{
-		Name:    col.config.Collector.TracesTopic,
+		Name:    col.config.Collector.RawTracesTopic,
 		Message: body,
 	}); err != nil {
 		c.AbortWithError(http.StatusBadRequest, err)

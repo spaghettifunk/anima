@@ -22,11 +22,12 @@ type Config struct {
 }
 
 type collector struct {
-	Address      string `toml:"address"`
-	Port         int    `toml:"port"`
-	MetricsTopic string `toml:"metrics_topic"`
-	TracesTopic  string `toml:"traces_topic"`
-	LogsTopic    string `toml:"logs_topic"`
+	Address                  string `toml:"address"`
+	Port                     int    `toml:"port"`
+	ObservationsMetricsTopic string `toml:"observation_metrics_topic"`
+	RawMetricsTopic          string `toml:"raw_metrics_topic"`
+	RawTracesTopic           string `toml:"raw_traces_topic"`
+	RawLogsTopic             string `toml:"raw_logs_topic"`
 }
 
 type store struct {
@@ -105,11 +106,12 @@ func New() *Config {
 
 	return &Config{
 		Collector: &collector{
-			Address:      viper.GetString("collector.address"),
-			Port:         viper.GetInt("collector.port"),
-			MetricsTopic: viper.GetString("collector.metrics_topic"),
-			TracesTopic:  viper.GetString("collector.traces_topic"),
-			LogsTopic:    viper.GetString("collector.logs_topic"),
+			Address:                  viper.GetString("collector.address"),
+			Port:                     viper.GetInt("collector.port"),
+			ObservationsMetricsTopic: viper.GetString("collector.observation_metrics_topic"),
+			RawMetricsTopic:          viper.GetString("collector.raw_metrics_topic"),
+			RawTracesTopic:           viper.GetString("collector.raw_traces_topic"),
+			RawLogsTopic:             viper.GetString("collector.raw_logs_topic"),
 		},
 		Store: &store{
 			Address:  viper.GetString("store.address"),
@@ -201,13 +203,13 @@ func (c *Config) Validate() error {
 	if err := requirePositiveInt("collector.port", c.Collector.Port); err != nil {
 		return err
 	}
-	if err := requireString("collector.metrics_topic", c.Collector.MetricsTopic); err != nil {
+	if err := requireString("collector.metrics_topic", c.Collector.ObservationsMetricsTopic); err != nil {
 		return err
 	}
-	if err := requireString("collector.traces_topic", c.Collector.TracesTopic); err != nil {
+	if err := requireString("collector.traces_topic", c.Collector.RawTracesTopic); err != nil {
 		return err
 	}
-	if err := requireString("collector.logs_topic", c.Collector.LogsTopic); err != nil {
+	if err := requireString("collector.logs_topic", c.Collector.RawLogsTopic); err != nil {
 		return err
 	}
 	if err := requireString("store.address", c.Store.Address); err != nil {
