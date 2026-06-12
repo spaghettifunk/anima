@@ -1,0 +1,219 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "tenant_id", "value": { "stringValue": "prod" } },
+          { "key": "cluster", "value": { "stringValue": "eu-west-1" } },
+          { "key": "namespace", "value": { "stringValue": "checkout" } },
+          { "key": "service.name", "value": { "stringValue": "checkout-api" } },
+          { "key": "service_name", "value": { "stringValue": "checkout-api" } },
+          {
+            "key": "deployment.environment",
+            "value": { "stringValue": "profiling" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "anima.profile.generator", "version": "1.0.0" },
+          "metrics": [
+            {
+              "name": "checkout_active_requests",
+              "description": "Active checkout requests",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "route",
+                        "value": { "stringValue": "/checkout" }
+                      },
+                      { "key": "method", "value": { "stringValue": "POST" } }
+                    ],
+                    "timeUnixNano": "1718000000000000000",
+                    "asInt": "12"
+                  },
+                  {
+                    "attributes": [
+                      { "key": "route", "value": { "stringValue": "/cart" } },
+                      { "key": "method", "value": { "stringValue": "GET" } }
+                    ],
+                    "timeUnixNano": "1718000000000000000",
+                    "asInt": "4"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "checkout_requests_total",
+              "description": "Total checkout requests",
+              "unit": "1",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "route",
+                        "value": { "stringValue": "/checkout" }
+                      },
+                      { "key": "method", "value": { "stringValue": "POST" } },
+                      {
+                        "key": "status_code",
+                        "value": { "stringValue": "200" }
+                      }
+                    ],
+                    "startTimeUnixNano": "1717999900000000000",
+                    "timeUnixNano": "1718000000000000000",
+                    "asInt": "4242"
+                  },
+                  {
+                    "attributes": [
+                      {
+                        "key": "route",
+                        "value": { "stringValue": "/checkout" }
+                      },
+                      { "key": "method", "value": { "stringValue": "POST" } },
+                      {
+                        "key": "status_code",
+                        "value": { "stringValue": "500" }
+                      }
+                    ],
+                    "startTimeUnixNano": "1717999900000000000",
+                    "timeUnixNano": "1718000000000000000",
+                    "asInt": "17"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "checkout_request_duration_seconds",
+              "description": "Checkout request duration",
+              "unit": "s",
+              "histogram": {
+                "aggregationTemporality": 2,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "route",
+                        "value": { "stringValue": "/checkout" }
+                      },
+                      { "key": "method", "value": { "stringValue": "POST" } }
+                    ],
+                    "startTimeUnixNano": "1717999900000000000",
+                    "timeUnixNano": "1718000000000000000",
+                    "count": "42",
+                    "sum": 8.25,
+                    "bucketCounts": ["12", "20", "8", "2"],
+                    "explicitBounds": [0.05, 0.1, 0.25]
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "scope": {
+            "name": "anima.profile.generator.duplicate",
+            "version": "1.0.0"
+          },
+          "metrics": [
+            {
+              "name": "checkout_requests_total",
+              "description": "Total checkout requests duplicate scope",
+              "unit": "1",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      {
+                        "key": "route",
+                        "value": { "stringValue": "/checkout" }
+                      },
+                      { "key": "method", "value": { "stringValue": "POST" } },
+                      {
+                        "key": "status_code",
+                        "value": { "stringValue": "200" }
+                      }
+                    ],
+                    "startTimeUnixNano": "1717999900000000000",
+                    "timeUnixNano": "1718000005000000000",
+                    "asInt": "4260"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "tenant_id", "value": { "stringValue": "prod" } },
+          { "key": "cluster", "value": { "stringValue": "eu-west-1" } },
+          { "key": "namespace", "value": { "stringValue": "payments" } },
+          { "key": "service.name", "value": { "stringValue": "payments-api" } },
+          { "key": "service_name", "value": { "stringValue": "payments-api" } },
+          {
+            "key": "deployment.environment",
+            "value": { "stringValue": "profiling" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "anima.profile.generator", "version": "1.0.0" },
+          "metrics": [
+            {
+              "name": "payment_queue_depth",
+              "description": "Payment queue depth",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      { "key": "queue", "value": { "stringValue": "capture" } },
+                      { "key": "priority", "value": { "stringValue": "high" } }
+                    ],
+                    "timeUnixNano": "1718000000000000000",
+                    "asInt": "31"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "payment_batch_size",
+              "description": "Payment batch size distribution",
+              "unit": "1",
+              "summary": {
+                "dataPoints": [
+                  {
+                    "attributes": [
+                      { "key": "queue", "value": { "stringValue": "capture" } }
+                    ],
+                    "startTimeUnixNano": "1717999900000000000",
+                    "timeUnixNano": "1718000000000000000",
+                    "count": "20",
+                    "sum": 200,
+                    "quantileValues": [
+                      { "quantile": 0.5, "value": 8 },
+                      { "quantile": 0.9, "value": 16 },
+                      { "quantile": 0.99, "value": 24 }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

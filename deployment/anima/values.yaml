@@ -1,0 +1,194 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: anima
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+workingDir: /app
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+podLabels: {}
+podSecurityContext: {}
+securityContext: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+volumes: []
+volumeMounts: []
+
+config:
+  # Set this to the name of a Secret containing config.toml to manage config
+  # outside of this chart.
+  existingSecret: ""
+  mountPath: /app/telemetry/config.toml
+
+  collector:
+    address: 0.0.0.0
+    port: 8500
+    metricsTopic: metric-observations-v1
+    tracesTopic: traces-observations-v1
+    logsTopic: logs-observations-v1
+
+  producer:
+    brokers: kafka1:29092
+    partitionsPerTopic: 1
+
+  consumer:
+    brokers: kafka1:29092
+    group: indexer
+    batchSize: 1000
+    flushIntervalSeconds: 10
+    partitionsPerTopic: 1
+
+  store:
+    address: postgres
+    port: 5432
+    dbname: adaptive_telemetry
+    username: anima
+    password: anima
+    tls: false
+
+  sources:
+    tenant: prod
+    rulesURL: localhost:10902
+    grafanaURL: https://grafana.example.com
+    grafanaToken: change-me
+    grafanaTimeoutSeconds: 30
+    queryHistoryEnabled: true
+    queryHistoryDatasourceUID: thanos
+    queryHistoryLookbackHours: 24
+    queryHistoryLimit: 100
+    queryHistorySort: time-desc
+    queryHistoryMaxPages: 100
+
+  reporter:
+    address: 0.0.0.0
+    port: 8600
+    defaultTenant: prod
+    defaultLookbackDays: 30
+    defaultLimit: 100
+    maxLimit: 1000
+    maxQueriedAtEntries: 50
+
+  queryAuditProxy:
+    address: 0.0.0.0
+    port: 8080
+    upstream: http://thanos-query-frontend.monitoring.svc.cluster.local:9090
+    logRawQuery: false
+    eventBufferSize: 10000
+    auditTopic: query-audit-events-v1
+
+  logger:
+    level: info
+
+components:
+  collector:
+    enabled: true
+    kind: Deployment
+    replicaCount: 2
+    args:
+      - collector
+    containerPort: 8500
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 8500
+      annotations: {}
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: http
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: http
+    resources: {}
+
+  indexer:
+    enabled: true
+    kind: Deployment
+    replicaCount: 1
+    args:
+      - indexer
+    service:
+      enabled: false
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5
+      targetCPUUtilizationPercentage: 80
+    resources: {}
+
+  reporter:
+    enabled: true
+    kind: Deployment
+    replicaCount: 1
+    args:
+      - reporter
+    containerPort: 8600
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 8600
+      annotations: {}
+    autoscaling:
+      enabled: false
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: http
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: http
+    resources: {}
+
+  query-audit-proxy:
+    enabled: false
+    kind: Deployment
+    replicaCount: 1
+    args:
+      - query-audit-proxy
+    containerPort: 8080
+    service:
+      enabled: true
+      type: ClusterIP
+      port: 8080
+      annotations: {}
+    autoscaling:
+      enabled: false
+    livenessProbe:
+      tcpSocket:
+        port: http
+    readinessProbe:
+      tcpSocket:
+        port: http
+    resources: {}
+
+  enricher:
+    enabled: true
+    kind: CronJob
+    schedule: "0 0 * * *"
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    restartPolicy: OnFailure
+    args:
+      - enricher
+    resources: {}

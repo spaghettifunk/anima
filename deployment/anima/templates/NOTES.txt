@@ -1,0 +1,17 @@
+anima has been installed.
+
+Workloads:
+{{- range $name, $component := .Values.components }}
+{{- if $component.enabled }}
+  - {{ $name }}: {{ $component.kind | default "Deployment" }}
+{{- end }}
+{{- end }}
+
+Internal services:
+{{- range $name, $component := .Values.components }}
+{{- if and $component.enabled (dig "service" "enabled" false $component) }}
+  - {{ include "anima.componentName" (dict "root" $ "component" $name) }}:{{ $component.service.port }}
+{{- end }}
+{{- end }}
+
+This chart does not create Ingress, HTTPRoute, or any external routing resources.

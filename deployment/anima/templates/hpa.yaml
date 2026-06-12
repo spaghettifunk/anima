@@ -1,0 +1,36 @@
+{{- range $name, $component := .Values.components }}
+{{- if and $component.enabled (eq ($component.kind | default "Deployment") "Deployment") (dig "autoscaling" "enabled" false $component) (or (eq $name "collector") (eq $name "indexer")) }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "anima.componentName" (dict "root" $ "component" $name) }}
+  labels:
+    {{- include "anima.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "anima.componentName" (dict "root" $ "component" $name) }}
+  minReplicas: {{ $component.autoscaling.minReplicas }}
+  maxReplicas: {{ $component.autoscaling.maxReplicas }}
+  metrics:
+    {{- if $component.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $component.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if $component.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ $component.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}
+{{- end }}

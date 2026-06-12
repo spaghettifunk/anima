@@ -1,0 +1,63 @@
+[collector]
+address = "0.0.0.0"
+port = 8500
+metrics_topic = "metric-observations-v1"
+traces_topic = "traces-observations-v1"
+logs_topic = "logs-observations-v1"
+
+[producer]
+brokers = "localhost:9092"
+partitions_topic = 1
+
+[consumer]
+brokers = "localhost:9092"
+group = "indexer"
+batch_size = 1000
+flush_interval_seconds = 10
+partitions_topic = 1
+
+[store]
+address = "localhost"
+port = 5432
+dbname = "anima"
+username = "anima"
+password = "anima"
+tls = false
+
+[sources]
+tenant = "default-tenant"
+# this is Thanos ruler address
+# you need port-forwarding to make it work locally
+rules_url = "localhost:10902"
+# this is the base grafana url
+grafana_url = "http://grafana.example.com"
+# this should be also an ENV variable so I can locally test and avoid
+# pushing the token to git by mistake
+grafana_token = "token-here"
+grafana_timeout_seconds = 30
+query_history_enabled = true
+query_history_datasource_uid = "thanos"
+query_history_lookback_hours = 24
+query_history_limit = 100
+query_history_sort = "time-desc"
+query_history_max_pages = 100
+
+[reporter]
+address = "0.0.0.0"
+port = 8600
+default_tenant = "default-tenant"
+default_lookback_days = 30
+default_limit = 100
+max_limit = 1000
+max_queried_at_entries = 50
+
+[query_audit_proxy]
+address = "0.0.0.0"
+port = 8080
+upstream = "http://thanos-query-frontend.observability.svc.cluster.local:9090"
+log_raw_query = false
+event_buffer_size = 10000
+audit_topic = "query-audit-events-v1"
+
+[logger]
+level = "debug"

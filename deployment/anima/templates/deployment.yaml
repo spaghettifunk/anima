@@ -1,0 +1,40 @@
+{{- range $name, $component := .Values.components }}
+{{- if and $component.enabled (eq ($component.kind | default "Deployment") "Deployment") }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "anima.componentName" (dict "root" $ "component" $name) }}
+  labels:
+    {{- include "anima.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  {{- if not (dig "autoscaling" "enabled" false $component) }}
+  replicas: {{ $component.replicaCount | default 1 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "anima.selectorLabels" (dict "root" $ "component" $name) | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include "anima.configToml" $ | sha256sum }}
+        {{- with $.Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $component.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "anima.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+        {{- with $.Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with $component.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "anima.podSpec" (dict "root" $ "componentName" $name "component" $component) | nindent 6 }}
+{{- end }}
+{{- end }}

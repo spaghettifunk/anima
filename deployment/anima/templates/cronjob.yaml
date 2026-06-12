@@ -1,0 +1,47 @@
+{{- range $name, $component := .Values.components }}
+{{- if and $component.enabled (eq ($component.kind | default "Deployment") "CronJob") }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "anima.componentName" (dict "root" $ "component" $name) }}
+  labels:
+    {{- include "anima.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  schedule: {{ $component.schedule | quote }}
+  concurrencyPolicy: {{ $component.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ $component.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ $component.failedJobsHistoryLimit | default 3 }}
+  {{- with $component.startingDeadlineSeconds }}
+  startingDeadlineSeconds: {{ . }}
+  {{- end }}
+  jobTemplate:
+    spec:
+      {{- with $component.backoffLimit }}
+      backoffLimit: {{ . }}
+      {{- end }}
+      template:
+        metadata:
+          annotations:
+            checksum/config: {{ include "anima.configToml" $ | sha256sum }}
+            {{- with $.Values.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $component.podAnnotations }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          labels:
+            {{- include "anima.labels" $ | nindent 12 }}
+            app.kubernetes.io/component: {{ $name }}
+            {{- with $.Values.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+            {{- with $component.podLabels }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        spec:
+          restartPolicy: {{ $component.restartPolicy | default "OnFailure" }}
+          {{- include "anima.podSpec" (dict "root" $ "componentName" $name "component" $component) | nindent 10 }}
+{{- end }}
+{{- end }}
