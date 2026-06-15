@@ -54,7 +54,7 @@ max_queried_at_entries = 50
 
 [query_audit_proxy]
 address = "0.0.0.0"
-port = 8080
+port = 8700
 upstream = "http://thanos-query-frontend.observability.svc.cluster.local:9090"
 log_raw_query = false
 event_buffer_size = 10000
