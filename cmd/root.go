@@ -22,7 +22,7 @@ var rootCmd = &cobra.Command{
 report on metric usage data.
 
 Each subcommand starts one service process using settings loaded from
-config.toml in the current directory or ./anima.`,
+config.toml in the current directory.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
@@ -61,7 +61,6 @@ func init() {
 	viper.SetConfigName("config")
 	viper.SetConfigType("toml")
 	viper.AddConfigPath(".")
-	viper.AddConfigPath("./telemetry")
 	if err := viper.ReadInConfig(); err != nil {
 		if e, ok := err.(viper.ConfigFileNotFoundError); ok {
 			// Config file not found; ignore error if desired

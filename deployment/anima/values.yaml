@@ -31,7 +31,7 @@ config:
   # Set this to the name of a Secret containing config.toml to manage config
   # outside of this chart.
   existingSecret: ""
-  mountPath: /app/telemetry/config.toml
+  mountPath: /app/config.toml
 
   collector:
     address: 0.0.0.0

@@ -1,0 +1,9 @@
+.cache
+.git
+.github
+bin
+data
+profiling/out
+
+Dockerfile
+docker-compose.yaml
